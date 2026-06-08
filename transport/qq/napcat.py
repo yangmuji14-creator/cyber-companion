@@ -87,6 +87,7 @@ class NapCatClient:
             logger.error(f"NapCat WebSocket error: {e}")
         finally:
             self._running = False
+            await self.close()
             logger.info("NapCat WebSocket disconnected")
 
     async def _handle_ws_message(self, raw: str) -> None:

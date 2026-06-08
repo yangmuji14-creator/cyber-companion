@@ -319,7 +319,12 @@ def main():
             qq.set_message_handler(lambda msg: handle_message(msg.user_id, msg.content))
             @app.on_event("startup")
             async def start_qq():
-                asyncio.create_task(qq.start())
+                async def _safe_start():
+                    try:
+                        await qq.start()
+                    except Exception as e:
+                        logger.warning(f"QQ transport failed: {e}")
+                asyncio.create_task(_safe_start())
                 logger.info("QQ transport started")
 
         # 启动 Telegram（如果配置了）
@@ -330,7 +335,12 @@ def main():
             tg.set_message_handler(lambda msg: handle_message(msg.user_id, msg.content))
             @app.on_event("startup")
             async def start_telegram():
-                asyncio.create_task(tg.start())
+                async def _safe_start():
+                    try:
+                        await tg.start()
+                    except Exception as e:
+                        logger.warning(f"Telegram transport failed: {e}")
+                asyncio.create_task(_safe_start())
                 logger.info("Telegram transport started")
 
         uvicorn.run(app, host=args.host, port=args.port)
