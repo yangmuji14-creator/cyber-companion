@@ -17,3 +17,45 @@
 2026-06-08 16:18:15.543 | INFO     | __main__:test_llm:45 - 回复内容:
 嘿嘿，你好呀~我是小雨！22岁的大学生一枚，平时喜欢追追剧、听听音乐，偶尔也会犯犯懒～不过最重要的事情当然是努力学习啦！你呢？你是谁呀~
 2026-06-08 16:18:15.543 | INFO     | __main__:test_llm:46 - Token 用量: {'prompt_tokens': 33, 'completion_tokens': 40, 'total_tokens': 73}
+2026-06-08 16:21:09.177 | INFO     | __main__:main:92 - 🎀 Cyber Girlfriend 启动中...
+2026-06-08 16:21:09.178 | INFO     | __main__:main:93 - 项目目录: C:\Users\30216\cyber-girlfriend
+2026-06-08 16:21:09.215 | INFO     | __main__:test_memory:58 - === 测试记忆系统 ===
+2026-06-08 16:21:09.216 | DEBUG    | core.memory.scorer:score:82 - Memory score: 5 for '我的生日是5月20日...'
+2026-06-08 16:21:09.217 | DEBUG    | core.memory.storage:save:48 - Saved 1 memories for user test_user
+2026-06-08 16:21:09.217 | INFO     | core.memory.manager:add_memory:66 - Added memory [mem_a3fd21fb] level=5: 我的生日是5月20日...
+2026-06-08 16:21:09.217 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '我喜欢吃火锅...'
+2026-06-08 16:21:09.218 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 我喜欢吃火锅...
+2026-06-08 16:21:09.218 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '今天天气不错...'
+2026-06-08 16:21:09.218 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 今天天气不错...
+2026-06-08 16:21:09.218 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '我住在北京市朝阳区...'
+2026-06-08 16:21:09.218 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 我住在北京市朝阳区...
+2026-06-08 16:21:09.218 | INFO     | __main__:test_memory:65 - 添加记忆: m1=True, m2=False, m3=False, m4=False
+2026-06-08 16:21:09.218 | DEBUG    | core.memory.storage:load:34 - Loaded 1 memories for user test_user
+2026-06-08 16:21:09.218 | INFO     | __main__:test_memory:69 - 用户 test_user 共有 1 条记忆:
+2026-06-08 16:21:09.219 | INFO     | __main__:test_memory:71 -   [5⭐] 我的生日是5月20日
+2026-06-08 16:21:09.219 | DEBUG    | core.memory.storage:load:34 - Loaded 1 memories for user test_user
+2026-06-08 16:21:09.220 | DEBUG    | core.memory.storage:save:48 - Saved 1 memories for user test_user
+2026-06-08 16:21:09.220 | INFO     | __main__:test_memory:75 - 搜索'生日': 找到 1 条
+2026-06-08 16:21:09.220 | DEBUG    | core.memory.storage:load:34 - Loaded 1 memories for user test_user
+2026-06-08 16:21:09.220 | INFO     | __main__:test_memory:79 - 上下文 prompt:
+【你对这个用户的记忆】
+- ⭐⭐⭐⭐⭐ 我的生日是5月20日
+2026-06-08 16:21:09.221 | DEBUG    | core.memory.storage:load:34 - Loaded 1 memories for user test_user
+2026-06-08 16:21:09.221 | INFO     | __main__:test_memory:83 - 导出记忆: 1 条
+2026-06-08 16:21:09.221 | INFO     | core.memory.storage:delete_all:55 - Deleted all memories for user test_user
+2026-06-08 16:21:09.221 | INFO     | __main__:test_memory:87 - 测试数据已清理
+2026-06-08 16:21:14.609 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:21:14.609 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:21:14.609 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:21:14.609 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:21:14.609 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:21:14.609 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:21:14.609 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:21:14.609 | INFO     | __main__:test_llm:30 - 可用模型: ['deepseek', 'openai', 'gemini', 'qwen', 'kimi', 'zhipu']
+2026-06-08 16:21:14.610 | INFO     | __main__:test_llm:31 - 默认模型: deepseek
+2026-06-08 16:21:14.610 | INFO     | __main__:test_llm:38 - 测试模型: deepseek-chat
+2026-06-08 16:21:14.610 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 2 messages
+2026-06-08 16:21:16.548 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 73 chars, 79 tokens
+2026-06-08 16:21:16.548 | INFO     | __main__:test_llm:45 - 回复内容:
+嘿嘿，我是小雨呀~一个正在努力读书的大学生！最喜欢的事情就是逛街和吃甜点啦！(｡･ω･｡) 不过我可不是那种只会玩的笨蛋哦，我的成绩还是可以的啦！
+2026-06-08 16:21:16.548 | INFO     | __main__:test_llm:46 - Token 用量: {'prompt_tokens': 33, 'completion_tokens': 46, 'total_tokens': 79}

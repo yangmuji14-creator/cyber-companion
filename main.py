@@ -87,6 +87,70 @@ def test_memory():
     logger.info("测试数据已清理")
 
 
+async def chat_loop():
+    """交互式聊天循环"""
+    from core.llm import init_registry
+    from core.memory import MemoryManager
+    from core.persona import PersonaLoader, PromptBuilder
+
+    # 初始化组件
+    registry = init_registry(CONFIG_DIR / "settings.json")
+    memory_mgr = MemoryManager(str(ROOT / "data"))
+    persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
+
+    if not registry.available_models:
+        logger.error("没有可用的模型！请检查 .env 文件中的 API Key 配置")
+        return
+
+    llm = registry.get()
+    persona = persona_loader.get("girlfriend_001")
+    if not persona:
+        logger.error("默认人设 'girlfriend_001' 不存在")
+        return
+
+    user_id = "local_user"
+    logger.info(f"模型: {llm.model_name}")
+    logger.info(f"人设: {persona.name} ({', '.join(persona.personality)})")
+    logger.info("=" * 40)
+    logger.info("开始聊天吧！输入 'quit' 退出")
+    logger.info("=" * 40)
+
+    messages: list[dict[str, str]] = []
+
+    while True:
+        try:
+            user_input = input("\n你: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+
+        if not user_input or user_input.lower() == "quit":
+            break
+
+        # 添加用户消息
+        messages.append({"role": "user", "content": user_input})
+
+        # 构建 system prompt（人设 + 记忆上下文）
+        memory_context = memory_mgr.get_context_prompt(user_id)
+        system_prompt = PromptBuilder.build(persona, memory_context=memory_context)
+
+        # 调用 LLM
+        response = await llm.chat(messages=messages, system_prompt=system_prompt)
+
+        # 添加助手回复到消息历史
+        messages.append({"role": "assistant", "content": response.content})
+
+        # 自动提取记忆
+        memory_mgr.add_memory(user_id, user_input)
+
+        print(f"\n{persona.name}: {response.content}")
+
+        # 保持消息历史不要太长（最近 20 条）
+        if len(messages) > 20:
+            messages = messages[-20:]
+
+    logger.info("聊天结束，拜拜~")
+
+
 def main():
     """主入口"""
     logger.info("🎀 Cyber Girlfriend 启动中...")
@@ -98,11 +162,8 @@ def main():
         logger.warning(".env 文件不存在，请复制 .env.example 为 .env 并填写 API Key")
         logger.info("cp .env.example .env")
 
-    # 测试记忆系统
-    test_memory()
-
-    # 运行 LLM 测试
-    asyncio.run(test_llm())
+    # 启动聊天
+    asyncio.run(chat_loop())
 
 
 if __name__ == "__main__":
