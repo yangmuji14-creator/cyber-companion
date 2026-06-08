@@ -100,17 +100,22 @@ app = FastAPI(title="Cyber Girlfriend", description="🎀 赛博女友 API")
 @app.post("/api/wechat/webhook")
 async def wechat_webhook(request: Request):
     """接收 ilink-wechat 的 webhook 回调"""
-    data = await request.json()
-    logger.info(f"[WeChat Webhook] {data}")
+    try:
+        data = await request.json()
+        logger.info(f"[WeChat Webhook] {data}")
 
-    user_id = data.get("from", "unknown")
-    body = data.get("body", "")
+        user_id = data.get("from", "unknown")
+        body = data.get("body", "")
 
-    if not body:
-        return {"text": ""}
+        if not body:
+            return {"text": ""}
 
-    reply = await handle_message(user_id, body)
-    return {"text": reply}
+        reply = await handle_message(user_id, body)
+        return {"text": reply}
+    except Exception as e:
+        import traceback
+        logger.error(f"WeChat webhook error: {e}\n{traceback.format_exc()}")
+        return {"text": "抱歉，处理消息时出了点问题 (´;ω;`)"}
 
 
 @app.post("/api/chat")
@@ -207,8 +212,11 @@ def main():
                 access_token=os.getenv("NAPCAT_ACCESS_TOKEN", ""),
             )
             qq.set_message_handler(handle_incoming_message)
-            asyncio.get_event_loop().create_task(qq.start())
-            logger.info("QQ transport starting...")
+            # 使用 lifespan 事件启动
+            @app.on_event("startup")
+            async def start_qq():
+                asyncio.create_task(qq.start())
+                logger.info("QQ transport started")
 
         # 启动 Telegram（如果配置了）
         tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -216,8 +224,10 @@ def main():
             from transport.telegram import TelegramTransport
             tg = TelegramTransport(bot_token=tg_token)
             tg.set_message_handler(handle_incoming_message)
-            asyncio.get_event_loop().create_task(tg.start())
-            logger.info("Telegram transport starting...")
+            @app.on_event("startup")
+            async def start_telegram():
+                asyncio.create_task(tg.start())
+                logger.info("Telegram transport started")
 
         uvicorn.run(app, host=args.host, port=args.port)
     else:

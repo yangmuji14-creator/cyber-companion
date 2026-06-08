@@ -112,3 +112,111 @@
 2026-06-08 16:42:23.796 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '你好呀...'
 2026-06-08 16:42:23.796 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 你好呀...
 2026-06-08 16:42:23.796 | INFO     | main:handle_message:82 - [小雨] → test_user: 嗨~你今天怎么想起找我了呀 (｡･ω･｡)ﾉ♡ 是不是想我啦？...
+2026-06-08 16:51:43.877 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:51:43.878 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:51:43.878 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:51:43.878 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:51:43.878 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:51:43.878 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:51:43.878 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:51:43.878 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 16:51:43.880 | INFO     | __main__:main:188 - 🎀 Cyber Girlfriend 启动中...
+2026-06-08 16:51:43.880 | INFO     | __main__:main:189 - 项目目录: C:\Users\30216\cyber-girlfriend
+2026-06-08 16:51:43.880 | INFO     | __main__:main:196 - 启动 API 服务: http://0.0.0.0:8080
+2026-06-08 16:51:43.880 | INFO     | __main__:main:197 - 微信 Webhook: http://0.0.0.0:8080/api/wechat/webhook
+2026-06-08 16:51:43.905 | INFO     | __main__:main:211 - QQ transport starting...
+2026-06-08 16:51:45.077 | INFO     | __main__:main:220 - Telegram transport starting...
+2026-06-08 16:52:45.257 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:52:45.258 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:52:45.258 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:52:45.258 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:52:45.258 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:52:45.258 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:52:45.258 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:52:45.258 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 16:52:45.261 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 2 messages
+2026-06-08 16:52:46.654 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 35 chars, 235 tokens
+2026-06-08 16:52:46.656 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '你好呀小雨...'
+2026-06-08 16:52:46.656 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 你好呀小雨...
+2026-06-08 16:52:46.656 | INFO     | main:handle_message:92 - [小雨] → test_wechat: 啊呀你来啦！(｡･ω･｡)ﾉ♡ 今天怎么这么晚才找我聊天呀~想你了呢！...
+2026-06-08 16:53:28.199 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:53:28.199 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:53:28.199 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:53:28.199 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:53:28.199 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:53:28.199 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:53:28.199 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:53:28.200 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 16:53:28.201 | INFO     | __main__:main:188 - 🎀 Cyber Girlfriend 启动中...
+2026-06-08 16:53:28.202 | INFO     | __main__:main:189 - 项目目录: C:\Users\30216\cyber-girlfriend
+2026-06-08 16:53:28.202 | INFO     | __main__:main:196 - 启动 API 服务: http://0.0.0.0:8080
+2026-06-08 16:53:28.202 | INFO     | __main__:main:197 - 微信 Webhook: http://0.0.0.0:8080/api/wechat/webhook
+2026-06-08 16:53:28.419 | INFO     | __main__:start_qq:214 - QQ transport started
+2026-06-08 16:53:28.419 | INFO     | __main__:start_telegram:225 - Telegram transport started
+2026-06-08 16:53:28.419 | INFO     | transport.qq.handler:start:62 - QQ transport starting, connecting to ws://127.0.0.1:3001
+2026-06-08 16:53:30.438 | INFO     | transport.telegram.bot:start:48 - Telegram bot starting...
+2026-06-08 16:53:30.460 | INFO     | transport.qq.napcat:connect_ws:90 - NapCat WebSocket disconnected
+2026-06-08 16:53:47.905 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:53:47.905 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:53:47.905 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:53:47.905 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:53:47.905 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:53:47.905 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:53:47.905 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:53:47.906 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 16:54:20.603 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:54:20.603 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:54:20.603 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:54:20.603 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:54:20.603 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:54:20.604 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:54:20.604 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:54:20.604 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 16:54:20.609 | INFO     | main:wechat_webhook:104 - [WeChat Webhook] {'from': 'test_user', 'body': 'hello', 'contextToken': '123', 'accountId': 'bot'}
+2026-06-08 16:54:20.609 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 2 messages
+2026-06-08 16:54:21.992 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 30 chars, 227 tokens
+2026-06-08 16:54:21.992 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for 'hello...'
+2026-06-08 16:54:21.992 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: hello...
+2026-06-08 16:54:21.992 | INFO     | main:handle_message:92 - [小雨] → test_user: 啊呀~你来啦！(๑•̀ㅂ•́)و✧ 今天怎么想起找我聊天呀？...
+2026-06-08 16:54:44.662 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:54:44.663 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:54:44.663 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:54:44.663 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:54:44.663 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:54:44.663 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:54:44.663 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:54:44.663 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 16:54:44.665 | INFO     | __main__:main:188 - 🎀 Cyber Girlfriend 启动中...
+2026-06-08 16:54:44.665 | INFO     | __main__:main:189 - 项目目录: C:\Users\30216\cyber-girlfriend
+2026-06-08 16:54:44.665 | INFO     | __main__:main:196 - 启动 API 服务: http://0.0.0.0:8080
+2026-06-08 16:54:44.665 | INFO     | __main__:main:197 - 微信 Webhook: http://0.0.0.0:8080/api/wechat/webhook
+2026-06-08 16:54:44.873 | INFO     | __main__:start_qq:214 - QQ transport started
+2026-06-08 16:54:44.873 | INFO     | __main__:start_telegram:225 - Telegram transport started
+2026-06-08 16:54:44.873 | INFO     | transport.qq.handler:start:62 - QQ transport starting, connecting to ws://127.0.0.1:3001
+2026-06-08 16:54:46.911 | INFO     | transport.telegram.bot:start:48 - Telegram bot starting...
+2026-06-08 16:54:46.911 | ERROR    | transport.qq.napcat:connect_ws:87 - NapCat WebSocket error: Cannot connect to host 127.0.0.1:3001 ssl:default [远程计算机拒绝网络连接。]
+2026-06-08 16:54:46.911 | INFO     | transport.qq.napcat:connect_ws:90 - NapCat WebSocket disconnected
+2026-06-08 16:55:20.590 | INFO     | __main__:wechat_webhook:104 - [WeChat Webhook] {'from': 'wx_user', 'body': 'hello'}
+2026-06-08 16:55:20.590 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 2 messages
+2026-06-08 16:55:21.966 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:55:21.966 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:55:21.966 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:55:21.966 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:55:21.966 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:55:21.966 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:55:21.966 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:55:21.967 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 16:55:21.968 | INFO     | __main__:main:193 - 🎀 Cyber Girlfriend 启动中...
+2026-06-08 16:55:21.968 | INFO     | __main__:main:194 - 项目目录: C:\Users\30216\cyber-girlfriend
+2026-06-08 16:55:21.969 | INFO     | __main__:main:201 - 启动 API 服务: http://0.0.0.0:8080
+2026-06-08 16:55:21.969 | INFO     | __main__:main:202 - 微信 Webhook: http://0.0.0.0:8080/api/wechat/webhook
+2026-06-08 16:55:21.995 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 35 chars, 232 tokens
+2026-06-08 16:55:21.995 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for 'hello...'
+2026-06-08 16:55:21.995 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: hello...
+2026-06-08 16:55:21.995 | INFO     | __main__:handle_message:92 - [小雨] → wx_user: 啊呀，你来啦！(◍•ᴗ•◍)✧ 今天怎么这么晚才找我，人家都想你了啦~...
+2026-06-08 16:55:22.164 | INFO     | __main__:start_qq:219 - QQ transport started
+2026-06-08 16:55:22.164 | INFO     | __main__:start_telegram:230 - Telegram transport started
+2026-06-08 16:55:22.164 | INFO     | transport.qq.handler:start:62 - QQ transport starting, connecting to ws://127.0.0.1:3001
+2026-06-08 16:55:24.185 | INFO     | transport.telegram.bot:start:48 - Telegram bot starting...
+2026-06-08 16:55:24.192 | ERROR    | transport.qq.napcat:connect_ws:87 - NapCat WebSocket error: Cannot connect to host 127.0.0.1:3001 ssl:default [远程计算机拒绝网络连接。]
+2026-06-08 16:55:24.193 | INFO     | transport.qq.napcat:connect_ws:90 - NapCat WebSocket disconnected
