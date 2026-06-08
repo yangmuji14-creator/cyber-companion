@@ -1,2 +1,19 @@
 2026-06-08 16:16:09.086 | INFO     | __main__:main:51 - 🎀 Cyber Girlfriend 启动中...
 2026-06-08 16:16:09.087 | INFO     | __main__:main:52 - 项目目录: C:\Users\30216\cyber-girlfriend
+2026-06-08 16:18:07.708 | INFO     | __main__:main:51 - 🎀 Cyber Girlfriend 启动中...
+2026-06-08 16:18:07.709 | INFO     | __main__:main:52 - 项目目录: C:\Users\30216\cyber-girlfriend
+2026-06-08 16:18:13.696 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:18:13.696 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:18:13.696 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:18:13.697 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:18:13.698 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:18:13.698 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:18:13.698 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:18:13.698 | INFO     | __main__:test_llm:30 - 可用模型: ['deepseek', 'openai', 'gemini', 'qwen', 'kimi', 'zhipu']
+2026-06-08 16:18:13.698 | INFO     | __main__:test_llm:31 - 默认模型: deepseek
+2026-06-08 16:18:13.698 | INFO     | __main__:test_llm:38 - 测试模型: deepseek-chat
+2026-06-08 16:18:13.699 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 2 messages
+2026-06-08 16:18:15.543 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 68 chars, 73 tokens
+2026-06-08 16:18:15.543 | INFO     | __main__:test_llm:45 - 回复内容:
+嘿嘿，你好呀~我是小雨！22岁的大学生一枚，平时喜欢追追剧、听听音乐，偶尔也会犯犯懒～不过最重要的事情当然是努力学习啦！你呢？你是谁呀~
+2026-06-08 16:18:15.543 | INFO     | __main__:test_llm:46 - Token 用量: {'prompt_tokens': 33, 'completion_tokens': 40, 'total_tokens': 73}

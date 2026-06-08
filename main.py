@@ -46,6 +46,47 @@ async def test_llm():
     logger.info(f"Token 用量: {response.usage}")
 
 
+def test_memory():
+    """测试记忆系统"""
+    from core.memory import MemoryManager
+
+    manager = MemoryManager(str(ROOT / "data"))
+
+    test_user = "test_user"
+
+    # 测试添加记忆
+    logger.info("=== 测试记忆系统 ===")
+
+    m1 = manager.add_memory(test_user, "我的生日是5月20日")
+    m2 = manager.add_memory(test_user, "我喜欢吃火锅")
+    m3 = manager.add_memory(test_user, "今天天气不错")  # 低重要度，应该被跳过
+    m4 = manager.add_memory(test_user, "我住在北京市朝阳区")
+
+    logger.info(f"添加记忆: m1={m1 is not None}, m2={m2 is not None}, m3={m3 is not None}, m4={m4 is not None}")
+
+    # 测试检索
+    memories = manager.get_memories(test_user)
+    logger.info(f"用户 {test_user} 共有 {len(memories)} 条记忆:")
+    for m in memories:
+        logger.info(f"  [{m.level}⭐] {m.content}")
+
+    # 测试搜索
+    results = manager.search_memories(test_user, "生日")
+    logger.info(f"搜索'生日': 找到 {len(results)} 条")
+
+    # 测试上下文 prompt
+    context = manager.get_context_prompt(test_user)
+    logger.info(f"上下文 prompt:\n{context}")
+
+    # 测试导出
+    exported = manager.export_memories(test_user)
+    logger.info(f"导出记忆: {len(exported)} 条")
+
+    # 清理测试数据
+    manager._storage.delete_all(test_user)
+    logger.info("测试数据已清理")
+
+
 def main():
     """主入口"""
     logger.info("🎀 Cyber Girlfriend 启动中...")
@@ -56,6 +97,9 @@ def main():
     if not env_file.exists():
         logger.warning(".env 文件不存在，请复制 .env.example 为 .env 并填写 API Key")
         logger.info("cp .env.example .env")
+
+    # 测试记忆系统
+    test_memory()
 
     # 运行 LLM 测试
     asyncio.run(test_llm())
