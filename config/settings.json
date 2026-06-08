@@ -45,8 +45,9 @@
     "max_memories_per_user": 500,
     "auto_summarize_threshold": 400
   },
-  "webui": {
-    "host": "0.0.0.0",
-    "port": 8080
+  "advanced": {
+    "segment_max_length": 25,
+    "debounce_seconds": 10,
+    "summarize_threshold": 10
   }
 }

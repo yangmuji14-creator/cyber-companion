@@ -22,10 +22,8 @@ build/
 *.swo
 
 # Data (runtime generated)
-data/memories/*.json
-!data/memories/.gitkeep
-data/exports/*
-!data/exports/.gitkeep
+data/
+logs/
 
 # OS
 .DS_Store

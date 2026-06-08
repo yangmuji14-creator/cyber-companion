@@ -23,6 +23,7 @@ class PromptBuilder:
         persona: Persona,
         memory_context: str = "",
         extra_instructions: str = "",
+        relationship_level: int | None = None,
     ) -> str:
         """构建完整的 system prompt
 
@@ -30,6 +31,7 @@ class PromptBuilder:
             persona: 人设对象
             memory_context: 记忆上下文（由 MemoryManager 生成）
             extra_instructions: 额外指令
+            relationship_level: 动态亲密度（覆盖 persona 静态值）
 
         Returns:
             完整的 system prompt 字符串
@@ -48,10 +50,9 @@ class PromptBuilder:
         if persona.speaking_style:
             parts.append(f"说话风格：{persona.speaking_style}")
 
-        # 2. 关系亲密度
-        relationship_desc = PromptBuilder._get_relationship_desc(
-            persona.relationship_level
-        )
+        # 2. 关系亲密度（动态优先，静态兜底）
+        level = relationship_level if relationship_level is not None else persona.relationship_level
+        relationship_desc = PromptBuilder._get_relationship_desc(level)
         parts.append(f"当前关系：{relationship_desc}")
 
         # 3. 核心记忆
