@@ -5,6 +5,11 @@ import os
 import sys
 from pathlib import Path
 
+# 修复 Windows 终端中文编码
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request

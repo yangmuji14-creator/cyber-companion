@@ -99,3 +99,16 @@
 2026-06-08 16:26:37.706 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '我喜欢吃啥...'
 2026-06-08 16:26:37.706 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 我喜欢吃啥...
 2026-06-08 16:26:47.744 | INFO     | __main__:chat_loop:151 - 聊天结束，拜拜~
+2026-06-08 16:42:22.430 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:42:22.431 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:42:22.431 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:42:22.431 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:42:22.431 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:42:22.431 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:42:22.431 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:42:22.432 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 16:42:22.434 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 2 messages
+2026-06-08 16:42:23.795 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 31 chars, 229 tokens
+2026-06-08 16:42:23.796 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '你好呀...'
+2026-06-08 16:42:23.796 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 你好呀...
+2026-06-08 16:42:23.796 | INFO     | main:handle_message:82 - [小雨] → test_user: 嗨~你今天怎么想起找我了呀 (｡･ω･｡)ﾉ♡ 是不是想我啦？...
