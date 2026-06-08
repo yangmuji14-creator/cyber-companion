@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎀 Cyber Girlfriend</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0f0f14;
+            --card: #1a1a24;
+            --border: #2a2a3a;
+            --primary: #e8a0bf;
+            --primary-dark: #c47a9a;
+            --text: #e0e0e8;
+            --text-dim: #888;
+            --success: #7ec88b;
+            --danger: #e06060;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* Layout */
+        .app { display: flex; height: 100vh; }
+        .sidebar {
+            width: 220px;
+            background: var(--card);
+            border-right: 1px solid var(--border);
+            padding: 20px 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .main { flex: 1; overflow-y: auto; padding: 30px; }
+
+        /* Sidebar */
+        .logo {
+            text-align: center;
+            font-size: 1.4em;
+            padding: 10px 20px 20px;
+            color: var(--primary);
+            font-weight: bold;
+        }
+        .nav-item {
+            padding: 12px 24px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+            color: var(--text-dim);
+        }
+        .nav-item:hover { background: rgba(232,160,191,0.05); color: var(--text); }
+        .nav-item.active {
+            background: rgba(232,160,191,0.1);
+            border-left-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Cards */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            font-size: 1.1em;
+            margin-bottom: 16px;
+            color: var(--primary);
+        }
+
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; }
+        th, td {
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        th { color: var(--text-dim); font-weight: normal; font-size: 0.85em; }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: #000; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-danger:hover { opacity: 0.8; }
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+        }
+        .btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
+
+        /* Inputs */
+        input, select, textarea {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: var(--text);
+            font-size: 0.9em;
+            width: 100%;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        textarea { resize: vertical; min-height: 80px; }
+
+        /* Form */
+        .form-row { margin-bottom: 12px; }
+        .form-row label { display: block; margin-bottom: 4px; color: var(--text-dim); font-size: 0.85em; }
+
+        /* Chat */
+        .chat-box {
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+            padding: 16px;
+            background: var(--bg);
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        .chat-msg { margin-bottom: 12px; max-width: 80%; }
+        .chat-msg.user { margin-left: auto; text-align: right; }
+        .chat-msg .bubble {
+            display: inline-block;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+        .chat-msg.user .bubble { background: var(--primary); color: #000; }
+        .chat-msg.bot .bubble { background: var(--card); border: 1px solid var(--border); }
+        .chat-msg .name { font-size: 0.75em; color: var(--text-dim); margin-bottom: 4px; }
+        .chat-input-row { display: flex; gap: 8px; }
+        .chat-input-row input { flex: 1; }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            background: var(--primary);
+            color: #000;
+        }
+
+        /* Stars */
+        .stars { color: #f0c040; letter-spacing: 2px; }
+
+        /* Status dot */
+        .status-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            margin-right: 6px;
+        }
+
+        /* Empty state */
+        .empty { text-align: center; color: var(--text-dim); padding: 40px; }
+
+        /* Tabs */
+        .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+        .tab {
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            color: var(--text-dim);
+            background: transparent;
+            border: 1px solid transparent;
+        }
+        .tab.active { background: var(--primary); color: #000; }
+        .tab:hover:not(.active) { border-color: var(--border); }
+
+        /* Hidden */
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="sidebar">
+            <div class="logo">🎀 Cyber Girlfriend</div>
+            <div class="nav-item active" data-page="chat">💬 聊天测试</div>
+            <div class="nav-item" data-page="personas">👤 人设管理</div>
+            <div class="nav-item" data-page="memories">🧠 记忆管理</div>
+            <div class="nav-item" data-page="models">🤖 模型配置</div>
+            <div class="nav-item" data-page="accounts">📱 账户管理</div>
+        </div>
+
+        <div class="main">
+            <!-- Chat Page -->
+            <div id="page-chat" class="page">
+                <div class="card">
+                    <h2>💬 聊天测试</h2>
+                    <div class="chat-box" id="chatBox"></div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chatInput" placeholder="输入消息..." onkeydown="if(event.key==='Enter')sendChat()">
+                        <button class="btn btn-primary" onclick="sendChat()">发送</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Personas Page -->
+            <div id="page-personas" class="page hidden">
+                <div class="card">
+                    <h2>👤 人设管理 <button class="btn btn-ghost" onclick="showAddPersona()" style="float:right">+ 新建人设</button></h2>
+                    <table>
+                        <thead><tr><th>ID</th><th>名字</th><th>年龄</th><th>性格</th><th>亲密度</th><th>操作</th></tr></thead>
+                        <tbody id="personaTable"></tbody>
+                    </table>
+                </div>
+                <div class="card hidden" id="personaForm">
+                    <h2>编辑人设</h2>
+                    <div class="form-row"><label>ID</label><input id="pf-id"></div>
+                    <div class="form-row"><label>名字</label><input id="pf-name"></div>
+                    <div class="form-row"><label>年龄</label><input id="pf-age" type="number"></div>
+                    <div class="form-row"><label>性格（逗号分隔）</label><input id="pf-personality"></div>
+                    <div class="form-row"><label>背景</label><input id="pf-background"></div>
+                    <div class="form-row"><label>说话风格</label><input id="pf-style"></div>
+                    <div class="form-row"><label>亲密度 (0-100)</label><input id="pf-rel" type="number" min="0" max="100"></div>
+                    <div class="form-row"><label>System Prompt</label><textarea id="pf-prompt"></textarea></div>
+                    <button class="btn btn-primary" onclick="savePersona()">保存</button>
+                    <button class="btn btn-ghost" onclick="hidePersonaForm()">取消</button>
+                </div>
+            </div>
+
+            <!-- Memories Page -->
+            <div id="page-memories" class="page hidden">
+                <div class="card">
+                    <h2>🧠 记忆管理</h2>
+                    <div id="memoryUsers"></div>
+                </div>
+                <div class="card hidden" id="memoryList">
+                    <h2 id="memoryTitle">用户记忆</h2>
+                    <table>
+                        <thead><tr><th>重要度</th><th>内容</th><th>标签</th><th>访问次数</th><th>操作</th></tr></thead>
+                        <tbody id="memoryTable"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Models Page -->
+            <div id="page-models" class="page hidden">
+                <div class="card">
+                    <h2>🤖 模型配置</h2>
+                    <table>
+                        <thead><tr><th>模型</th><th>状态</th><th>操作</th></tr></thead>
+                        <tbody id="modelTable"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Accounts Page -->
+            <div id="page-accounts" class="page hidden">
+                <div class="card">
+                    <h2>📱 账户管理 <button class="btn btn-ghost" onclick="showAddAccount()" style="float:right">+ 新建账户</button></h2>
+                    <table>
+                        <thead><tr><th>ID</th><th>平台</th><th>昵称</th><th>人设</th><th>模型</th><th>操作</th></tr></thead>
+                        <tbody id="accountTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== Navigation ==========
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+                document.getElementById('page-' + item.dataset.page).classList.remove('hidden');
+                loadPage(item.dataset.page);
+            });
+        });
+
+        function loadPage(page) {
+            if (page === 'personas') loadPersonas();
+            if (page === 'memories') loadMemoryUsers();
+            if (page === 'models') loadModels();
+            if (page === 'accounts') loadAccounts();
+        }
+
+        // ========== API Helper ==========
+        async function api(url, opts = {}) {
+            const res = await fetch(url, {
+                headers: { 'Content-Type': 'application/json' },
+                ...opts,
+                body: opts.body ? JSON.stringify(opts.body) : undefined,
+            });
+            return res.json();
+        }
+
+        // ========== Chat ==========
+        async function sendChat() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+
+            appendMsg('user', '你', text);
+            appendMsg('bot', '小雨', '思考中...');
+
+            const data = await api('/api/chat', { method: 'POST', body: { user_id: 'web_user', content: text } });
+            const msgs = document.querySelectorAll('.chat-msg');
+            const last = msgs[msgs.length - 1];
+            last.querySelector('.bubble').textContent = data.reply || data.error || '出错了';
+        }
+
+        function appendMsg(type, name, text) {
+            const box = document.getElementById('chatBox');
+            const div = document.createElement('div');
+            div.className = `chat-msg ${type}`;
+            div.innerHTML = `<div class="name">${name}</div><div class="bubble">${text}</div>`;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        // ========== Personas ==========
+        async function loadPersonas() {
+            const data = await api('/api/personas');
+            const tbody = document.getElementById('personaTable');
+            tbody.innerHTML = '';
+            (data.personas || []).forEach(p => {
+                tbody.innerHTML += `<tr>
+                    <td>${p.id}</td>
+                    <td>${p.name}</td>
+                    <td>${p.age}</td>
+                    <td>${(p.personality||[]).join('、')}</td>
+                    <td><span class="badge">${p.relationship_level}</span></td>
+                    <td>
+                        <button class="btn btn-ghost" onclick="editPersona('${p.id}')">编辑</button>
+                        <button class="btn btn-danger" onclick="deletePersona('${p.id}')">删除</button>
+                    </td>
+                </tr>`;
+            });
+        }
+
+        function showAddPersona() {
+            document.getElementById('personaForm').classList.remove('hidden');
+            ['pf-id','pf-name','pf-age','pf-personality','pf-background','pf-style','pf-rel','pf-prompt'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+        }
+        function hidePersonaForm() { document.getElementById('personaForm').classList.add('hidden'); }
+
+        async function editPersona(id) {
+            const data = await api(`/api/personas/${id}`);
+            document.getElementById('personaForm').classList.remove('hidden');
+            document.getElementById('pf-id').value = data.id;
+            document.getElementById('pf-name').value = data.name;
+            document.getElementById('pf-age').value = data.age;
+            document.getElementById('pf-personality').value = (data.personality||[]).join(',');
+            document.getElementById('pf-background').value = data.background || '';
+            document.getElementById('pf-style').value = data.speaking_style || '';
+            document.getElementById('pf-rel').value = data.relationship_level;
+            document.getElementById('pf-prompt').value = data.system_prompt || '';
+        }
+
+        async function savePersona() {
+            const id = document.getElementById('pf-id').value;
+            const body = {
+                id, name: document.getElementById('pf-name').value,
+                age: parseInt(document.getElementById('pf-age').value) || 20,
+                personality: document.getElementById('pf-personality').value.split(',').map(s=>s.trim()).filter(Boolean),
+                background: document.getElementById('pf-background').value,
+                speaking_style: document.getElementById('pf-style').value,
+                relationship_level: parseInt(document.getElementById('pf-rel').value) || 50,
+                system_prompt: document.getElementById('pf-prompt').value,
+            };
+            await api(`/api/personas/${id}`, { method: 'PUT', body });
+            hidePersonaForm();
+            loadPersonas();
+        }
+
+        async function deletePersona(id) {
+            if (!confirm(`确定删除人设 ${id}？`)) return;
+            await api(`/api/personas/${id}`, { method: 'DELETE' });
+            loadPersonas();
+        }
+
+        // ========== Memories ==========
+        async function loadMemoryUsers() {
+            const data = await api('/api/memories');
+            const div = document.getElementById('memoryUsers');
+            div.innerHTML = '';
+            if (!data.users || data.users.length === 0) {
+                div.innerHTML = '<div class="empty">暂无记忆数据</div>';
+                return;
+            }
+            data.users.forEach(u => {
+                div.innerHTML += `<div style="display:inline-block;margin:4px">
+                    <button class="btn btn-ghost" onclick="loadMemories('${u.user_id}')">
+                        ${u.user_id} <span class="badge">${u.count}</span>
+                    </button>
+                </div>`;
+            });
+        }
+
+        async function loadMemories(userId) {
+            const data = await api(`/api/memories/${userId}`);
+            document.getElementById('memoryList').classList.remove('hidden');
+            document.getElementById('memoryTitle').textContent = `${userId} 的记忆`;
+            const tbody = document.getElementById('memoryTable');
+            tbody.innerHTML = '';
+            (data.memories || []).forEach(m => {
+                const stars = '⭐'.repeat(m.level);
+                const tags = (m.tags||[]).map(t=>`<span class="badge">${t}</span>`).join(' ');
+                tbody.innerHTML += `<tr>
+                    <td class="stars">${stars}</td>
+                    <td>${m.content}</td>
+                    <td>${tags}</td>
+                    <td>${m.access_count}</td>
+                    <td><button class="btn btn-danger" onclick="deleteMemory('${userId}','${m.id}')">删除</button></td>
+                </tr>`;
+            });
+        }
+
+        async function deleteMemory(userId, memId) {
+            await api(`/api/memories/${userId}/${memId}`, { method: 'DELETE' });
+            loadMemories(userId);
+        }
+
+        // ========== Models ==========
+        async function loadModels() {
+            const data = await api('/api/models');
+            const tbody = document.getElementById('modelTable');
+            tbody.innerHTML = '';
+            (data.models || []).forEach(m => {
+                const isDefault = m === data.default;
+                tbody.innerHTML += `<tr>
+                    <td>${m}</td>
+                    <td>${isDefault ? '<span class="status-dot"></span>默认' : ''}</td>
+                    <td>${isDefault ? '' : `<button class="btn btn-ghost" onclick="setDefault('${m}')">设为默认</button>`}</td>
+                </tr>`;
+            });
+        }
+
+        async function setDefault(model) {
+            await api('/api/models/default', { method: 'POST', body: { model } });
+            loadModels();
+        }
+
+        // ========== Accounts ==========
+        async function loadAccounts() {
+            const data = await api('/api/accounts');
+            const tbody = document.getElementById('accountTable');
+            tbody.innerHTML = '';
+            (data.accounts || []).forEach(a => {
+                tbody.innerHTML += `<tr>
+                    <td>${a.id}</td>
+                    <td>${a.platform}</td>
+                    <td>${a.name||''}</td>
+                    <td>${a.persona_id||''}</td>
+                    <td>${a.settings?.model||''}</td>
+                    <td><button class="btn btn-danger" onclick="deleteAccount('${a.id}')">删除</button></td>
+                </tr>`;
+            });
+            if (!data.accounts?.length) tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无账户</td></tr>';
+        }
+
+        function showAddAccount() { alert('功能开发中...'); }
+        async function deleteAccount(id) {
+            if (!confirm(`确定删除账户 ${id}？`)) return;
+            await api(`/api/accounts/${id}`, { method: 'DELETE' });
+            loadAccounts();
+        }
+
+        // Init
+        loadModels();
+    </script>
+</body>
+</html>

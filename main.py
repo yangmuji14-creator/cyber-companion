@@ -196,7 +196,9 @@ msg_queue = MessageQueue()
 
 
 # ========== FastAPI 应用 ==========
-app = FastAPI(title="Cyber Girlfriend", description="🎀 赛博女友 API")
+from webui.app import create_webui_app
+
+app = create_webui_app(registry, memory_mgr, persona_loader)
 
 
 @app.post("/api/wechat/webhook")
@@ -235,33 +237,7 @@ async def wechat_webhook(request: Request):
         return {"text": "抱歉，处理消息时出了点问题 (´;ω;`)"}
 
 
-@app.post("/api/chat")
-async def chat_api(request: Request):
-    """通用聊天 API（给 WebUI 用）"""
-    try:
-        data = await request.json()
-        user_id = data.get("user_id", "web_user")
-        content = data.get("content", "")
-
-        if not content:
-            return {"error": "content is required"}
-
-        reply = await handle_message(user_id, content)
-        return {"reply": reply}
-    except Exception as e:
-        logger.error(f"Chat API error: {e}")
-        return {"error": str(e)}
-
-
-@app.get("/api/health")
-async def health():
-    """健康检查"""
-    return {
-        "status": "ok",
-        "models": registry.available_models,
-        "default_model": registry.default_model,
-        "personas": [p.id for p in persona_loader.list_all()],
-    }
+# 注：/api/chat 和 /api/health 由 webui.app 提供
 
 
 # ========== 交互式聊天 ==========

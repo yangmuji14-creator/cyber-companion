@@ -220,3 +220,29 @@
 2026-06-08 16:55:24.185 | INFO     | transport.telegram.bot:start:48 - Telegram bot starting...
 2026-06-08 16:55:24.192 | ERROR    | transport.qq.napcat:connect_ws:87 - NapCat WebSocket error: Cannot connect to host 127.0.0.1:3001 ssl:default [远程计算机拒绝网络连接。]
 2026-06-08 16:55:24.193 | INFO     | transport.qq.napcat:connect_ws:90 - NapCat WebSocket disconnected
+2026-06-08 17:15:02.669 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 17:15:02.669 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 17:15:02.669 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 17:15:02.670 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 17:15:02.670 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 17:15:02.670 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 17:15:02.670 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 17:15:02.671 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 17:15:02.888 | INFO     | __main__:main:324 - 🎀 Cyber Girlfriend 启动中...
+2026-06-08 17:15:02.888 | INFO     | __main__:main:325 - 项目目录: C:\Users\30216\cyber-girlfriend
+2026-06-08 17:15:02.888 | INFO     | __main__:main:332 - 启动 API 服务: http://0.0.0.0:8080
+2026-06-08 17:15:02.888 | INFO     | __main__:main:333 - 微信 Webhook: http://0.0.0.0:8080/api/wechat/webhook
+2026-06-08 17:15:03.091 | INFO     | __main__:start_qq:349 - QQ transport started
+2026-06-08 17:15:03.091 | INFO     | __main__:start_telegram:360 - Telegram transport started
+2026-06-08 17:15:03.091 | INFO     | transport.qq.handler:start:62 - QQ transport starting, connecting to ws://127.0.0.1:3001
+2026-06-08 17:15:05.193 | INFO     | transport.telegram.bot:start:48 - Telegram bot starting...
+2026-06-08 17:15:05.193 | ERROR    | transport.qq.napcat:connect_ws:87 - NapCat WebSocket error: Cannot connect to host 127.0.0.1:3001 ssl:default [远程计算机拒绝网络连接。]
+2026-06-08 17:15:05.193 | INFO     | transport.qq.napcat:connect_ws:90 - NapCat WebSocket disconnected
+2026-06-08 17:15:35.769 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 17:15:35.770 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 17:15:35.770 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 17:15:35.770 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 17:15:35.770 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 17:15:35.770 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 17:15:35.770 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 17:15:35.771 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
