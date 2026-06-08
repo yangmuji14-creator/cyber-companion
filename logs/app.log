@@ -59,3 +59,43 @@
 2026-06-08 16:21:16.548 | INFO     | __main__:test_llm:45 - 回复内容:
 嘿嘿，我是小雨呀~一个正在努力读书的大学生！最喜欢的事情就是逛街和吃甜点啦！(｡･ω･｡) 不过我可不是那种只会玩的笨蛋哦，我的成绩还是可以的啦！
 2026-06-08 16:21:16.548 | INFO     | __main__:test_llm:46 - Token 用量: {'prompt_tokens': 33, 'completion_tokens': 46, 'total_tokens': 79}
+2026-06-08 16:25:36.944 | INFO     | __main__:main:156 - 🎀 Cyber Girlfriend 启动中...
+2026-06-08 16:25:36.945 | INFO     | __main__:main:157 - 项目目录: C:\Users\30216\cyber-girlfriend
+2026-06-08 16:25:42.494 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 16:25:42.494 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 16:25:42.494 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 16:25:42.494 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 16:25:42.494 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 16:25:42.494 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 16:25:42.494 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 16:25:42.495 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 16:25:42.496 | INFO     | __main__:chat_loop:112 - 模型: deepseek-chat
+2026-06-08 16:25:42.496 | INFO     | __main__:chat_loop:113 - 人设: 小雨 (温柔, 活泼, 偶尔傲娇)
+2026-06-08 16:25:42.496 | INFO     | __main__:chat_loop:114 - ========================================
+2026-06-08 16:25:42.496 | INFO     | __main__:chat_loop:115 - 开始聊天吧！输入 'quit' 退出
+2026-06-08 16:25:42.496 | INFO     | __main__:chat_loop:116 - ========================================
+2026-06-08 16:25:51.295 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 2 messages
+2026-06-08 16:25:52.652 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 39 chars, 234 tokens
+2026-06-08 16:25:52.653 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '我叫小明...'
+2026-06-08 16:25:52.653 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 我叫小明...
+2026-06-08 16:25:58.684 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 4 messages
+2026-06-08 16:26:00.221 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 53 chars, 280 tokens
+2026-06-08 16:26:00.221 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '今天心情不好...'
+2026-06-08 16:26:00.222 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 今天心情不好...
+2026-06-08 16:26:07.455 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 6 messages
+2026-06-08 16:26:09.210 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 63 chars, 330 tokens
+2026-06-08 16:26:09.210 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '我喜欢吃草莓蛋糕...'
+2026-06-08 16:26:09.210 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 我喜欢吃草莓蛋糕...
+2026-06-08 16:26:14.798 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 8 messages
+2026-06-08 16:26:16.232 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 43 chars, 365 tokens
+2026-06-08 16:26:16.233 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '你是谁...'
+2026-06-08 16:26:16.233 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 你是谁...
+2026-06-08 16:26:26.323 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 10 messages
+2026-06-08 16:26:27.823 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 61 chars, 420 tokens
+2026-06-08 16:26:27.823 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '你和我啥关系啊这么照顾我...'
+2026-06-08 16:26:27.824 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 你和我啥关系啊这么照顾我...
+2026-06-08 16:26:35.867 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 12 messages
+2026-06-08 16:26:37.704 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 65 chars, 473 tokens
+2026-06-08 16:26:37.706 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '我喜欢吃啥...'
+2026-06-08 16:26:37.706 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 我喜欢吃啥...
+2026-06-08 16:26:47.744 | INFO     | __main__:chat_loop:151 - 聊天结束，拜拜~
