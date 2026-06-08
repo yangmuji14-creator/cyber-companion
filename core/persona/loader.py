@@ -47,6 +47,13 @@ class PersonaLoader:
         self._personas[persona.id] = persona
         self._save()
 
+    # 允许更新的字段白名单
+    ALLOWED_FIELDS = {
+        "name", "age", "personality", "background",
+        "speaking_style", "core_memories",
+        "relationship_level", "system_prompt",
+    }
+
     def update(self, persona_id: str, **kwargs) -> Persona | None:
         """更新人设属性"""
         persona = self._personas.get(persona_id)
@@ -54,8 +61,10 @@ class PersonaLoader:
             return None
 
         for key, value in kwargs.items():
-            if hasattr(persona, key):
-                setattr(persona, key, value)
+            if key not in self.ALLOWED_FIELDS:
+                logger.warning(f"Ignored invalid field: {key}")
+                continue
+            setattr(persona, key, value)
 
         self._save()
         logger.info(f"Updated persona {persona_id}: {list(kwargs.keys())}")

@@ -31,10 +31,11 @@ class MemorySummarizer:
             return None
 
         # 构建对话文本
-        conversation_text = ""
+        lines = []
         for conv in conversations:
-            conversation_text += f"用户: {conv.get('user', '')}\n"
-            conversation_text += f"助手: {conv.get('assistant', '')}\n\n"
+            lines.append(f"用户: {conv.get('user', '')}")
+            lines.append(f"助手: {conv.get('assistant', '')}")
+        conversation_text = "\n".join(lines)
 
         prompt = """请将以下对话记录总结为最重要的几条长期记忆。
 
@@ -98,7 +99,7 @@ class MemorySummarizer:
 
         try:
             response = await self._llm.chat(
-                messages=[{"role": "user", "content": "请分析"}],
+                messages=[{"role": "user", "content": f"用户: {user_msg}\n助手: {assistant_reply}"}],
                 system_prompt=prompt,
                 max_tokens=200,
                 temperature=0.1,

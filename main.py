@@ -3,11 +3,9 @@
 import asyncio
 import os
 import sys
-import time
-import threading
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 # 修复 Windows 终端中文编码
 if sys.platform == "win32":
@@ -42,9 +40,9 @@ memory_mgr = MemoryManager(str(ROOT / "data"))
 persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
 emotion_analyzer = EmotionAnalyzer()
 
-# 每个用户的消息历史和短期记忆
+# 每个用户的消息历史和短期记忆（仅在事件循环内访问，线程安全）
 _user_histories: dict[str, list[dict[str, str]]] = {}
-_short_memories: dict[str, list[dict[str, str]]] = {}  # 短期记忆（原始对话）
+_short_memories: dict[str, list[dict[str, str]]] = {}
 
 
 def _get_time_context() -> str:
@@ -146,59 +144,125 @@ async def handle_message(user_id: str, content: str, persona_id: str = "girlfrie
     return reply
 
 
-# ========== 消息队列（借鉴 My-Dream-Moments 的 5 秒去抖） ==========
-class MessageQueue:
-    """消息队列 - 多条消息合并处理
+# ========== Async 消息队列（5 秒去抖） ==========
+class AsyncMessageQueue:
+    """异步消息队列 - 多条消息合并处理
 
-    借鉴 My-Dream-Moments：用户可能连发多条消息，
-    用 5 秒去抖定时器合并后再调用 LLM。
+    使用 asyncio.sleep 替代 threading.Timer，全部在事件循环内执行。
     """
 
-    def __init__(self):
-        self._queues: dict[str, dict[str, Any]] = {}
-        self._lock = threading.Lock()
+    def __init__(self, debounce_seconds: float = 5.0):
+        self._debounce = debounce_seconds
+        self._queues: dict[str, dict] = {}
+        self._tasks: dict[str, asyncio.Task] = {}
 
-    def add(self, user_id: str, content: str, callback) -> None:
-        """添加消息到队列"""
-        with self._lock:
-            if user_id not in self._queues:
-                # 创建新队列，5 秒后处理
-                timer = threading.Timer(5.0, self._process, args=[user_id, callback])
-                self._queues[user_id] = {
-                    "timer": timer,
-                    "messages": [content],
-                    "created_at": time.time(),
-                }
-                timer.start()
-            else:
-                # 取消旧定时器，重新计时
-                self._queues[user_id]["timer"].cancel()
-                self._queues[user_id]["messages"].append(content)
-                timer = threading.Timer(5.0, self._process, args=[user_id, callback])
-                self._queues[user_id]["timer"] = timer
-                timer.start()
+    async def add(self, user_id: str, content: str) -> str:
+        """添加消息到队列，等待去抖后处理，返回回复"""
+        # 取消之前的定时任务
+        if user_id in self._tasks and not self._tasks[user_id].done():
+            self._tasks[user_id].cancel()
 
-    def _process(self, user_id: str, callback) -> None:
-        """处理队列中的消息"""
-        with self._lock:
-            if user_id not in self._queues:
+        # 添加消息到队列
+        if user_id not in self._queues:
+            self._queues[user_id] = {"messages": [], "event": asyncio.Event()}
+        self._queues[user_id]["messages"].append(content)
+
+        # 创建新的去抖任务
+        future: asyncio.Future[str] = asyncio.get_event_loop().create_future()
+        self._tasks[user_id] = asyncio.create_task(
+            self._debounce_and_process(user_id, future)
+        )
+
+        # 等待处理完成
+        return await future
+
+    async def _debounce_and_process(self, user_id: str, future: asyncio.Future) -> None:
+        """去抖后处理消息"""
+        try:
+            await asyncio.sleep(self._debounce)
+
+            # 取出并清空队列
+            queue_data = self._queues.pop(user_id, None)
+            if not queue_data:
+                future.set_result("没有消息")
                 return
-            queue_data = self._queues.pop(user_id)
+
             messages = queue_data["messages"]
+            merged = "\n".join(messages)
 
-        # 合并消息（用换行分隔）
-        merged = "\n".join(messages)
-        # 在主线程中异步执行回调
-        asyncio.run(callback(user_id, merged))
+            # 调用 handle_message（全在事件循环内）
+            reply = await handle_message(user_id, merged)
+            future.set_result(reply)
+
+        except asyncio.CancelledError:
+            # 被取消（新消息到来），不设置 future
+            pass
+        except Exception as e:
+            logger.error(f"Message queue error: {e}")
+            if not future.done():
+                future.set_result("抱歉，处理消息时出了点问题 (´;ω;`)")
 
 
-msg_queue = MessageQueue()
+msg_queue = AsyncMessageQueue(debounce_seconds=3.0)
 
 
 # ========== FastAPI 应用 ==========
 from webui.app import create_webui_app
 
-app = create_webui_app(registry, memory_mgr, persona_loader)
+# 传输层实例（在 lifespan 中启动）
+_transports: list = []
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # Startup
+    napcat_ws = os.getenv("NAPCAT_WS_URL")
+    napcat_http = os.getenv("NAPCAT_HTTP_URL")
+    if napcat_ws or napcat_http:
+        from transport.qq import QQTransport
+        qq = QQTransport(
+            ws_url=napcat_ws or "ws://127.0.0.1:3001",
+            http_url=napcat_http or "",
+            access_token=os.getenv("NAPCAT_ACCESS_TOKEN", ""),
+        )
+
+        async def _qq_handler(msg):
+            return await handle_message(msg.user_id, msg.content)
+
+        qq.set_message_handler(_qq_handler)
+        _transports.append(("QQ", qq))
+
+    tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if tg_token:
+        from transport.telegram import TelegramTransport
+        tg = TelegramTransport(bot_token=tg_token)
+
+        async def _tg_handler(msg):
+            return await handle_message(msg.user_id, msg.content)
+
+        tg.set_message_handler(_tg_handler)
+        _transports.append(("Telegram", tg))
+
+    # 启动传输层
+    for name, transport in _transports:
+        try:
+            asyncio.create_task(transport.start())
+            logger.info(f"{name} transport started")
+        except Exception as e:
+            logger.warning(f"{name} transport failed: {e}")
+
+    yield
+
+    # Shutdown
+    for name, transport in _transports:
+        try:
+            await transport.stop()
+        except Exception:
+            pass
+
+
+app = create_webui_app(registry, memory_mgr, persona_loader, lifespan=lifespan)
 
 
 @app.post("/api/wechat/webhook")
@@ -214,30 +278,14 @@ async def wechat_webhook(request: Request):
         if not body:
             return {"text": ""}
 
-        # 使用消息队列（5秒去抖）
-        result = {"text": "", "done": False}
+        # 使用 async 消息队列（去抖）
+        reply = await msg_queue.add(user_id, body)
+        return {"text": reply}
 
-        async def process(uid, merged_msg):
-            reply = await handle_message(uid, merged_msg)
-            result["text"] = reply
-            result["done"] = True
-
-        msg_queue.add(user_id, body, lambda uid, msg: asyncio.run(process(uid, msg)))
-
-        # 等待处理完成（最多 30 秒）
-        for _ in range(300):
-            if result["done"]:
-                break
-            await asyncio.sleep(0.1)
-
-        return {"text": result["text"] or "思考中..."}
     except Exception as e:
         import traceback
         logger.error(f"WeChat webhook error: {e}\n{traceback.format_exc()}")
         return {"text": "抱歉，处理消息时出了点问题 (´;ω;`)"}
-
-
-# 注：/api/chat 和 /api/health 由 webui.app 提供
 
 
 # ========== 交互式聊天 ==========
@@ -291,7 +339,7 @@ def main():
         default="chat",
         help="运行模式: chat=终端聊天, server=启动API服务",
     )
-    parser.add_argument("--host", default="0.0.0.0", help="服务监听地址")
+    parser.add_argument("--host", default="127.0.0.1", help="服务监听地址")
     parser.add_argument("--port", type=int, default=8080, help="服务监听端口")
     args = parser.parse_args()
 
@@ -304,45 +352,8 @@ def main():
 
     if args.mode == "server":
         logger.info(f"启动 API 服务: http://{args.host}:{args.port}")
+        logger.info(f"WebUI: http://{args.host}:{args.port}")
         logger.info(f"微信 Webhook: http://{args.host}:{args.port}/api/wechat/webhook")
-
-        # 启动 QQ（如果配置了）
-        napcat_ws = os.getenv("NAPCAT_WS_URL")
-        napcat_http = os.getenv("NAPCAT_HTTP_URL")
-        if napcat_ws or napcat_http:
-            from transport.qq import QQTransport
-            qq = QQTransport(
-                ws_url=napcat_ws or "ws://127.0.0.1:3001",
-                http_url=napcat_http or "",
-                access_token=os.getenv("NAPCAT_ACCESS_TOKEN", ""),
-            )
-            qq.set_message_handler(lambda msg: handle_message(msg.user_id, msg.content))
-            @app.on_event("startup")
-            async def start_qq():
-                async def _safe_start():
-                    try:
-                        await qq.start()
-                    except Exception as e:
-                        logger.warning(f"QQ transport failed: {e}")
-                asyncio.create_task(_safe_start())
-                logger.info("QQ transport started")
-
-        # 启动 Telegram（如果配置了）
-        tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
-        if tg_token:
-            from transport.telegram import TelegramTransport
-            tg = TelegramTransport(bot_token=tg_token)
-            tg.set_message_handler(lambda msg: handle_message(msg.user_id, msg.content))
-            @app.on_event("startup")
-            async def start_telegram():
-                async def _safe_start():
-                    try:
-                        await tg.start()
-                    except Exception as e:
-                        logger.warning(f"Telegram transport failed: {e}")
-                asyncio.create_task(_safe_start())
-                logger.info("Telegram transport started")
-
         uvicorn.run(app, host=args.host, port=args.port)
     else:
         asyncio.run(chat_loop())

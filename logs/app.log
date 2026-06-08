@@ -281,3 +281,40 @@
 2026-06-08 17:17:42.146 | INFO     | transport.qq.handler:start:62 - QQ transport starting, connecting to ws://127.0.0.1:3001
 2026-06-08 17:17:44.127 | INFO     | transport.telegram.bot:start:48 - Telegram bot starting...
 2026-06-08 17:17:44.136 | INFO     | transport.qq.napcat:connect_ws:90 - NapCat WebSocket disconnected
+2026-06-08 17:20:14.253 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 17:20:14.253 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 17:20:14.253 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 17:20:14.253 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 17:20:14.253 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 17:20:14.253 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 17:20:14.253 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 17:20:14.254 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 17:20:14.291 | INFO     | __main__:main:298 - 🎀 Cyber Girlfriend 启动中...
+2026-06-08 17:20:14.291 | INFO     | __main__:main:299 - 项目目录: C:\Users\30216\cyber-girlfriend
+2026-06-08 17:20:14.292 | INFO     | __main__:main:306 - 启动 API 服务: http://0.0.0.0:8080
+2026-06-08 17:20:14.292 | INFO     | __main__:main:307 - 微信 Webhook: http://0.0.0.0:8080/api/wechat/webhook
+2026-06-08 17:20:14.482 | INFO     | __main__:start_qq:328 - QQ transport started
+2026-06-08 17:20:14.482 | INFO     | __main__:start_telegram:344 - Telegram transport started
+2026-06-08 17:20:14.482 | INFO     | transport.qq.handler:start:62 - QQ transport starting, connecting to ws://127.0.0.1:3001
+2026-06-08 17:20:16.813 | INFO     | transport.telegram.bot:start:48 - Telegram bot starting...
+2026-06-08 17:20:16.815 | ERROR    | transport.qq.napcat:connect_ws:87 - NapCat WebSocket error: Cannot connect to host 127.0.0.1:3001 ssl:default [远程计算机拒绝网络连接。]
+2026-06-08 17:20:16.815 | INFO     | transport.qq.napcat:close:64 - NapCat client closed
+2026-06-08 17:20:16.815 | INFO     | transport.qq.napcat:connect_ws:91 - NapCat WebSocket disconnected
+2026-06-08 17:20:17.599 | WARNING  | __main__:_safe_start:342 - Telegram transport failed: The token `xxx` was rejected by the server.
+2026-06-08 17:20:40.889 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-08 17:20:40.889 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-08 17:20:40.889 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-08 17:20:40.889 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-08 17:20:40.889 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-08 17:20:40.889 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-08 17:20:40.889 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-08 17:20:40.890 | INFO     | core.persona.loader:_load:33 - Loaded 1 personas: ['girlfriend_001']
+2026-06-08 17:20:40.896 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 2 messages
+2026-06-08 17:20:42.381 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 49 chars, 275 tokens
+2026-06-08 17:20:42.381 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 你好...
+2026-06-08 17:20:42.381 | INFO     | main:handle_message:145 - [小雨] → web_user: 啊呀～你来啦！(｡･ω･｡)ﾉ♡ 今天心情怎么样呀？我刚刚打完一把游戏，差点被队友气哭啦(╥﹏╥)...
+2026-06-08 17:20:50.436 | DEBUG    | core.llm.base:chat:70 - Calling deepseek/deepseek-chat with 4 messages
+2026-06-08 17:20:52.298 | INFO     | core.llm.base:chat:90 - deepseek/deepseek-chat responded: 66 chars, 332 tokens
+2026-06-08 17:20:52.300 | DEBUG    | core.memory.scorer:score:82 - Memory score: 1 for '我喜欢什么你知道吗...'
+2026-06-08 17:20:52.300 | DEBUG    | core.memory.manager:add_memory:48 - Skipping low-importance memory: 我喜欢什么你知道吗...
+2026-06-08 17:20:52.300 | INFO     | main:handle_message:145 - [小雨] → web_user: 诶～这个问题好难哦(｡ŏ﹏ŏ) 我记得你之前好像说过喜欢打篮球？还是喜欢看科幻电影来着？唔...让我...

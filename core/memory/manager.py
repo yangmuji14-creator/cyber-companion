@@ -161,15 +161,12 @@ class MemoryManager:
 
     def import_memories(self, user_id: str, memories_data: list[dict]) -> int:
         """批量导入记忆"""
-        count = 0
-        for data in memories_data:
-            memory = Memory.from_dict(data)
-            existing = self._storage.load(user_id)
-            existing.append(memory)
-            self._storage.save(user_id, existing)
-            count += 1
-        logger.info(f"Imported {count} memories for user {user_id}")
-        return count
+        existing = self._storage.load(user_id)
+        new_memories = [Memory.from_dict(d) for d in memories_data]
+        existing.extend(new_memories)
+        self._storage.save(user_id, existing)
+        logger.info(f"Imported {len(new_memories)} memories for user {user_id}")
+        return len(new_memories)
 
     def export_memories(self, user_id: str) -> list[dict]:
         """导出用户所有记忆"""

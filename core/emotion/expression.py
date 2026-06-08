@@ -2,7 +2,6 @@
 
 import re
 import random
-import asyncio
 from dataclasses import dataclass
 
 from .analyzer import EmotionType, EmotionResult

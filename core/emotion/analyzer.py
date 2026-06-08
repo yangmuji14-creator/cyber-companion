@@ -29,7 +29,7 @@ class EmotionResult:
 EMOTION_KEYWORDS: dict[EmotionType, list[str]] = {
     EmotionType.HAPPY: [
         "开心", "高兴", "快乐", "哈哈", "嘻嘻", "太好了", "棒", "赞",
-        "开心", "幸福", "满足", "喜欢", "爱", "好看", "好玩",
+        "幸福", "满足", "喜欢", "爱", "好看", "好玩",
         "🎉", "😊", "😄", "😁", "🥰", "❤️", "💕",
     ],
     EmotionType.SAD: [
@@ -39,7 +39,7 @@ EMOTION_KEYWORDS: dict[EmotionType, list[str]] = {
     ],
     EmotionType.ANGRY: [
         "生气", "愤怒", "讨厌", "烦死了", "气死", "可恶", "混蛋",
-        "讨厌", "恶心", "受不了", "崩溃",
+        "恶心", "受不了", "崩溃",
         "😡", "🤬", "💢",
     ],
     EmotionType.EXCITED: [

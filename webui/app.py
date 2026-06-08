@@ -4,19 +4,59 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException, Security
 from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 ROOT = Path(__file__).parent.parent
 CONFIG_DIR = ROOT / "config"
 STATIC_DIR = Path(__file__).parent / "static"
 
+# API Key 认证
+API_KEY = os.getenv("ADMIN_API_KEY", "")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-def create_webui_app(registry, memory_mgr, persona_loader) -> FastAPI:
+
+def _verify_api_key(key: str = Security(api_key_header)):
+    """验证 API Key（如果设置了的话）"""
+    if API_KEY and key != API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+
+def _load_config(filename: str) -> dict:
+    """安全加载配置文件"""
+    path = CONFIG_DIR / filename
+    if not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_config(filename: str, data: dict) -> None:
+    """保存配置文件"""
+    path = CONFIG_DIR / filename
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def create_webui_app(registry, memory_mgr, persona_loader, lifespan=None) -> FastAPI:
     """创建 WebUI FastAPI 应用"""
 
-    app = FastAPI(title="Cyber Girlfriend WebUI", docs_url="/api/docs")
+    app = FastAPI(
+        title="Cyber Girlfriend WebUI",
+        docs_url="/api/docs",
+        lifespan=lifespan,
+    )
+
+    # CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     # 挂载静态文件
     if STATIC_DIR.exists():
@@ -45,41 +85,28 @@ def create_webui_app(registry, memory_mgr, persona_loader) -> FastAPI:
     @app.get("/api/accounts")
     async def list_accounts():
         """列出所有账户"""
-        config_path = CONFIG_DIR / "accounts.json"
-        if not config_path.exists():
-            return {"accounts": []}
-        with open(config_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        config = _load_config("accounts.json")
+        return {"accounts": config.get("accounts", [])}
 
     @app.post("/api/accounts")
     async def add_account(request: Request):
         """添加账户"""
         data = await request.json()
-        config_path = CONFIG_DIR / "accounts.json"
-
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-
+        config = _load_config("accounts.json")
+        if "accounts" not in config:
+            config["accounts"] = []
         config["accounts"].append(data)
-
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
-
+        _save_config("accounts.json", config)
         return {"status": "ok", "account": data}
 
     @app.delete("/api/accounts/{account_id}")
     async def delete_account(account_id: str):
         """删除账户"""
-        config_path = CONFIG_DIR / "accounts.json"
-
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-
+        config = _load_config("accounts.json")
+        if "accounts" not in config:
+            raise HTTPException(status_code=404, detail="No accounts found")
         config["accounts"] = [a for a in config["accounts"] if a.get("id") != account_id]
-
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
-
+        _save_config("accounts.json", config)
         return {"status": "ok"}
 
     # ========== 人设管理 ==========
@@ -95,7 +122,7 @@ def create_webui_app(registry, memory_mgr, persona_loader) -> FastAPI:
         """获取人设详情"""
         persona = persona_loader.get(persona_id)
         if not persona:
-            return {"error": "not found"}
+            raise HTTPException(status_code=404, detail="Persona not found")
         return persona.to_dict()
 
     @app.post("/api/personas")
@@ -113,14 +140,16 @@ def create_webui_app(registry, memory_mgr, persona_loader) -> FastAPI:
         data = await request.json()
         persona = persona_loader.update(persona_id, **data)
         if not persona:
-            return {"error": "not found"}
+            raise HTTPException(status_code=404, detail="Persona not found")
         return {"status": "ok", "persona": persona.to_dict()}
 
     @app.delete("/api/personas/{persona_id}")
     async def delete_persona(persona_id: str):
         """删除人设"""
         ok = persona_loader.delete(persona_id)
-        return {"status": "ok" if ok else "not found"}
+        if not ok:
+            raise HTTPException(status_code=404, detail="Persona not found")
+        return {"status": "ok"}
 
     # ========== 记忆管理 ==========
 
@@ -158,13 +187,15 @@ def create_webui_app(registry, memory_mgr, persona_loader) -> FastAPI:
         memory = memory_mgr.add_memory(user_id, content, level=level, tags=tags)
         if memory:
             return {"status": "ok", "memory": memory.to_dict()}
-        return {"error": "memory not important enough"}
+        raise HTTPException(status_code=400, detail="Memory not important enough")
 
     @app.delete("/api/memories/{user_id}/{memory_id}")
     async def delete_memory(user_id: str, memory_id: str):
         """删除记忆"""
         ok = memory_mgr.delete_memory(user_id, memory_id)
-        return {"status": "ok" if ok else "not found"}
+        if not ok:
+            raise HTTPException(status_code=404, detail="Memory not found")
+        return {"status": "ok"}
 
     @app.delete("/api/memories/{user_id}")
     async def delete_all_memories(user_id: str):
@@ -194,7 +225,7 @@ def create_webui_app(registry, memory_mgr, persona_loader) -> FastAPI:
         data = await request.json()
         model_name = data.get("model")
         if model_name not in registry.available_models:
-            return {"error": "model not found"}
+            raise HTTPException(status_code=404, detail="Model not found")
         registry._default_model = model_name
         return {"status": "ok", "default": model_name}
 
@@ -207,9 +238,8 @@ def create_webui_app(registry, memory_mgr, persona_loader) -> FastAPI:
         user_id = data.get("user_id", "web_user")
         content = data.get("content", "")
         if not content:
-            return {"error": "content required"}
+            raise HTTPException(status_code=400, detail="Content required")
 
-        # 延迟导入避免循环依赖
         from main import handle_message
         reply = await handle_message(user_id, content)
         return {"reply": reply}

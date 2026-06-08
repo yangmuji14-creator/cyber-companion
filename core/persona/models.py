@@ -41,6 +41,6 @@ class Persona:
             background=data.get("background", ""),
             speaking_style=data.get("speaking_style", ""),
             core_memories=data.get("core_memories", []),
-            relationship_level=data.get("relationship_level", 50),
+            relationship_level=max(0, min(100, data.get("relationship_level", 50))),
             system_prompt=data.get("system_prompt", ""),
         )
