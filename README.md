@@ -1,19 +1,16 @@
 # 🎀 Cyber Girlfriend
 
-一个支持多平台的赛博女友聊天机器人，具有记忆系统、情感分析、人设管理和动态亲密度功能。
+纯 CMD 模式的赛博女友聊天机器人，具有记忆系统、情感分析、人设管理和动态亲密度功能。
 
 ## ✨ 特性
 
-- **多平台接入** — 微信（ilink）、QQ（NapCat/OneBot 11）、Telegram
-- **多模型支持** — DeepSeek、OpenAI、Gemini、通义千问、Kimi、智谱，通过 LiteLLM 统一接口
+- **多模型支持** — DeepSeek、OpenAI、Gemini、通义千问、Kimi、智谱
 - **记忆系统** — 自动提取重要信息，LLM 辅助记忆总结，5 级重要度评分
 - **情感分析** — 8 种情感识别（开心/难过/生气/爱意等），自动添加 emoji 表达
-- **人设系统** — 可配置的性格、背景、说话风格，支持多人设切换
+- **人设系统** — 可配置的性格、背景、说话风格，支持导入 ex-skill 文件
 - **动态亲密度** — 根据对话互动、情感频率、时间衰减动态计算关系等级
 - **消息分段** — 长消息按自然断句分段发送，模拟真人聊天节奏
-- **消息去抖** — 多条消息合并处理（3 秒窗口），避免连续打扰
-- **WebUI 管理** — 暗色主题管理后台，支持聊天测试、人设/记忆/模型/账户管理
-- **认证系统** — PBKDF2 密码哈希 + JWT 会话认证，登录限速保护
+- **消息去抖** — 多条消息合并处理（默认 3 秒窗口），避免连续打扰
 - **数据持久化** — 聊天历史、关系亲密度、记忆数据全部持久化存储
 
 ## 🚀 快速开始
@@ -40,106 +37,61 @@ pip install -r requirements.txt
 
 ### 配置
 
-复制环境变量模板并填写 API Key：
+运行设置向导：
 
 ```bash
-cp .env.example .env
+python main.py setup
 ```
 
-编辑 `.env`：
+向导会引导你完成：
 
-```env
-# 必填：主要模型
-DEEPSEEK_API_KEY=sk-xxx
-
-# 可选：其他模型
-OPENAI_API_KEY=sk-xxx
-GEMINI_API_KEY=xxx
-TONGYI_API_KEY=sk-xxx
-KIMI_API_KEY=sk-xxx
-ZHIPU_API_KEY=xxx
-
-# QQ（NapCat）
-NAPCAT_WS_URL=ws://127.0.0.1:3001
-NAPCAT_HTTP_URL=http://127.0.0.1:3000
-NAPCAT_ACCESS_TOKEN=xxx
-
-# Telegram
-TELEGRAM_BOT_TOKEN=xxx
-
-# WebUI 管理密钥（可选）
-ADMIN_API_KEY=xxx
-```
+1. **选择模型** — 输入序号选择大模型提供商，填写 API Key
+2. **配置人设** — 导入 ex-skill 文件或手动配置（名字、年龄、性格、说话风格）
+3. **高级参数** — 亲密度、消息分段长度、去抖延迟、记忆总结阈值（都有默认值）
 
 ### 运行
 
 ```bash
-# 终端聊天模式
 python main.py
-
-# 启动 API 服务 + WebUI
-python main.py --mode server
-
-# 指定端口和地址
-python main.py --mode server --port 8080 --host 0.0.0.0
 ```
 
-首次启动 WebUI（`http://127.0.0.1:8080`）会引导设置管理员账号。
+直接进入终端聊天，输入消息即可对话，输入 `quit` 退出。
 
 ## 📁 项目结构
 
 ```
 cyber-girlfriend/
+├── main.py                   # 主入口（CMD 聊天）
+├── setup.py                  # 3 步设置向导
 ├── config/
-│   ├── accounts.json         # 账户配置
 │   ├── personas.json         # 人设配置（默认小雨）
-│   ├── settings.json         # 模型配置
-│   └── auth.json             # 认证配置（自动生成）
+│   ├── settings.json         # 模型配置 + 高级参数
+│   └── platforms.json        # 平台配置（预留）
 ├── core/
 │   ├── llm/                  # LLM 统一接口
-│   │   ├── base.py           #   基类（LiteLLM）
-│   │   ├── registry.py       #   模型注册中心 + 热切换
+│   │   ├── base.py           #   基类
+│   │   ├── registry.py       #   模型注册中心
 │   │   ├── deepseek.py       #   DeepSeek 实现
 │   │   └── openai_compatible.py  #   OpenAI 兼容接口
 │   ├── memory/               # 记忆系统
 │   │   ├── models.py         #   Memory 数据模型
-│   │   ├── storage.py        #   JSON 存储（原子写入 + 路径穿越防护）
+│   │   ├── storage.py        #   JSON 存储（原子写入）
 │   │   ├── scorer.py         #   5 级重要度评分
 │   │   ├── manager.py        #   CRUD + 检索
 │   │   ├── summarizer.py     #   LLM 辅助记忆总结
 │   │   └── chat_history.py   #   聊天历史持久化
 │   ├── persona/              # 人设系统
 │   │   ├── models.py         #   Persona 数据模型
-│   │   ├── loader.py         #   配置加载（字段白名单防注入）
+│   │   ├── loader.py         #   配置加载
 │   │   └── prompt_builder.py #   System Prompt 构建
 │   ├── emotion/              # 情感系统
 │   │   ├── analyzer.py       #   8 种情感识别
 │   │   └── expression.py     #   消息分段 + Emoji 增强
 │   └── relationship/         # 关系系统
 │       └── tracker.py        #   亲密度动态计算
-├── transport/                # 传输层
-│   ├── base.py               #   统一接口
-│   ├── wechat/               #   微信（ilink API）
-│   │   ├── api.py
-│   │   └── handler.py
-│   ├── qq/                   #   QQ（NapCat OneBot 11）
-│   │   ├── napcat.py
-│   │   └── handler.py
-│   └── telegram/             #   Telegram Bot
-│       └── bot.py
-├── webui/                    # WebUI
-│   ├── app.py                #   FastAPI 后端 + 认证中间件
-│   ├── auth.py               #   PBKDF2 + JWT 认证模块
-│   └── static/
-│       ├── index.html        #   管理后台
-│       └── login.html        #   登录页
 ├── tests/
-│   └── test_core.py          #   单元测试（41 个）
-├── data/                     # 运行时数据（自动生成）
-│   ├── memories/
-│   ├── chat_history/
-│   └── relationships.json
-├── main.py                   # 主入口
+│   └── test_core.py          #   单元测试（36 个）
+├── data/                     # 运行时数据（自动生成，不提交）
 ├── requirements.txt
 ├── .env.example
 └── .gitignore
@@ -156,34 +108,11 @@ cyber-girlfriend/
 | Kimi | `KIMI_API_KEY` | moonshot-v1-8k |
 | 智谱 GLM | `ZHIPU_API_KEY` | glm-4-flash |
 
-模型配置在 `config/settings.json` 中，支持运行时热切换。
-
-## 📱 平台接入
-
-### 微信（ilink）
-
-使用 [ilink](https://github.com/anthropics/ilink) API 接入，配置 webhook 回调地址：
-
-```
-POST http://your-host:8080/api/wechat/webhook
-```
-
-### QQ（NapCat）
-
-使用 [NapCat](https://napneko.github.io/) 实现的 OneBot 11 协议，支持：
-- 正向 WebSocket 连接
-- HTTP API 调用
-- Echo ID 匹配响应
-
-### Telegram
-
-使用 `python-telegram-bot` 库，配置 Bot Token 即可。
-
 ## 🧠 记忆系统
 
 - **自动提取** — 每次对话自动分析关键词，评分 ≥ 2 的内容自动记忆
 - **5 级评分** — 闲聊(1) → 偏好(2) → 个人信息(3) → 重要事件(4) → 核心记忆(5)
-- **LLM 总结** — 每 15 组对话自动总结短期记忆为长期记忆
+- **LLM 总结** — 每 N 组对话自动总结短期记忆为长期记忆（可配置阈值）
 - **持久化** — 聊天历史和短期记忆重启不丢失
 
 ## 💕 亲密度系统
@@ -199,14 +128,23 @@ POST http://your-host:8080/api/wechat/webhook
 
 亲密度影响 AI 的语气和亲密程度（0-100，5 档描述）。
 
-## 🔐 安全
+## 📥 导入 Skill 文件
 
-- **密码哈希** — PBKDF2-HMAC-SHA256，600,000 次迭代
-- **JWT 会话** — HS256 签名，7 天有效期，httponly cookie
-- **登录限速** — 每 IP 5 次/5 分钟，失败延迟 2 秒
-- **路径穿越防护** — 用户 ID 经过正则净化
-- **原子写入** — 配置和数据文件使用 tempfile + os.replace
-- **字段白名单** — Persona 属性防注入
+支持导入 [ex-skill](https://github.com/therealXiaomanChu/ex-skill) 项目生成的 SKILL.md 文件，LLM 会自动解析并生成人设配置：
+
+```bash
+python main.py setup
+# 选择「导入 skill 文件」→ 输入 SKILL.md 路径 → 自动配置人设
+```
+
+## ⚙️ 高级参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| 初始亲密度 | 50 | 0-100，50=朋友，80=恋人 |
+| 消息分段长度 | 50 字 | 超过此长度自动分段发送 |
+| 去抖延迟 | 3 秒 | 连续消息合并等待时间 |
+| 记忆总结阈值 | 15 组 | 多少组对话后自动总结长期记忆 |
 
 ## 🧪 测试
 
@@ -214,22 +152,13 @@ POST http://your-host:8080/api/wechat/webhook
 python -m pytest tests/test_core.py -v
 ```
 
-41 个单元测试覆盖：记忆评分、存储、情感分析、消息分段、关系追踪、聊天历史、认证模块。
-
-## 📋 TODO
-
-- [ ] 传输层重构：事件队列 + 平台适配器模式（参考 AstrBot）
-- [ ] 记忆语义检索：embedding 向量相似度搜索
-- [ ] 群聊支持
-- [ ] Docker 部署
-- [ ] WebUI 认证强制启用
+36 个单元测试覆盖：记忆评分、存储、情感分析、消息分段、关系追踪、聊天历史。
 
 ## 🙏 致谢
 
 - [My-Dream-Moments](https://github.com/iwyxdxl/My-Dream-Moments) — 记忆总结、消息分段、情感表达设计参考
-- [AstrBot](https://github.com/AstrBotDevs/AstrBot) — 登录认证系统和平台适配器架构参考
 - [LiteLLM](https://github.com/BerriAI/litellm) — 统一 LLM 接口
-- [NapCat](https://napneko.github.io/) — QQ OneBot 11 实现
+- [ex-skill](https://github.com/therealXiaomanChu/ex-skill) — Skill 文件格式参考
 
 ## 📄 License
 
