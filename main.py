@@ -40,6 +40,11 @@ persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
 _user_histories: dict[str, list[dict[str, str]]] = {}
 
 
+async def handle_incoming_message(msg) -> str:
+    """统一处理来自各平台的 IncomingMessage"""
+    return await handle_message(msg.user_id, msg.content)
+
+
 async def handle_message(user_id: str, content: str, persona_id: str = "girlfriend_001") -> str:
     """统一消息处理逻辑
 
@@ -190,6 +195,30 @@ def main():
     if args.mode == "server":
         logger.info(f"启动 API 服务: http://{args.host}:{args.port}")
         logger.info(f"微信 Webhook: http://{args.host}:{args.port}/api/wechat/webhook")
+
+        # 启动 QQ（如果配置了）
+        napcat_ws = os.getenv("NAPCAT_WS_URL")
+        napcat_http = os.getenv("NAPCAT_HTTP_URL")
+        if napcat_ws or napcat_http:
+            from transport.qq import QQTransport
+            qq = QQTransport(
+                ws_url=napcat_ws or "ws://127.0.0.1:3001",
+                http_url=napcat_http or "",
+                access_token=os.getenv("NAPCAT_ACCESS_TOKEN", ""),
+            )
+            qq.set_message_handler(handle_incoming_message)
+            asyncio.get_event_loop().create_task(qq.start())
+            logger.info("QQ transport starting...")
+
+        # 启动 Telegram（如果配置了）
+        tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if tg_token:
+            from transport.telegram import TelegramTransport
+            tg = TelegramTransport(bot_token=tg_token)
+            tg.set_message_handler(handle_incoming_message)
+            asyncio.get_event_loop().create_task(tg.start())
+            logger.info("Telegram transport starting...")
+
         uvicorn.run(app, host=args.host, port=args.port)
     else:
         asyncio.run(chat_loop())
