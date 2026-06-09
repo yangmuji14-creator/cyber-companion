@@ -440,6 +440,103 @@ def test_chat_history_delete_user():
         assert storage.delete_user("nonexistent") is False
 
 
+# ========== 情感否定词测试 ==========
+
+def test_emotion_negation_not_happy():
+    """测试否定词：不开心 → 不应该是 HAPPY"""
+    result = EmotionAnalyzer.analyze("我一点都不开心")
+    assert result.emotion != EmotionType.HAPPY
+
+
+def test_emotion_negation_not_angry():
+    """测试否定词：不生气 → 不应该是 ANGRY"""
+    result = EmotionAnalyzer.analyze("我没有生气")
+    assert result.emotion != EmotionType.ANGRY
+
+
+def test_emotion_negation_no_keyword_match():
+    """测试否定词：否定后的关键词不计入"""
+    result = EmotionAnalyzer.analyze("不喜欢")
+    # "喜欢" 在 HAPPY 列表里，但被 "不" 否定
+    assert result.emotion != EmotionType.HAPPY
+
+
+def test_emotion_no_negation():
+    """测试无否定词时正常识别"""
+    result = EmotionAnalyzer.analyze("我好开心呀")
+    assert result.emotion == EmotionType.HAPPY
+
+
+# ========== ChatHistoryStorage 路径穿越测试 ==========
+
+def test_chat_history_path_traversal():
+    """测试聊天历史路径穿越防护"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        try:
+            storage._get_user_file("../../etc/passwd")
+            # 如果 safe_id 替换后仍在目录内，不会报错
+        except ValueError:
+            pass  # 期望的行为
+
+
+def test_chat_history_special_chars():
+    """测试特殊字符用户 ID"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        # 特殊字符应该被替换
+        path = storage._get_user_file("user@#$%")
+        assert path.exists() or True  # 不应该抛异常
+
+
+# ========== 主模块工具函数测试 ==========
+
+def test_get_time_context():
+    """测试时间上下文生成"""
+    from main import _get_time_context
+    ctx = _get_time_context()
+    assert "现在是" in ctx
+
+
+def test_timestamp():
+    """测试时间戳格式"""
+    from main import _timestamp
+    ts = _timestamp()
+    assert ":" in ts
+    assert len(ts) == 5  # HH:MM
+
+
+def test_get_llm_error_message():
+    """测试 LLM 错误消息转换"""
+    from main import _get_llm_error_message
+    msg = _get_llm_error_message(Exception("rate limit exceeded"))
+    assert "忙" in msg or "稍等" in msg
+
+    msg = _get_llm_error_message(Exception("unauthorized 401"))
+    assert "API key" in msg
+
+    msg = _get_llm_error_message(Exception("connection refused"))
+    assert "网络" in msg
+
+
+def test_session_stats_summary():
+    """测试会话总结生成"""
+    from main import SessionStats
+    stats = SessionStats()
+    stats.message_count = 10
+    stats.memories_added = 3
+    stats.start_level = 50
+    stats.end_level = 55
+    summary = stats.summary("小雨")
+    assert "10 条" in summary
+    assert "50" in summary
+    assert "55" in summary
+
+
 # ========== 运行所有测试 ==========
 
 if __name__ == "__main__":

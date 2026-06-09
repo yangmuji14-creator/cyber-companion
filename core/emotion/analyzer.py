@@ -68,6 +68,10 @@ EMOTION_KEYWORDS: dict[EmotionType, list[str]] = {
 INTENSITY_BOOSTERS = ["非常", "特别", "超级", "太", "好", "真的", "very", "so", "!!!"]
 INTENSITY_REDUCERS = ["有点", "稍微", "一点点", "可能", "也许"]
 
+# 否定词（出现在关键词前面会反转情感）
+# 注意："非" 单独不是否定词（"非常"="very"），只保留明确的否定词
+NEGATION_WORDS = ["不", "没", "没有", "别", "莫", "未", "无", "不是", "不喜欢", "不想", "不爱"]
+
 
 class EmotionAnalyzer:
     """情感分析器
@@ -75,6 +79,24 @@ class EmotionAnalyzer:
     基于关键词匹配的情感分析，轻量级、无外部依赖。
     可以后续升级为 LLM 辅助分析。
     """
+
+    @staticmethod
+    def _is_negated(text: str, keyword: str) -> bool:
+        """检查关键词是否被否定词修饰
+
+        Args:
+            text: 完整文本
+            keyword: 要检查的关键词
+
+        Returns:
+            True 如果关键词前面有否定词
+        """
+        idx = text.find(keyword)
+        if idx <= 0:
+            return False
+        # 检查关键词前面 3 个字符内是否有否定词
+        prefix = text[max(0, idx - 3):idx]
+        return any(neg in prefix for neg in NEGATION_WORDS)
 
     @staticmethod
     def analyze(text: str) -> EmotionResult:
@@ -98,6 +120,9 @@ class EmotionAnalyzer:
             matched = []
             for kw in keywords:
                 if kw in text:
+                    # 否定词检测：被否定的关键词不计入正面/负面情感
+                    if EmotionAnalyzer._is_negated(text, kw):
+                        continue
                     score += 1.0
                     matched.append(kw)
             if score > 0:

@@ -193,8 +193,6 @@ class PromptBuilder:
         level = dynamic_level if dynamic_level is not None else p.relationship_level
         relationship_desc = PromptBuilder._get_relationship_desc(level)
         lines.append(f"当前关系：{relationship_desc}")
-        if not lines:
-            lines.append(f"当前关系：{relationship_desc}")
         return "【你们的关系】\n" + "\n".join(lines)
 
     @staticmethod

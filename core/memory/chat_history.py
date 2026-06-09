@@ -5,6 +5,7 @@
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -34,8 +35,11 @@ class ChatHistoryStorage:
 
     def _get_user_file(self, user_id: str) -> Path:
         """获取用户历史文件路径（带路径穿越防护）"""
-        safe_id = __import__("re").sub(r"[^a-zA-Z0-9_\-.]", "_", user_id)
-        return self._data_dir / f"{safe_id}.json"
+        safe_id = re.sub(r"[^a-zA-Z0-9_\-.]", "_", user_id)
+        path = (self._data_dir / f"{safe_id}.json").resolve()
+        if not path.is_relative_to(self._data_dir.resolve()):
+            raise ValueError(f"Invalid user_id: {user_id}")
+        return path
 
     def load(self, user_id: str) -> dict[str, list]:
         """加载用户聊天历史

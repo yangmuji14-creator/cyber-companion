@@ -46,8 +46,8 @@
     "auto_summarize_threshold": 400
   },
   "advanced": {
-    "segment_max_length": 25,
-    "debounce_seconds": 10,
-    "summarize_threshold": 10
+    "segment_max_length": 50,
+    "debounce_seconds": 3,
+    "summarize_threshold": 15
   }
 }

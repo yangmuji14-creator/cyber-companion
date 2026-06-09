@@ -32,6 +32,19 @@ logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <l
 logger.add("logs/app.log", rotation="10 MB", retention="7 days", level="DEBUG")
 
 
+# ========== ANSI 颜色 ==========
+class Colors:
+    """ANSI 颜色码（Windows 10+ 原生支持）"""
+    CYAN = "\033[36m"      # 用户消息
+    MAGENTA = "\033[35m"   # AI 回复
+    YELLOW = "\033[33m"    # 系统消息
+    GREEN = "\033[32m"     # 成功
+    RED = "\033[31m"       # 错误
+    DIM = "\033[2m"        # 暗淡（时间戳）
+    BOLD = "\033[1m"       # 加粗
+    RESET = "\033[0m"      # 重置
+
+
 # ========== 加载配置 ==========
 def _load_advanced() -> dict:
     """从 settings.json 读取高级参数"""
@@ -69,6 +82,46 @@ relationship_tracker = RelationshipTracker(str(ROOT / "data"))
 chat_history = ChatHistoryStorage(str(ROOT / "data"), max_messages=20)
 
 
+# ========== 会话统计 ==========
+class SessionStats:
+    """本次会话统计"""
+
+    def __init__(self):
+        self.message_count = 0
+        self.memories_added = 0
+        self.start_level = 0
+        self.end_level = 0
+        self.start_time = datetime.now()
+
+    def summary(self, persona_name: str) -> str:
+        """生成会话总结"""
+        elapsed = (datetime.now() - self.start_time).total_seconds()
+        minutes = int(elapsed // 60)
+        seconds = int(elapsed % 60)
+
+        level_change = self.end_level - self.start_level
+        if level_change > 0:
+            level_str = f"{Colors.GREEN}+{level_change}{Colors.RESET}"
+        elif level_change < 0:
+            level_str = f"{Colors.RED}{level_change}{Colors.RESET}"
+        else:
+            level_str = "无变化"
+
+        lines = [
+            "",
+            f"{Colors.YELLOW}{'=' * 40}{Colors.RESET}",
+            f"{Colors.BOLD}📊 会话总结{Colors.RESET}",
+            f"  ⏱  时长：{minutes}分{seconds}秒",
+            f"  💬 消息：{self.message_count} 条",
+            f"  🧠 新增记忆：{self.memories_added} 条",
+            f"  💕 亲密度：{self.start_level} → {self.end_level}（{level_str}）",
+            f"{Colors.YELLOW}{'=' * 40}{Colors.RESET}",
+            f"{Colors.DIM}{persona_name}: 下次见啦~{Colors.RESET}",
+        ]
+        return "\n".join(lines)
+
+
+# ========== 工具函数 ==========
 def _get_time_context() -> str:
     now = datetime.now()
     hour = now.hour
@@ -89,15 +142,169 @@ def _get_time_context() -> str:
     return f"现在是{period} {now.strftime('%Y-%m-%d %H:%M')}"
 
 
-async def handle_message(user_id: str, content: str, persona_id: str = "girlfriend_001") -> str:
-    """统一消息处理逻辑"""
+def _timestamp() -> str:
+    """当前时间 HH:MM"""
+    return datetime.now().strftime("%H:%M")
+
+
+def _get_welcome_message(persona, rel_level: int) -> str:
+    """根据时间和亲密度生成欢迎语"""
+    hour = datetime.now().hour
+
+    if rel_level >= 80:
+        # 恋人关系
+        if 0 <= hour < 6:
+            return "你怎么这么晚还不睡呀？是不是在想我？哼哼~"
+        elif 6 <= hour < 9:
+            return "早安早安~ 今天也要元气满满哦！"
+        elif 18 <= hour < 22:
+            return "你回来啦~ 今天过得怎么样？我好想你！"
+        else:
+            return "嘿嘿，你来了~ 我一直在等你呢！"
+    elif rel_level >= 40:
+        # 朋友以上
+        if 0 <= hour < 6:
+            return "这么晚还没睡呀？注意身体哦~"
+        elif 6 <= hour < 9:
+            return "早安~ 今天有什么安排吗？"
+        elif 18 <= hour < 22:
+            return "嗨~ 今天过得怎么样？"
+        else:
+            return "来啦~ 最近忙吗？"
+    else:
+        # 刚认识
+        if 6 <= hour < 12:
+            return "你好呀~ 今天天气不错呢！"
+        elif 18 <= hour < 22:
+            return "嗨，又见面了~"
+        else:
+            return "你好呀~"
+
+
+# ========== 斜杠命令 ==========
+COMMANDS = {
+    "/help": "显示可用命令",
+    "/stats": "查看亲密度统计",
+    "/memories": "查看最近记忆",
+    "/persona": "查看当前人设",
+    "/clear": "清空聊天历史",
+    "/export": "导出聊天记录",
+    "/quit": "退出聊天",
+}
+
+
+async def handle_command(cmd: str, user_id: str, persona_name: str) -> bool:
+    """处理斜杠命令
+
+    Returns:
+        True 如果命令已处理，False 如果不是命令
+    """
+    cmd = cmd.strip().lower()
+
+    if cmd == "/help":
+        print(f"\n{Colors.YELLOW}📖 可用命令：{Colors.RESET}")
+        for name, desc in COMMANDS.items():
+            print(f"  {Colors.CYAN}{name}{Colors.RESET} — {desc}")
+        print()
+        return True
+
+    elif cmd == "/stats":
+        stats = relationship_tracker.get_stats(user_id)
+        days = stats.get("days_known", 0)
+        level = stats.get("level", 50)
+        msgs = stats.get("message_count", 0)
+        pos = stats.get("positive_count", 0)
+        neg = stats.get("negative_count", 0)
+
+        # 亲密度等级描述
+        if level >= 80:
+            relation = "💕 恋人"
+        elif level >= 60:
+            relation = "💗 亲密"
+        elif level >= 40:
+            relation = "💛 朋友"
+        elif level >= 20:
+            relation = "🤍 熟悉"
+        else:
+            relation = "⬜ 陌生"
+
+        print(f"\n{Colors.YELLOW}💕 亲密度统计{Colors.RESET}")
+        print(f"  等级：{relation}（{level}/100）")
+        print(f"  消息：{msgs} 条（👍 {pos} / 👎 {neg}）")
+        print(f"  认识：{days:.0f} 天")
+        print()
+        return True
+
+    elif cmd == "/memories":
+        memories = memory_mgr.get_memories(user_id, limit=5)
+        if not memories:
+            print(f"\n{Colors.DIM}  还没有关于你的记忆~{Colors.RESET}\n")
+        else:
+            print(f"\n{Colors.YELLOW}🧠 最近记忆：{Colors.RESET}")
+            for m in memories:
+                stars = "⭐" * m.level
+                print(f"  {stars} {m.content[:50]}")
+            print()
+        return True
+
+    elif cmd == "/persona":
+        persona = persona_loader.get("girlfriend_001")
+        if persona:
+            print(f"\n{Colors.YELLOW}🎀 人设信息{Colors.RESET}")
+            print(f"  名字：{persona.name}")
+            print(f"  年龄：{persona.age}岁")
+            if persona.personality:
+                print(f"  性格：{'、'.join(persona.personality)}")
+            if persona.hobbies:
+                hobbies = [h.get("name", "") for h in persona.hobbies[:3]]
+                print(f"  爱好：{'、'.join(hobbies)}")
+            if persona.catchphrases:
+                print(f"  口头禅：{'、'.join(persona.catchphrases)}")
+            print()
+        return True
+
+    elif cmd == "/clear":
+        chat_history.delete_user(user_id)
+        print(f"\n{Colors.GREEN}✅ 聊天历史已清空{Colors.RESET}\n")
+        return True
+
+    elif cmd == "/export":
+        messages = chat_history.get_messages(user_id)
+        if not messages:
+            print(f"\n{Colors.DIM}  没有可导出的聊天记录{Colors.RESET}\n")
+            return True
+
+        export_dir = ROOT / "data" / "exports"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filepath = export_dir / filename
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(messages, f, ensure_ascii=False, indent=2)
+
+        print(f"\n{Colors.GREEN}✅ 已导出到 {filepath}{Colors.RESET}\n")
+        return True
+
+    elif cmd == "/quit":
+        return "quit"
+
+    return False
+
+
+# ========== 消息处理 ==========
+async def handle_message(user_id: str, content: str, persona_id: str = "girlfriend_001") -> tuple[str, int]:
+    """统一消息处理逻辑
+
+    Returns:
+        (reply_text, relationship_level) 元组
+    """
     if not registry.available_models:
-        return "我还没配置好模型呢，等等哦~"
+        return "我还没配置好模型呢，等等哦~", 50
 
     llm = registry.get()
     persona = persona_loader.get(persona_id)
     if not persona:
-        return "我找不到我的人设了 (´;ω;`)"
+        return "我找不到我的人设了 (´;ω;`)", 50
 
     messages = chat_history.get_messages(user_id)
     chat_history.add_message(user_id, "user", content)
@@ -119,8 +326,13 @@ async def handle_message(user_id: str, content: str, persona_id: str = "girlfrie
         relationship_level=rel_level,
     )
 
-    response = await llm.chat(messages=messages, system_prompt=system_prompt)
-    reply = response.content
+    try:
+        response = await llm.chat(messages=messages, system_prompt=system_prompt)
+        reply = response.content
+    except Exception as e:
+        logger.error(f"LLM call failed: {e}")
+        error_msg = _get_llm_error_message(e)
+        return error_msg, rel_level
 
     reply = EmotionEnhancer.enhance_reply(reply, emotion)
 
@@ -128,42 +340,87 @@ async def handle_message(user_id: str, content: str, persona_id: str = "girlfrie
     chat_history.add_short_memory(user_id, content, reply)
     memory_mgr.add_memory(user_id, content)
 
+    # 异步总结（不阻塞用户）
     short_memories = chat_history.get_short_memories(user_id)
     if len(short_memories) >= ADVANCED["summarize_threshold"]:
+        asyncio.create_task(_background_summarize(user_id, llm, short_memories))
+
+    logger.debug(f"[{persona.name}] → {user_id}: {reply[:80]}...")
+    return reply, rel_level
+
+
+def _get_llm_error_message(error: Exception) -> str:
+    """将 LLM 异常转为用户友好的中文消息"""
+    error_str = str(error).lower()
+    if "rate" in error_str or "429" in error_str:
+        return "模型太忙了，稍等一下再试~ 🥺"
+    elif "auth" in error_str or "401" in error_str or "api_key" in error_str:
+        return "API key 好像有问题，检查一下配置哦~"
+    elif "timeout" in error_str:
+        return "网络有点慢，再试一次？"
+    elif "connection" in error_str or "connect" in error_str:
+        return "网络好像断了，检查一下网络连接~"
+    else:
+        return "哎呀，出了点小问题，再试一次？"
+
+
+async def _background_summarize(user_id: str, llm, short_memories: list):
+    """后台执行记忆总结"""
+    try:
         summarizer = MemorySummarizer(llm)
         summary = await summarizer.summarize(short_memories)
         if summary:
             memory_mgr.add_memory(user_id, summary, level=4, tags=["总结"])
             chat_history.clear_short_memories(user_id)
             logger.info(f"Short memory summarized for {user_id}")
+    except Exception as e:
+        logger.warning(f"Background summarization failed: {e}")
 
-    logger.debug(f"[{persona.name}] → {user_id}: {reply[:80]}...")
-    return reply
+
+# ========== 打印回复（统一逻辑） ==========
+async def _print_reply(persona_name: str, reply: str):
+    """分段打印 AI 回复，带打字延迟"""
+    segmented = MessageSegmenter.segment(reply, max_segment_length=ADVANCED["segment_max_length"])
+    for i, seg in enumerate(segmented.segments):
+        if i == 0:
+            print(f"\n{Colors.MAGENTA}{persona_name}:{Colors.RESET} {seg}", end="", flush=True)
+        else:
+            try:
+                delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
+            except AttributeError:
+                delay = 0
+            if delay > 0:
+                await asyncio.sleep(delay)
+            print(f"\n  {seg}", end="", flush=True)
+    print()
 
 
 # ========== 聊天循环 ==========
 async def chat_loop():
-    """终端聊天（支持消息累积去抖）
-
-    用独立线程读取用户输入，主循环用带超时的队列管理消息累积。
-    用户在倒计时期间继续输入 → 消息加入队列，倒计时自动重置。
-    倒计时结束后所有累积消息合并后一次性发给模型。
-    """
+    """终端聊天（支持消息累积去抖 + 斜杠命令）"""
     persona = persona_loader.get("girlfriend_001")
     persona_name = persona.name if persona else "小雨"
     debounce_seconds = ADVANCED.get("debounce_seconds", 3)
+    user_id = "local_user"
 
     if not registry.available_models:
         logger.error("没有可用的模型！请先运行: python main.py setup")
         return
 
+    # 会话统计
+    stats = SessionStats()
+    stats.start_level = relationship_tracker.get_level(user_id, base_level=persona.relationship_level)
+
     logger.info(f"模型: {registry.get().model_name}")
     logger.info(f"人设: {persona_name}")
-    logger.info("=" * 40)
-    logger.info("开始聊天吧！输入 quit 退出")
+
+    # 欢迎语
+    welcome = _get_welcome_message(persona, stats.start_level)
+    print(f"\n{Colors.MAGENTA}{persona_name}:{Colors.RESET} {welcome}")
+    print(f"{Colors.DIM}输入 /help 查看可用命令{Colors.RESET}")
     if debounce_seconds > 0:
-        logger.info(f"消息累积: 输入后 {debounce_seconds} 秒内可继续输入，合并后一起发送")
-    logger.info("=" * 40)
+        print(f"{Colors.DIM}消息累积: 输入后 {debounce_seconds} 秒内可继续输入，合并后一起发送{Colors.RESET}")
+    print()
 
     message_queue: list[str] = []
     input_q: queue.Queue[str | None] = queue.Queue()
@@ -172,7 +429,7 @@ async def chat_loop():
         """独立线程：持续读取用户输入"""
         while True:
             try:
-                line = input("\n你: ").strip()
+                line = input(f"{Colors.CYAN}你:{Colors.RESET} ").strip()
                 input_q.put(line)
             except (EOFError, KeyboardInterrupt):
                 input_q.put(None)
@@ -181,21 +438,6 @@ async def chat_loop():
     # 启动输入线程
     input_thread = threading.Thread(target=_input_reader, daemon=True)
     input_thread.start()
-
-    def _print_reply(reply: str):
-        """分段打印回复"""
-        segmented = MessageSegmenter.segment(reply, max_segment_length=ADVANCED["segment_max_length"])
-        for i, seg in enumerate(segmented.segments):
-            if i == 0:
-                print(f"\n{persona_name}: {seg}", end="", flush=True)
-            else:
-                delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
-                if delay > 0:
-                    import asyncio as _aio
-                    # 同步版延迟（在 async 上下文中用 await）
-                    pass
-                print(f"\n  {seg}", end="", flush=True)
-        print()
 
     try:
         while True:
@@ -215,55 +457,44 @@ async def chat_loop():
                 combined = "\n".join(message_queue)
                 message_queue = []
 
-                print(f"  💭 发送 {count} 条消息，思考中...", end="", flush=True)
-                reply = await handle_message("local_user", combined)
+                print(f"  {Colors.DIM}💭 发送 {count} 条消息，思考中...{Colors.RESET}", end="", flush=True)
+                reply, rel_level = await handle_message(user_id, combined)
+                stats.message_count += count
+                stats.end_level = rel_level
                 print(f"\r{' ' * 50}\r", end="", flush=True)
 
-                # 分段打印（带延迟）
-                segmented = MessageSegmenter.segment(reply, max_segment_length=ADVANCED["segment_max_length"])
-                for i, seg in enumerate(segmented.segments):
-                    if i == 0:
-                        print(f"\n{persona_name}: {seg}", end="", flush=True)
-                    else:
-                        try:
-                            delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
-                        except AttributeError:
-                            delay = 0
-                        if delay > 0:
-                            await asyncio.sleep(delay)
-                        print(f"\n  {seg}", end="", flush=True)
-                print()
+                await _print_reply(persona_name, reply)
+                _print_rel_change(rel_level)
                 continue
 
             # 收到输入
-            if user_input is None or user_input.lower() == "quit":
+            if user_input is None or user_input.lower() in ("quit", "/quit"):
                 break
+
+            # 斜杠命令
+            if user_input.startswith("/"):
+                result = await handle_command(user_input, user_id, persona_name)
+                if result == "quit":
+                    break
+                if result is True:
+                    continue
 
             # 不用去抖模式
             if debounce_seconds <= 0:
-                reply = await handle_message("local_user", user_input)
-                segmented = MessageSegmenter.segment(reply, max_segment_length=ADVANCED["segment_max_length"])
-                for i, seg in enumerate(segmented.segments):
-                    if i == 0:
-                        print(f"\n{persona_name}: {seg}", end="", flush=True)
-                    else:
-                        try:
-                            delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
-                        except AttributeError:
-                            delay = 0
-                        if delay > 0:
-                            await asyncio.sleep(delay)
-                        print(f"\n  {seg}", end="", flush=True)
-                print()
+                stats.message_count += 1
+                reply, rel_level = await handle_message(user_id, user_input)
+                stats.end_level = rel_level
+                await _print_reply(persona_name, reply)
+                _print_rel_change(rel_level)
                 continue
 
             # 加入消息队列
             message_queue.append(user_input)
             count = len(message_queue)
             if count == 1:
-                print(f"  ⏳ 等待更多消息...（{debounce_seconds} 秒后发送）", flush=True)
+                print(f"  {Colors.DIM}⏳ 等待更多消息...（{debounce_seconds} 秒后发送）{Colors.RESET}", flush=True)
             else:
-                print(f"  ✓ 已收集 {count} 条消息，继续输入或等待发送", flush=True)
+                print(f"  {Colors.DIM}✓ 已收集 {count} 条消息，继续输入或等待发送{Colors.RESET}", flush=True)
 
     except asyncio.CancelledError:
         pass
@@ -271,7 +502,22 @@ async def chat_loop():
         # 清理输入线程
         input_q.put(None)
 
-    logger.info("拜拜~")
+    # 退出总结
+    stats.end_level = relationship_tracker.get_level(user_id, base_level=persona.relationship_level)
+    print(stats.summary(persona_name))
+
+
+def _print_rel_change(level: int):
+    """显示亲密度变化提示"""
+    if level >= 80:
+        icon = "💕"
+    elif level >= 60:
+        icon = "💗"
+    elif level >= 40:
+        icon = "💛"
+    else:
+        icon = "🤍"
+    print(f"  {Colors.DIM}{icon} 亲密度 {level}/100{Colors.RESET}")
 
 
 # ========== 主入口 ==========
@@ -301,7 +547,7 @@ def main():
     try:
         asyncio.run(chat_loop())
     except KeyboardInterrupt:
-        print()  # 换行
+        print()
         logger.info("拜拜~")
 
 
