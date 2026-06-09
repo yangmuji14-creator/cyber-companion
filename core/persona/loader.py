@@ -9,69 +9,68 @@ from .models import Persona
 
 
 class PersonaLoader:
-    """人设加载器，负责从配置文件加载和管理人设"""
+    """人设加载器"""
 
-    def __init__(self, config_path: str | Path):
+    def __init__(self, config_path):
         self._config_path = Path(config_path)
-        self._personas: dict[str, Persona] = {}
+        self._personas = {}
         self._load()
 
-    def _load(self) -> None:
-        """从 personas.json 加载所有人设"""
+    def _load(self):
         if not self._config_path.exists():
             logger.warning(f"Personas config not found: {self._config_path}")
             return
-
         try:
             with open(self._config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-
             for p_data in data.get("personas", []):
                 persona = Persona.from_dict(p_data)
                 self._personas[persona.id] = persona
-
             logger.info(f"Loaded {len(self._personas)} personas: {list(self._personas.keys())}")
         except (json.JSONDecodeError, KeyError) as e:
             logger.error(f"Failed to load personas: {e}")
 
-    def get(self, persona_id: str) -> Persona | None:
-        """获取指定人设"""
+    def get(self, persona_id):
         return self._personas.get(persona_id)
 
-    def list_all(self) -> list[Persona]:
-        """列出所有人设"""
+    def list_all(self):
         return list(self._personas.values())
 
-    def add(self, persona: Persona) -> None:
-        """添加新人设（内存 + 文件）"""
+    def add(self, persona):
         self._personas[persona.id] = persona
         self._save()
 
-    # 允许更新的字段白名单
     ALLOWED_FIELDS = {
-        "name", "age", "personality", "background",
-        "speaking_style", "core_memories",
+        "name", "age", "gender", "birthday",
+        "hometown", "occupation", "daily_routine", "appearance",
+        "personality", "mbti", "values", "taboos",
+        "hobbies", "music_taste", "movie_taste", "food_preferences",
+        "catchphrases", "filler_words", "emoji_habits",
+        "speech_rhythm", "nickname_for_user",
+        "happy_expression", "sad_expression", "angry_expression",
+        "jealous_expression", "shy_expression",
+        "initiative_level", "clinginess", "jealous_tendency",
+        "conflict_style", "affection_style",
+        "how_we_met", "first_impression", "important_moments", "pet_names",
+        "favorite_topics", "avoided_topics", "question_tendency",
+        "background", "speaking_style", "core_memories",
         "relationship_level", "system_prompt",
     }
 
-    def update(self, persona_id: str, **kwargs) -> Persona | None:
-        """更新人设属性"""
+    def update(self, persona_id, **kwargs):
         persona = self._personas.get(persona_id)
         if not persona:
             return None
-
         for key, value in kwargs.items():
             if key not in self.ALLOWED_FIELDS:
                 logger.warning(f"Ignored invalid field: {key}")
                 continue
             setattr(persona, key, value)
-
         self._save()
         logger.info(f"Updated persona {persona_id}: {list(kwargs.keys())}")
         return persona
 
-    def delete(self, persona_id: str) -> bool:
-        """删除人设"""
+    def delete(self, persona_id):
         if persona_id in self._personas:
             del self._personas[persona_id]
             self._save()
@@ -79,8 +78,7 @@ class PersonaLoader:
             return True
         return False
 
-    def _save(self) -> None:
-        """保存到 personas.json"""
+    def _save(self):
         data = {"personas": [p.to_dict() for p in self._personas.values()]}
         with open(self._config_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
