@@ -265,6 +265,8 @@ async def chat_loop():
             else:
                 print(f"  ✓ 已收集 {count} 条消息，继续输入或等待发送", flush=True)
 
+    except asyncio.CancelledError:
+        pass
     finally:
         # 清理输入线程
         input_q.put(None)
@@ -296,7 +298,11 @@ def main():
         return
 
     logger.info("🎀 Cyber Girlfriend 启动中...")
-    asyncio.run(chat_loop())
+    try:
+        asyncio.run(chat_loop())
+    except KeyboardInterrupt:
+        print()  # 换行
+        logger.info("拜拜~")
 
 
 if __name__ == "__main__":
