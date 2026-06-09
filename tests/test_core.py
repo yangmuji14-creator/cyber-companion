@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.memory.models import Memory
 from core.memory.scorer import MemoryScorer
 from core.memory.storage import MemoryStorage
-from core.emotion.analyzer import EmotionAnalyzer, EmotionType
+from core.emotion.analyzer import EmotionAnalyzer, EmotionType, EmotionResult
 from core.emotion.expression import MessageSegmenter, EmotionEnhancer
 
 
@@ -535,6 +535,68 @@ def test_session_stats_summary():
     assert "10 条" in summary
     assert "50" in summary
     assert "55" in summary
+
+
+# ========== 消息分段器英文标点测试 ==========
+
+def test_segment_english_punctuation():
+    """测试英文标点分段"""
+    text = "Hello world! How are you? I'm fine."
+    result = MessageSegmenter.segment(text, max_segment_length=20)
+    assert result.total_segments > 1
+
+
+def test_segment_mixed_punctuation():
+    """测试中英文混合标点分段"""
+    text = "你好呀！Hello world. 今天天气不错~"
+    result = MessageSegmenter.segment(text, max_segment_length=15)
+    assert result.total_segments > 1
+
+
+def test_segment_english_only():
+    """测试纯英文消息"""
+    text = "This is a long sentence that should be split at some point."
+    result = MessageSegmenter.segment(text, max_segment_length=25)
+    assert result.total_segments >= 1
+    # 所有段落合并后应包含原文
+    merged = " ".join(result.segments)
+    assert "long sentence" in merged
+
+
+# ========== LLM 情感分析器测试 ==========
+
+def test_llm_emotion_analyzer_keyword_fallback():
+    """测试 LLM 情感分析器在无 LLM 时回退到关键词"""
+    from core.emotion.llm_analyzer import LLMEmotionAnalyzer
+
+    analyzer = LLMEmotionAnalyzer(llm=None)
+    # 无 LLM 时应该用关键词分析
+    import asyncio
+    result = asyncio.run(analyzer.analyze("我好开心呀"))
+    assert result.emotion == EmotionType.HAPPY
+
+
+def test_llm_emotion_analyzer_needs_llm():
+    """测试 LLM 情感分析器判断是否需要 LLM"""
+    from core.emotion.llm_analyzer import LLMEmotionAnalyzer
+
+    analyzer = LLMEmotionAnalyzer(llm=None)
+
+    # NEUTRAL + 短文本 → 不需要 LLM
+    neutral_short = EmotionResult(EmotionType.NEUTRAL, 0.0, [])
+    assert analyzer._should_use_llm(" hi", neutral_short) is False
+
+    # NEUTRAL + 长文本 → 需要 LLM
+    neutral_long = EmotionResult(EmotionType.NEUTRAL, 0.0, [])
+    assert analyzer._should_use_llm("今天发生了很多事情让我很纠结", neutral_long) is True
+
+    # 低强度 + 长文本 → 需要 LLM
+    low_confidence = EmotionResult(EmotionType.HAPPY, 0.2, [])
+    assert analyzer._should_use_llm("其实也没有特别开心吧，怎么说呢", low_confidence) is True
+
+    # 高强度 → 不需要 LLM
+    high_confidence = EmotionResult(EmotionType.HAPPY, 0.8, ["开心"])
+    assert analyzer._should_use_llm("好开心啊哈哈", high_confidence) is False
 
 
 # ========== 运行所有测试 ==========

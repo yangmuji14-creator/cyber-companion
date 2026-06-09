@@ -35,8 +35,8 @@ class MessageSegmenter:
     - 每段之间加随机延迟模拟真人打字
     """
 
-    # 断句标点
-    SPLIT_PATTERN = r'(?<=[。！？…\n])'
+    # 断句标点（中英文）
+    SPLIT_PATTERN = r'(?<=[。！？…\n.!?])'
 
     @staticmethod
     def segment(text: str, max_segment_length: int = 50) -> SegmentedMessage:
@@ -92,7 +92,7 @@ class MessageSegmenter:
             # 在 max_length 附近找标点断点
             cut_pos = max_length
             for i in range(min(max_length, len(text) - 1), max(0, max_length - 20), -1):
-                if text[i] in "，、；：,;:":
+                if text[i] in "，、；：,;:.":
                     cut_pos = i + 1
                     break
             chunks.append(text[:cut_pos].strip())

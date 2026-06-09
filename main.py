@@ -71,13 +71,14 @@ ADVANCED = _load_advanced()
 from core.llm import init_registry
 from core.memory import MemoryManager, MemorySummarizer, ChatHistoryStorage
 from core.persona import PersonaLoader, PromptBuilder
-from core.emotion import EmotionAnalyzer, EmotionEnhancer, MessageSegmenter
+from core.emotion import EmotionAnalyzer, EmotionEnhancer, MessageSegmenter, LLMEmotionAnalyzer
 from core.relationship import RelationshipTracker
 
 registry = init_registry(CONFIG_DIR / "settings.json")
 memory_mgr = MemoryManager(str(ROOT / "data"))
 persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
-emotion_analyzer = EmotionAnalyzer()
+emotion_analyzer = EmotionAnalyzer()  # 关键词分析（快速）
+llm_emotion_analyzer = LLMEmotionAnalyzer()  # LLM 辅助（会在首次对话时初始化）
 relationship_tracker = RelationshipTracker(str(ROOT / "data"))
 chat_history = ChatHistoryStorage(str(ROOT / "data"), max_messages=20)
 
@@ -306,11 +307,15 @@ async def handle_message(user_id: str, content: str, persona_id: str = "girlfrie
     if not persona:
         return "我找不到我的人设了 (´;ω;`)", 50
 
+    # 首次使用时初始化 LLM 情感分析器
+    if llm_emotion_analyzer._llm is None:
+        llm_emotion_analyzer._llm = llm
+
     messages = chat_history.get_messages(user_id)
     chat_history.add_message(user_id, "user", content)
     messages = chat_history.get_messages(user_id)
 
-    emotion = emotion_analyzer.analyze(content)
+    emotion = await llm_emotion_analyzer.analyze(content)
 
     rel_level = relationship_tracker.update(
         user_id, emotion=emotion.emotion.value, base_level=persona.relationship_level
@@ -319,9 +324,15 @@ async def handle_message(user_id: str, content: str, persona_id: str = "girlfrie
     time_context = _get_time_context()
     memory_context = memory_mgr.get_context_prompt(user_id, limit=8)
 
+    # 记忆检索：找到与当前消息相关的记忆
+    relevant_memories = await _retrieve_relevant_memories(user_id, content, llm)
+    relevant_context = ""
+    if relevant_memories:
+        relevant_context = "\n【与当前话题相关的记忆】\n" + "\n".join(f"- {m}" for m in relevant_memories)
+
     system_prompt = PromptBuilder.build(
         persona,
-        memory_context=memory_context,
+        memory_context=memory_context + relevant_context,
         extra_instructions=f"时间：{time_context}\n用户当前情绪：{emotion.emotion.value}（强度 {emotion.intensity}）",
         relationship_level=rel_level,
     )
@@ -338,7 +349,12 @@ async def handle_message(user_id: str, content: str, persona_id: str = "girlfrie
 
     chat_history.add_message(user_id, "assistant", reply)
     chat_history.add_short_memory(user_id, content, reply)
+
+    # 基础记忆存储（关键词评分）
     memory_mgr.add_memory(user_id, content)
+
+    # LLM 辅助记忆提取（异步，不阻塞用户）
+    asyncio.create_task(_background_extract_memory(user_id, content, reply, llm))
 
     # 异步总结（不阻塞用户）
     short_memories = chat_history.get_short_memories(user_id)
@@ -375,6 +391,40 @@ async def _background_summarize(user_id: str, llm, short_memories: list):
             logger.info(f"Short memory summarized for {user_id}")
     except Exception as e:
         logger.warning(f"Background summarization failed: {e}")
+
+
+async def _background_extract_memory(user_id: str, user_msg: str, assistant_reply: str, llm):
+    """后台用 LLM 从对话中提取值得记住的信息"""
+    try:
+        summarizer = MemorySummarizer(llm)
+        extracted = await summarizer.extract_memory(user_msg, assistant_reply)
+        if extracted and extracted.get("content"):
+            content = extracted["content"]
+            importance = extracted.get("importance", 3)
+            # 只有重要度 >= 2 才存储
+            if importance >= 2:
+                memory_mgr.add_memory(user_id, content, level=importance, tags=["自动提取"])
+                logger.info(f"Auto-extracted memory [{importance}★]: {content[:30]}...")
+    except Exception as e:
+        logger.debug(f"Background memory extraction failed: {e}")
+
+
+async def _retrieve_relevant_memories(user_id: str, query: str, llm) -> list[str]:
+    """检索与当前消息相关的记忆"""
+    try:
+        # 获取所有记忆的内容
+        all_memories = memory_mgr.get_memories(user_id, limit=30)
+        if not all_memories:
+            return []
+
+        memory_texts = [m.content for m in all_memories]
+
+        summarizer = MemorySummarizer(llm)
+        relevant = await summarizer.retrieve_relevant(query, memory_texts, limit=3)
+        return relevant
+    except Exception as e:
+        logger.debug(f"Memory retrieval failed: {e}")
+        return []
 
 
 # ========== 打印回复（统一逻辑） ==========
