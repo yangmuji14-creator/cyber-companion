@@ -405,8 +405,27 @@ def step_advanced() -> dict:
 
 # ========== 主流程 ==========
 
+def _check_venv():
+    """检查是否在虚拟环境中运行"""
+    in_venv = sys.prefix != sys.base_prefix
+    if not in_venv:
+        print()
+        print("  ⚠️  未检测到虚拟环境！")
+        print()
+        print("  建议先运行安装脚本创建虚拟环境：")
+        print("    python install.py")
+        print()
+        ans = input("  是否继续？(y/N): ").strip().lower()
+        if ans != "y":
+            print("
+  请先运行: python install.py")
+            sys.exit(0)
+        print()
+
+
 def run_setup():
     _banner()
+    _check_venv()
 
     # 检查已有配置
     if ENV_FILE.exists():
