@@ -141,7 +141,11 @@ async def handle_message(user_id: str, content: str, persona_id: str = "girlfrie
 
 # ========== 聊天循环 ==========
 async def chat_loop():
-    """终端聊天"""
+    """终端聊天（支持消息累积去抖）
+
+    用户可以在倒计时期间继续输入，新消息加入队列并重置倒计时。
+    倒计时结束后，所有累积的消息合并后一次性发给模型。
+    """
     persona = persona_loader.get("girlfriend_001")
     persona_name = persona.name if persona else "小雨"
     debounce_seconds = ADVANCED.get("debounce_seconds", 3)
@@ -155,46 +159,107 @@ async def chat_loop():
     logger.info("=" * 40)
     logger.info("开始聊天吧！输入 quit 退出")
     if debounce_seconds > 0:
-        logger.info(f"消息去抖: {debounce_seconds} 秒（输入后等待倒计时结束再回复）")
+        logger.info(f"消息累积: 输入后 {debounce_seconds} 秒内可继续输入，合并后一起发送")
     logger.info("=" * 40)
 
-    loop = asyncio.get_event_loop()
-    while True:
-        try:
-            user_input = await loop.run_in_executor(None, lambda: input("\n你: ").strip())
-        except (EOFError, KeyboardInterrupt):
-            break
+    message_queue: list[str] = []  # 累积的消息队列
+    input_event = asyncio.Event()  # 有新输入时触发
+    countdown_active = asyncio.Event()  # 倒计时正在进行
 
-        if not user_input or user_input.lower() == "quit":
-            break
+    async def countdown_timer():
+        """倒计时：每隔 1 秒更新显示，倒计时结束后触发处理"""
+        nonlocal message_queue
+        while True:
+            await input_event.wait()
+            input_event.clear()
 
-        # === 消息去抖倒计时 ===
-        if debounce_seconds > 0:
+            # 开始倒计时
+            countdown_active.set()
             for remaining in range(debounce_seconds, 0, -1):
-                print(f"\r  ⏳ {remaining} 秒后回复...  ", end="", flush=True)
-                await asyncio.sleep(1)
+                count = len(message_queue)
+                label = f"（{count} 条消息）" if count > 1 else ""
+                print(f"\r  ⏳ {remaining} 秒后发送{label}  ", end="", flush=True)
+                try:
+                    await asyncio.wait_for(input_event.wait(), timeout=1.0)
+                    # 有新输入，重置倒计时
+                    input_event.clear()
+                    remaining = debounce_seconds  # 重置
+                    continue
+                except asyncio.TimeoutError:
+                    pass
+
+            # 倒计时结束，合并发送
+            count = len(message_queue)
+            if count == 0:
+                countdown_active.clear()
+                continue
+
+            # 合并所有消息
+            combined = "\n".join(message_queue)
+            message_queue = []
+            countdown_active.clear()
+
             # 清除倒计时行
-            print(f"\r{' ' * 40}\r", end="", flush=True)
-            print(f"  💭 思考中...", end="", flush=True)
+            print(f"\r{' ' * 50}\r", end="", flush=True)
+            print(f"  💭 发送 {count} 条消息，思考中...", end="", flush=True)
 
-        reply = await handle_message("local_user", user_input)
+            reply = await handle_message("local_user", combined)
 
-        # 清除"思考中"提示
-        if debounce_seconds > 0:
-            print(f"\r{' ' * 40}\r", end="", flush=True)
+            # 清除"思考中"提示
+            print(f"\r{' ' * 50}\r", end="", flush=True)
 
-        # === 分段打印回复（带模拟打字延迟）===
-        segmented = MessageSegmenter.segment(reply, max_segment_length=ADVANCED["segment_max_length"])
-        for i, seg in enumerate(segmented.segments):
-            if i == 0:
-                print(f"\n{persona_name}: {seg}", end="", flush=True)
+            # 分段打印回复
+            segmented = MessageSegmenter.segment(reply, max_segment_length=ADVANCED["segment_max_length"])
+            for i, seg in enumerate(segmented.segments):
+                if i == 0:
+                    print(f"\n{persona_name}: {seg}", end="", flush=True)
+                else:
+                    delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    print(f"\n  {seg}", end="", flush=True)
+            print()
+
+    # 启动倒计时任务
+    timer_task = asyncio.create_task(countdown_timer())
+
+    loop = asyncio.get_event_loop()
+    try:
+        while True:
+            try:
+                user_input = await loop.run_in_executor(None, lambda: input("\n你: ").strip())
+            except (EOFError, KeyboardInterrupt):
+                break
+
+            if not user_input or user_input.lower() == "quit":
+                break
+
+            if debounce_seconds <= 0:
+                # 不用去抖，直接发送
+                reply = await handle_message("local_user", user_input)
+                segmented = MessageSegmenter.segment(reply, max_segment_length=ADVANCED["segment_max_length"])
+                for i, seg in enumerate(segmented.segments):
+                    if i == 0:
+                        print(f"\n{persona_name}: {seg}", end="", flush=True)
+                    else:
+                        delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
+                        if delay > 0:
+                            await asyncio.sleep(delay)
+                        print(f"\n  {seg}", end="", flush=True)
+                print()
             else:
-                # 段间延迟（模拟打字节奏）
-                delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
-                if delay > 0:
-                    await asyncio.sleep(delay)
-                print(f"\n  {seg}", end="", flush=True)
-        print()  # 换行
+                # 加入消息队列，触发/重置倒计时
+                message_queue.append(user_input)
+                count = len(message_queue)
+                if count > 1:
+                    print(f"  ✓ 已收集 {count} 条消息，继续输入或等待发送")
+                input_event.set()
+    finally:
+        timer_task.cancel()
+        try:
+            await timer_task
+        except asyncio.CancelledError:
+            pass
 
     logger.info("拜拜~")
 
