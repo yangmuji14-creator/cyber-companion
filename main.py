@@ -204,7 +204,9 @@ async def chat_loop():
                 user_input = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: input_q.get(timeout=debounce_seconds)
                 )
-            except queue.Empty:
+            except (queue.Empty, Exception) as e:
+                if not isinstance(e, queue.Empty):
+                    raise
                 # 超时 → 倒计时结束，发送累积的消息
                 if not message_queue:
                     continue
@@ -223,7 +225,10 @@ async def chat_loop():
                     if i == 0:
                         print(f"\n{persona_name}: {seg}", end="", flush=True)
                     else:
-                        delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
+                        try:
+                            delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
+                        except AttributeError:
+                            delay = 0
                         if delay > 0:
                             await asyncio.sleep(delay)
                         print(f"\n  {seg}", end="", flush=True)
@@ -242,7 +247,10 @@ async def chat_loop():
                     if i == 0:
                         print(f"\n{persona_name}: {seg}", end="", flush=True)
                     else:
-                        delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
+                        try:
+                            delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
+                        except AttributeError:
+                            delay = 0
                         if delay > 0:
                             await asyncio.sleep(delay)
                         print(f"\n  {seg}", end="", flush=True)
