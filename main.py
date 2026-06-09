@@ -513,6 +513,8 @@ async def chat_loop():
         while True:
             try:
                 line = input(f"{Colors.CYAN}你:{Colors.RESET} ").strip()
+                if not line:
+                    continue  # 空输入（直接回车）跳过
                 input_q.put(line)
             except (EOFError, KeyboardInterrupt):
                 input_q.put(None)
