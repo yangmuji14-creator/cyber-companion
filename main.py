@@ -135,7 +135,7 @@ async def handle_message(user_id: str, content: str, persona_id: str = "girlfrie
             chat_history.clear_short_memories(user_id)
             logger.info(f"Short memory summarized for {user_id}")
 
-    logger.info(f"[{persona.name}] → {user_id}: {reply[:80]}...")
+    logger.debug(f"[{persona.name}] → {user_id}: {reply[:80]}...")
     return reply
 
 
@@ -144,6 +144,7 @@ async def chat_loop():
     """终端聊天"""
     persona = persona_loader.get("girlfriend_001")
     persona_name = persona.name if persona else "小雨"
+    debounce_seconds = ADVANCED.get("debounce_seconds", 3)
 
     if not registry.available_models:
         logger.error("没有可用的模型！请先运行: python main.py setup")
@@ -153,6 +154,8 @@ async def chat_loop():
     logger.info(f"人设: {persona_name}")
     logger.info("=" * 40)
     logger.info("开始聊天吧！输入 quit 退出")
+    if debounce_seconds > 0:
+        logger.info(f"消息去抖: {debounce_seconds} 秒（输入后等待倒计时结束再回复）")
     logger.info("=" * 40)
 
     loop = asyncio.get_event_loop()
@@ -165,14 +168,33 @@ async def chat_loop():
         if not user_input or user_input.lower() == "quit":
             break
 
+        # === 消息去抖倒计时 ===
+        if debounce_seconds > 0:
+            for remaining in range(debounce_seconds, 0, -1):
+                print(f"\r  ⏳ {remaining} 秒后回复...  ", end="", flush=True)
+                await asyncio.sleep(1)
+            # 清除倒计时行
+            print(f"\r{' ' * 40}\r", end="", flush=True)
+            print(f"  💭 思考中...", end="", flush=True)
+
         reply = await handle_message("local_user", user_input)
 
+        # 清除"思考中"提示
+        if debounce_seconds > 0:
+            print(f"\r{' ' * 40}\r", end="", flush=True)
+
+        # === 分段打印回复（带模拟打字延迟）===
         segmented = MessageSegmenter.segment(reply, max_segment_length=ADVANCED["segment_max_length"])
         for i, seg in enumerate(segmented.segments):
             if i == 0:
-                print(f"\n{persona_name}: {seg}")
+                print(f"\n{persona_name}: {seg}", end="", flush=True)
             else:
-                print(f"  {seg}")
+                # 段间延迟（模拟打字节奏）
+                delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                print(f"\n  {seg}", end="", flush=True)
+        print()  # 换行
 
     logger.info("拜拜~")
 
