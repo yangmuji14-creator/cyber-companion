@@ -123,6 +123,24 @@ class SessionStats:
 
 
 # ========== 工具函数 ==========
+def _format_multi_message(content: str) -> tuple[str, int]:
+    """格式化多条合并消息
+
+    Returns:
+        (formatted_content, message_count) 元组
+    """
+    lines = [line.strip() for line in content.split("\n") if line.strip()]
+    if len(lines) <= 1:
+        return content, 1
+
+    # 多条消息：格式化为清晰的列表
+    formatted_parts = []
+    for i, line in enumerate(lines, 1):
+        formatted_parts.append(f"[消息{i}] {line}")
+
+    return "\n".join(formatted_parts), len(lines)
+
+
 def _get_time_context() -> str:
     now = datetime.now()
     hour = now.hour
@@ -311,10 +329,15 @@ async def handle_message(user_id: str, content: str, persona_id: str = "girlfrie
     if llm_emotion_analyzer._llm is None:
         llm_emotion_analyzer._llm = llm
 
+    # 格式化多消息：识别是否是多条合并的消息
+    formatted_content, msg_count = _format_multi_message(content)
+
+    # 存储格式化后的消息到聊天历史
     messages = chat_history.get_messages(user_id)
-    chat_history.add_message(user_id, "user", content)
+    chat_history.add_message(user_id, "user", formatted_content)
     messages = chat_history.get_messages(user_id)
 
+    # 情感分析用原始内容（保留每条消息的情感）
     emotion = await llm_emotion_analyzer.analyze(content)
 
     rel_level = relationship_tracker.update(
@@ -330,10 +353,20 @@ async def handle_message(user_id: str, content: str, persona_id: str = "girlfrie
     if relevant_memories:
         relevant_context = "\n【与当前话题相关的记忆】\n" + "\n".join(f"- {m}" for m in relevant_memories)
 
+    # 构建 extra_instructions，多消息时增加上下文说明
+    extra_instructions = f"时间：{time_context}\n用户当前情绪：{emotion.emotion.value}（强度 {emotion.intensity}）"
+    if msg_count > 1:
+        extra_instructions += (
+            f"\n【重要】用户连续发了 {msg_count} 条消息，这是用户在短时间内快速输入的碎片化想法。"
+            f"请把它们作为一个整体来理解用户的情绪和意图，"
+            f"回复时自然地回应所有内容，不要逐条回复，也不要提到「你发了很多消息」之类的话。"
+            f"像真人聊天一样，抓住重点，整体回应。"
+        )
+
     system_prompt = PromptBuilder.build(
         persona,
         memory_context=memory_context + relevant_context,
-        extra_instructions=f"时间：{time_context}\n用户当前情绪：{emotion.emotion.value}（强度 {emotion.intensity}）",
+        extra_instructions=extra_instructions,
         relationship_level=rel_level,
     )
 

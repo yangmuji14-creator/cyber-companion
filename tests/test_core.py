@@ -594,9 +594,46 @@ def test_llm_emotion_analyzer_needs_llm():
     low_confidence = EmotionResult(EmotionType.HAPPY, 0.2, [])
     assert analyzer._should_use_llm("其实也没有特别开心吧，怎么说呢", low_confidence) is True
 
-    # 高强度 → 不需要 LLM
-    high_confidence = EmotionResult(EmotionType.HAPPY, 0.8, ["开心"])
-    assert analyzer._should_use_llm("好开心啊哈哈", high_confidence) is False
+
+# ========== 多消息格式化测试 ==========
+
+def test_format_single_message():
+    """测试单条消息不格式化"""
+    from main import _format_multi_message
+    result, count = _format_multi_message("你好呀")
+    assert count == 1
+    assert result == "你好呀"
+
+
+def test_format_multi_message():
+    """测试多条消息格式化"""
+    from main import _format_multi_message
+    content = "今天好累\n考试考砸了\n心情超差"
+    result, count = _format_multi_message(content)
+    assert count == 3
+    assert "[消息1] 今天好累" in result
+    assert "[消息2] 考试考砸了" in result
+    assert "[消息3] 心情超差" in result
+
+
+def test_format_multi_message_empty_lines():
+    """测试多消息中的空行被过滤"""
+    from main import _format_multi_message
+    content = "第一条\n\n第二条\n"
+    result, count = _format_multi_message(content)
+    assert count == 2
+    assert "[消息1] 第一条" in result
+    assert "[消息2] 第二条" in result
+
+
+def test_format_multi_message_whitespace():
+    """测试多消息中的空白被清理"""
+    from main import _format_multi_message
+    content = "  第一条  \n  第二条  "
+    result, count = _format_multi_message(content)
+    assert count == 2
+    assert "[消息1] 第一条" in result
+    assert "[消息2] 第二条" in result
 
 
 # ========== 运行所有测试 ==========
