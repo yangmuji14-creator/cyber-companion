@@ -20,15 +20,15 @@ class RelationshipTracker:
     算法：
     - 基础 level 来自人设配置（默认 50）
     - 每次对话 +0.05（缓慢增长，500 次对话达到 +25）
-    - 正面情感（开心/爱意）+0.3 每次
-    - 负面情感（生气/难过）-0.2 每次
+    - 正面情感（开心/爱意/兴奋）+0.3 每次
+    - 负面情感（生气/难过/焦虑）-0.2 每次
     - 3 天不聊天开始衰减，每天 -0.05
     - level 限制在 0-100 范围
     """
 
     # 情感分类
     POSITIVE_EMOTIONS = {"happy", "love", "excited"}
-    NEGATIVE_EMOTIONS = {"angry", "sad", "fearful"}
+    NEGATIVE_EMOTIONS = {"angry", "sad", "anxious"}
 
     # 参数
     MESSAGE_BONUS = 0.05       # 每条消息的亲密度增量
