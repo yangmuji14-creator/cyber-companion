@@ -908,3 +908,181 @@
 2026-06-09 00:50:44.258 | INFO     | __main__:handle_message:136 - Short memory summarized for local_user
 2026-06-09 00:50:44.258 | INFO     | __main__:handle_message:138 - [小雨] → local_user: 啊啊啊你耍赖！(๑•́ ₃ •̀๑) 明明该是你去睡觉了！好吧好吧，这次真的晚安啦～明天见！💤✨💕...
 2026-06-09 00:50:53.958 | INFO     | __main__:chat_loop:177 - 拜拜~
+2026-06-09 22:44:17.947 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 22:44:17.947 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 22:44:17.947 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 22:44:17.947 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 22:44:17.947 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 22:44:17.947 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 22:44:17.947 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 22:44:17.948 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 22:44:17.949 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 22:44:17.965 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 22:44:17.968 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 22:44:17.969 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmp8id_cq76\personas.json
+2026-06-09 22:44:17.970 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-09 22:45:12.943 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 22:45:12.943 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 22:45:12.943 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 22:45:12.943 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 22:45:12.943 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 22:45:12.943 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 22:45:12.943 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 22:45:12.944 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 22:45:12.944 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 22:45:12.960 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 22:45:12.963 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 22:45:12.963 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmpgb598cy3\personas.json
+2026-06-09 22:45:12.964 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-09 22:55:41.357 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 22:55:41.357 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 22:55:41.357 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 22:55:41.357 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 22:55:41.357 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 22:55:41.357 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 22:55:41.357 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 22:55:41.358 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 22:55:41.358 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 22:55:41.373 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 22:55:41.375 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 22:55:41.376 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmp1pza7otv\personas.json
+2026-06-09 22:55:41.377 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-09 22:56:33.413 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 22:56:33.413 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 22:56:33.413 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 22:56:33.413 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 22:56:33.413 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 22:56:33.413 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 22:56:33.413 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 22:56:33.414 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 22:56:33.415 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 22:56:34.408 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 22:56:34.418 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 22:56:34.418 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmph8mna10w\personas.json
+2026-06-09 22:56:34.419 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-09 22:57:25.426 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 22:57:25.426 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 22:57:25.426 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 22:57:25.426 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 22:57:25.426 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 22:57:25.426 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 22:57:25.426 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 22:57:25.427 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 22:57:25.428 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 22:57:26.075 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 22:57:26.079 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 22:57:26.080 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmpruoy1b2h\personas.json
+2026-06-09 22:57:26.080 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-09 22:58:25.093 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 22:58:25.093 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 22:58:25.094 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 22:58:25.094 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 22:58:25.094 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 22:58:25.094 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 22:58:25.094 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 22:58:25.094 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 22:58:25.095 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 22:58:25.117 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 22:58:25.120 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 22:58:25.121 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmp1okekabj\personas.json
+2026-06-09 22:58:25.121 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-09 23:03:14.539 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 23:03:14.539 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 23:03:14.539 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 23:03:14.539 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 23:03:14.539 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 23:03:14.539 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 23:03:14.539 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 23:03:14.540 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 23:03:14.541 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 23:03:15.225 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 23:03:15.228 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 23:03:15.229 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmp19i_eh30\personas.json
+2026-06-09 23:03:15.229 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-09 23:03:54.446 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 23:03:54.446 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 23:03:54.446 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 23:03:54.447 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 23:03:54.447 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 23:03:54.447 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 23:03:54.447 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 23:03:54.447 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 23:03:54.448 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 23:03:54.476 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 23:03:54.480 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 23:03:54.480 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmp6fopbo57\personas.json
+2026-06-09 23:03:54.480 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-09 23:10:22.370 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 23:10:22.371 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 23:10:22.371 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 23:10:22.372 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 23:10:22.372 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 23:10:22.372 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 23:10:22.372 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 23:10:22.372 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 23:10:22.373 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 23:10:22.397 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 23:10:22.401 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 23:10:22.401 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmp93_626dq\personas.json
+2026-06-09 23:10:22.402 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-09 23:14:53.377 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 23:14:53.377 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 23:14:53.377 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 23:14:53.377 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 23:14:53.377 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 23:14:53.377 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 23:14:53.377 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 23:14:53.377 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 23:14:53.379 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 23:14:53.405 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 23:14:53.408 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 23:14:53.409 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmpo3l8i4c9\personas.json
+2026-06-09 23:14:53.409 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-09 23:17:54.741 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-09 23:17:54.741 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-09 23:17:54.741 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-09 23:17:54.741 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: qwen (openai/qwen-turbo)
+2026-06-09 23:17:54.741 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-09 23:17:54.741 | DEBUG    | core.llm.registry:_register_from_config:87 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-09 23:17:54.741 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-09 23:17:54.742 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-09 23:17:54.743 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-09 23:17:54.772 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-09 23:17:54.775 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-09 23:17:54.776 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmp_wec5auo\personas.json
+2026-06-09 23:17:54.776 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-10 15:33:43.181 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-10 15:33:43.181 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-10 15:33:43.181 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-10 15:33:43.181 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: qwen (openai/qwen-turbo)
+2026-06-10 15:33:43.181 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-10 15:33:43.181 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-10 15:33:43.181 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-10 15:33:43.181 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-10 15:33:43.181 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-10 15:33:43.200 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-10 15:33:43.203 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-10 15:33:43.203 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmppmybfy29\personas.json
+2026-06-10 15:33:43.203 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-10 15:47:35.520 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-10 15:47:35.520 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-10 15:47:35.520 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-10 15:47:35.520 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: qwen (openai/qwen-turbo)
+2026-06-10 15:47:35.520 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-10 15:47:35.520 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-10 15:47:35.520 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-10 15:47:35.520 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-10 15:47:35.520 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users
+2026-06-10 15:47:35.545 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['test']
+2026-06-10 15:47:35.545 | INFO     | core.persona.loader:_load:29 - Loaded 0 personas: []
+2026-06-10 15:47:35.545 | DEBUG    | core.persona.loader:_save:85 - Saved 1 personas to C:\Users\30216\AppData\Local\Temp\tmp9gm0qiot\personas.json
+2026-06-10 15:47:35.545 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['new']
+2026-06-10 15:47:51.057 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: deepseek (deepseek/deepseek-chat)
+2026-06-10 15:47:51.057 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: openai (openai/gpt-4o-mini)
+2026-06-10 15:47:51.057 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: gemini (gemini/gemini-2.0-flash)
+2026-06-10 15:47:51.057 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: qwen (openai/qwen-turbo)
+2026-06-10 15:47:51.060 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: kimi (openai/moonshot-v1-8k)
+2026-06-10 15:47:51.060 | DEBUG    | core.llm.registry:_register_from_config:89 - Registered model: zhipu (openai/glm-4-flash)
+2026-06-10 15:47:51.060 | INFO     | core.llm.registry:load_config:48 - Loaded 6 models, default: deepseek
+2026-06-10 15:47:51.060 | INFO     | core.persona.loader:_load:29 - Loaded 1 personas: ['girlfriend_001']
+2026-06-10 15:47:51.060 | DEBUG    | core.relationship.tracker:_load:59 - Loaded relationship data for 1 users

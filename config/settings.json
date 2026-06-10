@@ -48,6 +48,13 @@
   "advanced": {
     "segment_max_length": 50,
     "debounce_seconds": 3,
-    "summarize_threshold": 15
+    "summarize_threshold": 15,
+    "max_retries": 2,
+    "max_messages": 50,
+    "proactive_enabled": true,
+    "proactive_morning": true,
+    "proactive_evening": true,
+    "proactive_missing_days": 2,
+    "proactive_min_level": 20
   }
 }

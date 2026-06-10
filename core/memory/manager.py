@@ -97,6 +97,28 @@ class MemoryManager:
 
         return filtered[:limit]
 
+    def list_all_memories(
+        self,
+        user_id: str,
+        offset: int = 0,
+        limit: int = 10,
+    ) -> tuple[list[Memory], int]:
+        """分页获取用户全部记忆
+
+        Args:
+            user_id: 用户 ID
+            offset: 跳过前 N 条
+            limit: 每页数量
+
+        Returns:
+            (当前页记忆列表, 总数) 元组
+        """
+        memories = self._storage.load(user_id)
+        memories.sort(key=lambda m: (m.level, m.last_accessed), reverse=True)
+        total = len(memories)
+        page = memories[offset: offset + limit]
+        return page, total
+
     def search_memories(
         self, user_id: str, keyword: str, limit: int = 10
     ) -> list[Memory]:

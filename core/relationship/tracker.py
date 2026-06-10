@@ -74,11 +74,19 @@ class RelationshipTracker:
         except Exception as e:
             logger.error(f"Failed to save relationship data: {e}")
 
-    def _ensure_user(self, user_id: str, base_level: int = 50) -> dict[str, Any]:
+    @staticmethod
+    def _make_key(user_id: str, persona_id: str = "default") -> str:
+        """构建复合存储键（用户+人设）"""
+        if persona_id == "default":
+            return user_id
+        return f"{user_id}__{persona_id}"
+
+    def _ensure_user(self, user_id: str, base_level: int = 50, persona_id: str = "default") -> dict[str, Any]:
         """确保用户数据存在，不存在则初始化"""
-        if user_id not in self._data:
+        key = self._make_key(user_id, persona_id)
+        if key not in self._data:
             now = datetime.now().isoformat()
-            self._data[user_id] = {
+            self._data[key] = {
                 "level": float(base_level),
                 "message_count": 0,
                 "positive_count": 0,
@@ -86,19 +94,20 @@ class RelationshipTracker:
                 "last_interaction": now,
                 "created_at": now,
             }
-        return self._data[user_id]
+        return self._data[key]
 
-    def get_level(self, user_id: str, base_level: int = 50) -> int:
+    def get_level(self, user_id: str, base_level: int = 50, persona_id: str = "default") -> int:
         """获取用户当前亲密度（含时间衰减）
 
         Args:
             user_id: 用户 ID
             base_level: 人设基础亲密度
+            persona_id: 人设 ID
 
         Returns:
             0-100 的亲密度整数值
         """
-        user = self._ensure_user(user_id, base_level)
+        user = self._ensure_user(user_id, base_level, persona_id)
 
         # 计算时间衰减
         last = datetime.fromisoformat(user["last_interaction"])
@@ -116,6 +125,7 @@ class RelationshipTracker:
         user_id: str,
         emotion: str = "neutral",
         base_level: int = 50,
+        persona_id: str = "default",
     ) -> int:
         """更新亲密度（每次对话后调用）
 
@@ -123,11 +133,12 @@ class RelationshipTracker:
             user_id: 用户 ID
             emotion: 当前情感类型
             base_level: 人设基础亲密度
+            persona_id: 人设 ID
 
         Returns:
             更新后的亲密度整数值
         """
-        user = self._ensure_user(user_id, base_level)
+        user = self._ensure_user(user_id, base_level, persona_id)
         now = datetime.now()
 
         # 时间衰减
@@ -160,9 +171,10 @@ class RelationshipTracker:
 
         return int(round(user["level"]))
 
-    def get_stats(self, user_id: str) -> dict[str, Any]:
+    def get_stats(self, user_id: str, persona_id: str = "default") -> dict[str, Any]:
         """获取用户亲密度统计信息"""
-        user = self._data.get(user_id)
+        key = self._make_key(user_id, persona_id)
+        user = self._data.get(key)
         if not user:
             return {"level": 50, "message_count": 0, "days_known": 0}
         created = datetime.fromisoformat(user["created_at"])
@@ -175,8 +187,9 @@ class RelationshipTracker:
             "days_known": round(days_known, 1),
         }
 
-    def reset(self, user_id: str, base_level: int = 50) -> None:
+    def reset(self, user_id: str, base_level: int = 50, persona_id: str = "default") -> None:
         """重置用户亲密度"""
-        self._data.pop(user_id, None)
-        self._ensure_user(user_id, base_level)
+        key = self._make_key(user_id, persona_id)
+        self._data.pop(key, None)
+        self._ensure_user(user_id, base_level, persona_id)
         self._save()

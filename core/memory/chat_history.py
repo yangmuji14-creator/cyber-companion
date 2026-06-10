@@ -7,6 +7,7 @@ import json
 import os
 import re
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -93,16 +94,34 @@ class ChatHistoryStorage:
         """获取用户 LLM 对话历史"""
         return self.load(user_id)["messages"]
 
-    def add_message(self, user_id: str, role: str, content: str) -> None:
+    def add_message(
+        self,
+        user_id: str,
+        role: str,
+        content: str,
+        emotion: str | None = None,
+        emotion_intensity: float | None = None,
+    ) -> None:
         """添加一条消息并持久化
 
         Args:
             user_id: 用户 ID
             role: 消息角色（user/assistant）
             content: 消息内容
+            emotion: 情感类型（可选，如 "happy", "sad" 等）
+            emotion_intensity: 情感强度 0.0-1.0（可选）
         """
         data = self.load(user_id)
-        data["messages"].append({"role": role, "content": content})
+        msg: dict[str, Any] = {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat(),
+        }
+        if emotion is not None:
+            msg["emotion"] = emotion
+        if emotion_intensity is not None:
+            msg["emotion_intensity"] = round(emotion_intensity, 3)
+        data["messages"].append(msg)
 
         # 裁剪到最大长度
         if len(data["messages"]) > self._max_messages:
@@ -134,3 +153,57 @@ class ChatHistoryStorage:
             filepath.unlink()
             return True
         return False
+
+    def export_markdown(self, user_id: str, persona_name: str = "AI") -> str:
+        """将聊天历史导出为 Markdown 格式
+
+        Args:
+            user_id: 用户 ID
+            persona_name: AI 角色名
+
+        Returns:
+            Markdown 格式的聊天记录字符串
+        """
+        messages = self.get_messages(user_id)
+        if not messages:
+            return ""
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        lines = [
+            f"# 💬 聊天记录",
+            f"",
+            f"> 导出时间：{now}",
+            f"> 角色：{persona_name}",
+            f"> 消息数：{len(messages)}",
+            f"",
+            f"---",
+            f"",
+        ]
+
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            ts = msg.get("timestamp", "")
+            time_str = ""
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(ts)
+                    time_str = f" `{dt.strftime('%H:%M')}`"
+                except (ValueError, TypeError):
+                    pass
+
+            if role == "user":
+                label = "🧑 你"
+            elif role == "assistant":
+                label = f"💕 {persona_name}"
+            else:
+                label = role
+
+            lines.append(f"**{label}**{time_str}")
+            lines.append(f"")
+            lines.append(f"{content}")
+            lines.append(f"")
+            lines.append(f"---")
+            lines.append(f"")
+
+        return "\n".join(lines)

@@ -76,12 +76,14 @@ class LLMRegistry:
             base_url = os.getenv(f"{name.upper()}_BASE_URL")
 
         llm_cls = PROVIDER_MAP.get(provider, OpenAICompatibleLLM)
+        max_retries = self._config.get("advanced", {}).get("max_retries", 2)
         llm = llm_cls(
             model_name=model_name,
             api_key=api_key,
             base_url=base_url,
             max_tokens=cfg.get("max_tokens", 2048),
             temperature=cfg.get("temperature", 0.8),
+            max_retries=max_retries,
         )
         self._models[name] = llm
         logger.debug(f"Registered model: {name} ({provider}/{model_name})")
