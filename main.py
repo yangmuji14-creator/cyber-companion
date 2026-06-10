@@ -226,6 +226,10 @@ COMMANDS = {
     "/debug": "查看当前 system prompt",
     "/clear": "清空聊天历史",
     "/export": "导出聊天记录（/export md 或 /export json）",
+    "/undo": "撤销上一轮对话（删除最后一条用户消息和 AI 回复）",
+    "/regen": "让 AI 重新生成上一条回复",
+    "/search": "搜索聊天历史（/search <关键词>）",
+    "/mood": "查看当前情绪状态",
     "/quit": "退出聊天",
 }
 
@@ -347,6 +351,111 @@ async def handle_command(cmd: str, user_id: str, persona_name: str) -> bool:
         print(f"  {Colors.DIM}格式：{'Markdown' if fmt != 'json' else 'JSON'}（用 /export json 或 /export md 切换）{Colors.RESET}\n")
         return True
 
+    elif cmd == "/undo":
+        messages = chat_history.get_messages(user_id)
+        if len(messages) < 2:
+            print(f"\n{Colors.DIM}  没有可以撤销的消息{Colors.RESET}\n")
+        else:
+            # 确认最后两条是 user + assistant
+            if messages[-1]["role"] != "assistant" or messages[-2]["role"] != "user":
+                print(f"\n{Colors.YELLOW}⚠ 最后两条消息不是完整的对话轮次，跳过{Colors.RESET}\n")
+            else:
+                deleted = chat_history.delete_last_messages(user_id, 2)
+                print(f"\n{Colors.GREEN}✅ 已撤销最后 {len(deleted)} 条消息{Colors.RESET}")
+                # 显示被撤销的消息摘要
+                for msg in deleted:
+                    role = "🧑" if msg["role"] == "user" else "💕"
+                    preview = msg["content"][:40] + ("..." if len(msg["content"]) > 40 else "")
+                    print(f"  {Colors.DIM}{role} {preview}{Colors.RESET}")
+                print()
+        return True
+
+    elif cmd == "/regen":
+        await _handle_regen(user_id, persona_name)
+        return True
+
+    elif cmd.startswith("/search"):
+        keyword = cmd[8:].strip() if len(cmd) > 7 else ""
+        if not keyword:
+            print(f"\n{Colors.YELLOW}用法：/search <关键词>{Colors.RESET}")
+            print(f"  {Colors.DIM}示例：/search 生日{Colors.RESET}\n")
+        else:
+            results = chat_history.search_messages(user_id, keyword)
+            if not results:
+                print(f"\n{Colors.DIM}  未找到包含「{keyword}」的消息{Colors.RESET}\n")
+            else:
+                print(f"\n{Colors.YELLOW}🔍 搜索「{keyword}」找到 {len(results)} 条结果：{Colors.RESET}")
+                for r in results:
+                    idx = r["index"]
+                    msg = r["message"]
+                    before = r["before"]
+                    after = r["after"]
+                    role_icon = "🧑" if msg["role"] == "user" else "💕"
+                    ts = msg.get("timestamp", "")
+                    time_str = ""
+                    if ts:
+                        try:
+                            dt = datetime.fromisoformat(ts)
+                            time_str = f" {Colors.DIM}{dt.strftime('%m-%d %H:%M')}{Colors.RESET}"
+                        except (ValueError, TypeError):
+                            pass
+
+                    # 上下文
+                    if before:
+                        b_role = "🧑" if before["role"] == "user" else "💕"
+                        b_preview = before["content"][:30] + ("..." if len(before["content"]) > 30 else "")
+                        print(f"  {Colors.DIM}{b_role} {b_preview}{Colors.RESET}")
+
+                    # 匹配消息（高亮关键词）
+                    content = msg["content"]
+                    highlighted = content.replace(keyword, f"{Colors.YELLOW}{keyword}{Colors.RESET}")
+                    print(f"  {Colors.CYAN}[#{idx}]{Colors.RESET} {role_icon}{time_str} {highlighted}")
+
+                    if after:
+                        a_role = "🧑" if after["role"] == "user" else "💕"
+                        a_preview = after["content"][:30] + ("..." if len(after["content"]) > 30 else "")
+                        print(f"  {Colors.DIM}{a_role} {a_preview}{Colors.RESET}")
+                    print()
+        return True
+
+    elif cmd == "/mood":
+        messages = chat_history.get_messages(user_id)
+        user_msgs = [m for m in messages if m["role"] == "user" and "emotion" in m]
+        if not user_msgs:
+            print(f"\n{Colors.DIM}  还没有足够的情绪数据{Colors.RESET}\n")
+        else:
+            # 统计情绪分布
+            from collections import Counter
+            emotions = Counter(m["emotion"] for m in user_msgs)
+            total = len(user_msgs)
+
+            # 情绪 emoji 映射
+            emotion_icons = {
+                "happy": "😊", "sad": "😢", "angry": "😠", "neutral": "😐",
+                "excited": "🤩", "lonely": "🥺", "anxious": "😰", "love": "😍",
+            }
+
+            # 最近一条情绪
+            latest = user_msgs[-1]
+            latest_emoji = emotion_icons.get(latest["emotion"], "❓")
+            latest_intensity = latest.get("emotion_intensity", 0)
+
+            print(f"\n{Colors.YELLOW}🎭 情绪状态{Colors.RESET}")
+            print(f"  当前：{latest_emoji} {latest['emotion']}（强度 {latest_intensity:.0%}）")
+            print(f"  {Colors.DIM}基于最近 {total} 条消息{Colors.RESET}")
+            print()
+
+            # 分布条形图
+            print(f"  {Colors.CYAN}情绪分布：{Colors.RESET}")
+            for emotion, count in emotions.most_common():
+                icon = emotion_icons.get(emotion, "❓")
+                pct = count / total * 100
+                bar_len = int(pct / 5)
+                bar = "█" * bar_len + "░" * (20 - bar_len)
+                print(f"  {icon} {emotion:8s} {bar} {count}次 ({pct:.0f}%)")
+            print()
+        return True
+
     elif cmd == "/quit":
         return "quit"
 
@@ -409,6 +518,42 @@ def _handle_persona_sub(user_id: str, sub: str):
             if persona.catchphrases:
                 print(f"  口头禅：{'、'.join(persona.catchphrases)}")
             print(f"\n  {Colors.DIM}人设列表：/persona list | 切换：/persona switch <id>{Colors.RESET}\n")
+
+
+# ========== /regen 处理 ==========
+async def _handle_regen(user_id: str, persona_name: str):
+    """重新生成上一条 AI 回复"""
+    messages = chat_history.get_messages(user_id)
+    if not messages:
+        print(f"\n{Colors.DIM}  还没有对话记录{Colors.RESET}\n")
+        return
+
+    if messages[-1]["role"] != "assistant":
+        print(f"\n{Colors.YELLOW}⚠ 最后一条消息不是 AI 回复，无法重新生成{Colors.RESET}\n")
+        return
+
+    # 删除最后一条 assistant 消息
+    chat_history.delete_last_messages(user_id, 1)
+
+    # 找到最后一条 user 消息的 content
+    user_msgs = [m for m in messages if m["role"] == "user"]
+    if not user_msgs:
+        print(f"\n{Colors.YELLOW}⚠ 找不到对应的用户消息{Colors.RESET}\n")
+        return
+
+    last_user_content = user_msgs[-1]["content"]
+    print(f"\n  {Colors.DIM}🔄 重新生成中...{Colors.RESET}")
+
+    # 重新调用 handle_message，跳过用户消息存储
+    reply, rel_level = await handle_message(
+        user_id, last_user_content,
+        skip_user_message=True,
+    )
+
+    # 流式显示新回复
+    persona = persona_loader.get(_current_persona_id)
+    name = persona.name if persona else persona_name
+    print(f"\r  {name}: {reply}\n")
 
 
 # ========== 记忆子命令 ==========
@@ -545,11 +690,13 @@ async def handle_message(
     content: str,
     persona_id: str = "",
     on_token: Callable[[str], None] | None = None,
+    skip_user_message: bool = False,
 ) -> tuple[str, int]:
     """统一消息处理逻辑
 
     Args:
         on_token: 可选的 token 回调，用于流式输出。调用 on_token(token_str) 逐 token 显示。
+        skip_user_message: 跳过用户消息存储（用于 /regen 重新生成）
 
     Returns:
         (reply_text, relationship_level) 元组
@@ -578,11 +725,13 @@ async def handle_message(
     emotion = await llm_emotion_analyzer.analyze(content)
 
     # 存储格式化后的消息到聊天历史（含情感数据）
-    chat_history.add_message(
-        user_id, "user", formatted_content,
-        emotion=emotion.emotion.value,
-        emotion_intensity=emotion.intensity,
-    )
+    # /regen 时跳过，因为用户消息已经在历史中
+    if not skip_user_message:
+        chat_history.add_message(
+            user_id, "user", formatted_content,
+            emotion=emotion.emotion.value,
+            emotion_intensity=emotion.intensity,
+        )
     messages = chat_history.get_messages(user_id)
 
     rel_level = relationship_tracker.update(

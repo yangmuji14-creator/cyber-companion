@@ -145,6 +145,61 @@ class ChatHistoryStorage:
         data["short_memories"] = []
         self.save(user_id)
 
+    def delete_last_messages(self, user_id: str, count: int = 2) -> list[dict[str, Any]]:
+        """删除最后 N 条消息，返回被删除的消息列表
+
+        Args:
+            user_id: 用户 ID
+            count: 要删除的消息数量
+
+        Returns:
+            被删除的消息列表（从旧到新）
+        """
+        data = self.load(user_id)
+        messages = data["messages"]
+        if not messages:
+            return []
+
+        count = min(count, len(messages))
+        deleted = messages[-count:]
+        data["messages"] = messages[:-count]
+        self.save(user_id)
+        return deleted
+
+    def search_messages(
+        self, user_id: str, keyword: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """搜索包含关键词的消息
+
+        Args:
+            user_id: 用户 ID
+            keyword: 搜索关键词
+            limit: 最大返回数量
+
+        Returns:
+            匹配结果列表，每项包含 index, message, before, after
+        """
+        messages = self.get_messages(user_id)
+        if not messages or not keyword:
+            return []
+
+        keyword_lower = keyword.lower()
+        results = []
+        for i, msg in enumerate(messages):
+            content = msg.get("content", "")
+            if keyword_lower in content.lower():
+                before = messages[i - 1] if i > 0 else None
+                after = messages[i + 1] if i < len(messages) - 1 else None
+                results.append({
+                    "index": i,
+                    "message": msg,
+                    "before": before,
+                    "after": after,
+                })
+                if len(results) >= limit:
+                    break
+        return results
+
     def delete_user(self, user_id: str) -> bool:
         """删除用户所有聊天历史"""
         self._cache.pop(user_id, None)

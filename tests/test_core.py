@@ -636,6 +636,133 @@ def test_format_multi_message_whitespace():
     assert "[消息2] 第二条" in result
 
 
+# ========== ChatHistory 新功能测试 ==========
+
+def test_delete_last_messages():
+    """测试删除最后 N 条消息"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        storage.add_message("user1", "user", "你好")
+        storage.add_message("user1", "assistant", "你好呀~")
+        storage.add_message("user1", "user", "今天天气怎么样")
+        storage.add_message("user1", "assistant", "今天阳光明媚呢~")
+
+        # 删除最后 2 条
+        deleted = storage.delete_last_messages("user1", 2)
+        assert len(deleted) == 2
+        assert deleted[0]["role"] == "user"
+        assert deleted[0]["content"] == "今天天气怎么样"
+        assert deleted[1]["role"] == "assistant"
+        assert deleted[1]["content"] == "今天阳光明媚呢~"
+
+        # 验证剩余消息
+        messages = storage.get_messages("user1")
+        assert len(messages) == 2
+        assert messages[0]["content"] == "你好"
+
+
+def test_delete_last_messages_empty():
+    """测试空历史删除不报错"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        deleted = storage.delete_last_messages("user1", 2)
+        assert deleted == []
+
+
+def test_delete_last_messages_count_exceeds():
+    """测试删除数量超过现有消息数"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        storage.add_message("user1", "user", "你好")
+
+        # 请求删除 5 条，但只有 1 条
+        deleted = storage.delete_last_messages("user1", 5)
+        assert len(deleted) == 1
+        assert deleted[0]["content"] == "你好"
+
+        messages = storage.get_messages("user1")
+        assert len(messages) == 0
+
+
+def test_search_messages_basic():
+    """测试搜索消息"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        storage.add_message("user1", "user", "我的生日是5月20日")
+        storage.add_message("user1", "assistant", "记住啦~")
+        storage.add_message("user1", "user", "今天天气不错")
+        storage.add_message("user1", "assistant", "是呀阳光明媚")
+
+        results = storage.search_messages("user1", "生日")
+        assert len(results) == 1
+        assert results[0]["index"] == 0
+        assert "生日" in results[0]["message"]["content"]
+        # 应该有上下文
+        assert results[0]["after"] is not None
+
+
+def test_search_messages_no_match():
+    """测试搜索无匹配"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        storage.add_message("user1", "user", "你好")
+
+        results = storage.search_messages("user1", "不存在的关键词")
+        assert results == []
+
+
+def test_search_messages_empty_history():
+    """测试空历史搜索"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        results = storage.search_messages("user1", "test")
+        assert results == []
+
+
+def test_search_messages_limit():
+    """测试搜索结果限制"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        for i in range(10):
+            storage.add_message("user1", "user", f"第{i}条消息包含关键词")
+
+        results = storage.search_messages("user1", "关键词", limit=3)
+        assert len(results) == 3
+
+
+def test_search_messages_context():
+    """测试搜索结果包含上下文"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        storage.add_message("user1", "user", "第一条")
+        storage.add_message("user1", "assistant", "第二条")
+        storage.add_message("user1", "user", "第三条包含目标词")
+        storage.add_message("user1", "assistant", "第四条")
+
+        results = storage.search_messages("user1", "目标词")
+        assert len(results) == 1
+        r = results[0]
+        assert r["index"] == 2
+        assert r["before"]["content"] == "第二条"
+        assert r["after"]["content"] == "第四条"
+
+
 # ========== 运行所有测试 ==========
 
 if __name__ == "__main__":
