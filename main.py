@@ -83,9 +83,11 @@ from core.persona import PersonaLoader, PromptBuilder
 from core.emotion import EmotionAnalyzer, EmotionEnhancer, MessageSegmenter, LLMEmotionAnalyzer
 from core.relationship import RelationshipTracker
 from core.proactive import ProactiveMessenger
+from core.dialogue import DialogueThinker, ConsistencyGuard, TopicTracker
+from core.multimodal import ImageHandler, StickerReplier
 
 registry = init_registry(CONFIG_DIR / "settings.json")
-memory_mgr = MemoryManager(str(ROOT / "data"))
+memory_mgr = MemoryManager(str(ROOT / "data"), llm=None)
 persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
 emotion_analyzer = EmotionAnalyzer()  # 关键词分析（快速）
 llm_emotion_analyzer = LLMEmotionAnalyzer()  # LLM 辅助（会在首次对话时初始化）
@@ -95,6 +97,15 @@ proactive = ProactiveMessenger(
     persona_loader, memory_mgr, relationship_tracker,
     config=ADVANCED,
 )
+
+# Phase 2: 对话质量提升组件
+dialogue_thinker = DialogueThinker()
+consistency_guard = ConsistencyGuard()
+topic_tracker = TopicTracker()
+
+# Phase 4: 多模态组件
+image_handler = ImageHandler()
+sticker_replier = StickerReplier()
 
 # 后台任务集合（防止 asyncio.create_task 的 task 被 GC）
 _background_tasks: set = set()
@@ -230,6 +241,7 @@ COMMANDS = {
     "/regen": "让 AI 重新生成上一条回复",
     "/search": "搜索聊天历史（/search <关键词>）",
     "/mood": "查看当前情绪状态",
+    "/img": "发送图片（/img <图片路径> [文字说明]）",
     "/quit": "退出聊天",
 }
 
@@ -456,6 +468,10 @@ async def handle_command(cmd: str, user_id: str, persona_name: str) -> bool:
             print()
         return True
 
+    elif cmd.startswith("/img"):
+        await _handle_img_command(user_id, cmd, persona_name)
+        return True
+
     elif cmd == "/quit":
         return "quit"
 
@@ -518,6 +534,75 @@ def _handle_persona_sub(user_id: str, sub: str):
             if persona.catchphrases:
                 print(f"  口头禅：{'、'.join(persona.catchphrases)}")
             print(f"\n  {Colors.DIM}人设列表：/persona list | 切换：/persona switch <id>{Colors.RESET}\n")
+
+
+# ========== /img 图片处理 ==========
+async def _handle_img_command(user_id: str, cmd: str, persona_name: str):
+    """处理 /img 命令：发送图片给 AI"""
+    image_path, user_text = ImageHandler.parse_img_command(cmd)
+
+    if not image_path:
+        print(f"\n{Colors.YELLOW}用法：/img <图片路径> [文字说明]{Colors.RESET}")
+        print(f"  {Colors.DIM}示例：/img C:\\photos\\cat.jpg 看看这只猫{Colors.RESET}")
+        print(f"  {Colors.DIM}支持格式：jpg, png, gif, webp, bmp{Colors.RESET}\n")
+        return
+
+    # 加载图片
+    result = image_handler.load_image(image_path)
+    if not result:
+        print(f"\n{Colors.RED}❌ 无法加载图片：{image_path}{Colors.RESET}")
+        print(f"  {Colors.DIM}请检查文件路径和格式（支持 jpg/png/gif/webp/bmp，最大 10MB）{Colors.RESET}\n")
+        return
+
+    b64_data, mime_type = result
+    print(f"\n  {Colors.DIM}📸 图片已加载，正在识别...{Colors.RESET}")
+
+    # 获取 LLM 和人设
+    if not registry.available_models:
+        print(f"\n{Colors.RED}❌ 没有可用的模型{Colors.RESET}\n")
+        return
+
+    llm = registry.get()
+
+    # 构建 vision 消息
+    vision_messages = image_handler.build_vision_messages(b64_data, mime_type, user_text)
+
+    # 获取人设信息用于 system prompt
+    persona = persona_loader.get(_current_persona_id)
+    vision_prompt = image_handler.get_vision_prompt()
+    if persona:
+        vision_prompt = f"你是{persona.name}，{persona.age}岁。{vision_prompt}"
+
+    try:
+        # 尝试用 vision API 调用
+        response = await llm.chat(
+            messages=vision_messages,
+            system_prompt=vision_prompt,
+            max_tokens=500,
+        )
+        reply = response.content
+
+        # 增强回复
+        from core.emotion.analyzer import EmotionAnalyzer
+        emotion = EmotionAnalyzer.analyze(reply)
+        reply = EmotionEnhancer.enhance_reply(reply, emotion)
+        reply = sticker_replier.enhance_reply(reply, emotion)
+
+        # 显示回复
+        persona_name_display = persona.name if persona else persona_name
+        print(f"\n{Colors.MAGENTA}{persona_name_display}:{Colors.RESET} {reply}")
+
+        # 存储到聊天历史
+        chat_history.add_message(user_id, "user", f"[图片] {user_text}" if user_text else "[发送了一张图片]")
+        chat_history.add_message(user_id, "assistant", reply)
+
+    except Exception as e:
+        logger.error(f"Image vision failed: {e}")
+        # 如果 vision 不支持，回退到纯文本描述
+        fallback_text = user_text if user_text else "我给你发了一张图片，但你好像看不了图片呢"
+        print(f"\n{Colors.YELLOW}⚠ 当前模型可能不支持图片识别{Colors.RESET}")
+        print(f"  {Colors.DIM}错误：{str(e)[:80]}{Colors.RESET}")
+        print(f"  {Colors.DIM}提示：需要支持 vision 的模型（如 GPT-4o、Claude 3.5 等）{Colors.RESET}\n")
 
 
 # ========== /regen 处理 ==========
@@ -617,7 +702,7 @@ async def _handle_memories_sub(user_id: str, sub: str):
         level = None
         if len(add_parts) > 1 and add_parts[1].isdigit():
             level = max(1, min(5, int(add_parts[1])))
-        memory = memory_mgr.add_memory(user_id, content, level=level)
+        memory = memory_mgr.add_memory_sync(user_id, content, level=level)
         if memory:
             print(f"\n{Colors.GREEN}✅ 已添加记忆 {memory.id}（等级 {memory.level}）：{memory.content[:40]}{Colors.RESET}\n")
         else:
@@ -714,15 +799,21 @@ async def handle_message(
     if not persona:
         return "我找不到我的人设了 (´;ω;`)", 50
 
-    # 首次使用时初始化 LLM 情感分析器
+    # 首次使用时初始化 LLM 相关组件
     if llm_emotion_analyzer._llm is None:
         llm_emotion_analyzer._llm = llm
+    memory_mgr.set_llm(llm)
+    dialogue_thinker.set_llm(llm)
+    consistency_guard.set_llm(llm)
 
     # 格式化多消息：识别是否是多条合并的消息
     formatted_content, msg_count = _format_multi_message(content)
 
-    # 情感分析用原始内容（保留每条消息的情感）— 必须在 add_message 之前
-    emotion = await llm_emotion_analyzer.analyze(content)
+    # Phase 3: 情感分析（带上下文感知 + 情感轨迹追踪）
+    recent_msgs = chat_history.get_messages(user_id)
+    emotion = await llm_emotion_analyzer.analyze(content, recent_msgs)
+    emotion_trajectory = llm_emotion_analyzer.trajectory
+    emotion_trend = emotion_trajectory.get_trend()
 
     # 存储格式化后的消息到聊天历史（含情感数据）
     # /regen 时跳过，因为用户消息已经在历史中
@@ -748,8 +839,32 @@ async def handle_message(
     if relevant_memories:
         relevant_context = "\n【与当前话题相关的记忆】\n" + "\n".join(f"- {m}" for m in relevant_memories)
 
+    # Phase 2: Chain-of-Thought 思考（仅对复杂消息）
+    thought = await dialogue_thinker.think(content, messages)
+    thought_instruction = DialogueThinker.format_thought_as_instruction(thought) if thought else ""
+
+    # Phase 2: 话题追踪
+    topic_tracker.update(content)
+    topic_context = topic_tracker.get_topic_context()
+
     # 构建 extra_instructions，多消息时增加上下文说明
     extra_instructions = f"时间：{time_context}\n用户当前情绪：{emotion.emotion.value}（强度 {emotion.intensity}）"
+
+    # Phase 3: 情感轨迹驱动回复策略
+    if emotion_trend == "declining":
+        extra_instructions += "\n⚠ 用户情绪近期在恶化，请更加关心和安慰，多用温暖的语气。"
+    elif emotion_trend == "improving":
+        extra_instructions += "\n✨ 用户情绪近期在好转，可以适当跟着开心，但不要过度。"
+    if emotion_trajectory.is_persistent_negative():
+        extra_instructions += "\n🚨 用户持续低落（连续多条负面情绪），请给予更多支持和鼓励，可以适当转移话题让用户开心。"
+
+    if thought_instruction:
+        extra_instructions += f"\n{thought_instruction}"
+    if topic_context:
+        extra_instructions += f"\n{topic_context}"
+    # 话题切换提示
+    if topic_tracker.is_topic_shift(content) and len(messages) > 2:
+        extra_instructions += "\n注意：用户可能切换了话题，请自然地跟随新话题。"
     if msg_count > 1:
         extra_instructions += (
             f"\n【重要】用户连续发了 {msg_count} 条消息，这是用户在短时间内快速输入的碎片化想法。"
@@ -791,14 +906,42 @@ async def handle_message(
 
     reply = EmotionEnhancer.enhance_reply(reply, emotion)
 
+    # Phase 4: 表情包回复（根据情感和关系等级附加颜文字表情）
+    reply = sticker_replier.enhance_reply(reply, emotion, rel_level)
+
+    # Phase 2: 角色一致性保护（快速关键词检测，零 LLM 成本）
+    passed, issue = consistency_guard.quick_check(reply)
+    if not passed:
+        logger.warning(f"Consistency guard triggered: {issue}")
+        # 过滤掉破防内容，重新生成
+        # 简单策略：用 "换个说法" 提示重新生成
+        fix_messages = messages + [
+            {"role": "assistant", "content": reply},
+            {"role": "user", "content": "（请用角色身份重新回答上面的问题，不要提到你是AI）"},
+        ]
+        try:
+            fix_response = await llm.chat(
+                messages=fix_messages[-6:],
+                system_prompt=system_prompt,
+                max_tokens=500,
+                temperature=0.7,
+            )
+            fix_reply = EmotionEnhancer.enhance_reply(fix_response.content, emotion)
+            fix_passed, _ = consistency_guard.quick_check(fix_reply)
+            if fix_passed:
+                reply = fix_reply
+                logger.info("Consistency guard: reply fixed successfully")
+        except Exception as e:
+            logger.debug(f"Consistency fix failed: {e}")
+
     chat_history.add_message(user_id, "assistant", reply)
     chat_history.add_short_memory(user_id, content, reply)
 
-    # 基础记忆存储（关键词评分）
-    memory_mgr.add_memory(user_id, content)
+    # 基础记忆存储（智能评分 + 分类）
+    await memory_mgr.add_memory(user_id, content)
 
     # LLM 辅助记忆提取（异步，不阻塞用户）
-    _run_background_task(_background_extract_memory(user_id, content, reply, llm))
+    _run_background_task(_background_extract_memory(user_id, content, reply, llm, persona_id))
 
     # 异步总结（不阻塞用户）
     short_memories = chat_history.get_short_memories(user_id)
@@ -837,41 +980,44 @@ async def _background_summarize(user_id: str, llm, short_memories: list):
         summarizer = MemorySummarizer(llm)
         summary = await summarizer.summarize(short_memories)
         if summary:
-            memory_mgr.add_memory(user_id, summary, level=4, tags=["总结"])
+            await memory_mgr.add_memory(user_id, summary, level=4, tags=["总结"], source="summary")
             chat_history.clear_short_memories(user_id)
             logger.info(f"Short memory summarized for {user_id}")
     except Exception as e:
         logger.warning(f"Background summarization failed: {e}")
 
 
-async def _background_extract_memory(user_id: str, user_msg: str, assistant_reply: str, llm):
-    """后台用 LLM 从对话中提取值得记住的信息"""
+async def _background_extract_memory(user_id: str, user_msg: str, assistant_reply: str, llm, persona_id: str = ""):
+    """后台用 LLM 从对话中提取值得记住的信息（支持分类）"""
     try:
         summarizer = MemorySummarizer(llm)
         extracted = await summarizer.extract_memory(user_msg, assistant_reply)
         if extracted and extracted.get("content"):
             content = extracted["content"]
             importance = extracted.get("importance", 3)
+            category = extracted.get("category", None)
             # 只有重要度 >= 2 才存储
             if importance >= 2:
-                memory_mgr.add_memory(user_id, content, level=importance, tags=["自动提取"])
+                await memory_mgr.add_memory(
+                    user_id, content, level=importance,
+                    tags=["自动提取"], category=category,
+                )
                 logger.info(f"Auto-extracted memory [{importance}★]: {content[:30]}...")
     except Exception as e:
         logger.debug(f"Background memory extraction failed: {e}")
 
 
 async def _retrieve_relevant_memories(user_id: str, query: str, llm) -> list[str]:
-    """检索与当前消息相关的记忆"""
+    """检索与当前消息相关的记忆（多路召回 + LLM 重排序）"""
     try:
-        # 获取所有记忆的内容
+        # 获取记忆对象（传递给 summarizer 做智能检索）
         all_memories = memory_mgr.get_memories(user_id, limit=30)
         if not all_memories:
             return []
 
-        memory_texts = [m.content for m in all_memories]
-
         summarizer = MemorySummarizer(llm)
-        relevant = await summarizer.retrieve_relevant(query, memory_texts, limit=3)
+        # 传递 Memory 对象，支持多路召回（关键词 + 分类 + 热度）
+        relevant = await summarizer.retrieve_relevant(query, all_memories, limit=3)
         return relevant
     except Exception as e:
         logger.debug(f"Memory retrieval failed: {e}")

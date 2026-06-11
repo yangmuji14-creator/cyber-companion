@@ -1,9 +1,9 @@
 from .analyzer import EmotionAnalyzer, EmotionType, EmotionResult
 from .expression import MessageSegmenter, EmotionEnhancer, SegmentedMessage
-from .llm_analyzer import LLMEmotionAnalyzer
+from .llm_analyzer import LLMEmotionAnalyzer, EmotionTrajectory
 
 __all__ = [
     "EmotionAnalyzer", "EmotionType", "EmotionResult",
     "MessageSegmenter", "EmotionEnhancer", "SegmentedMessage",
-    "LLMEmotionAnalyzer",
+    "LLMEmotionAnalyzer", "EmotionTrajectory",
 ]
