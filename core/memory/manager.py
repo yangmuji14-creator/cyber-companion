@@ -1,6 +1,6 @@
-"""记忆管理器 — 核心 CRUD + 向量检索
+"""记忆管理器 — 核心 CRUD + 智能评分 + 向量检索 + 冲突检测
 
-将 JSON 存储（元数据）和向量存储（语义搜索）合并为一个接口。
+集成双层评分（规则 + LLM）、结构化分类、语义向量搜索、记忆冲突检测。
 嵌入器不可用时自动降级为关键词排序。
 """
 
@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from .models import Memory
-from .scorer import MemoryScorer
+from .models import Memory, MemoryCategory
+from .scorer import MemoryScorer, LLMMemoryScorer
 from .storage import MemoryStorage
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 class MemoryManager:
     """记忆管理器
 
-    同时管理 JSON 存储（元数据/重要度/CRUD）和
+    同时管理 JSON 存储（元数据/重要度/CRUD/分类/冲突）和
     向量存储（语义嵌入/Top-K 搜索），对外提供统一接口。
     """
 
@@ -30,57 +30,146 @@ class MemoryManager:
         self,
         data_dir: str,
         max_memories: int = 500,
+        llm=None,
         embedder: "BaseEmbedder | None" = None,
         vector_store: "VectorStore | None" = None,
     ):
         self._storage = MemoryStorage(data_dir)
         self._scorer = MemoryScorer()
+        self._llm_scorer = LLMMemoryScorer(llm)
         self._max_memories = max_memories
         self._embedder = embedder
         self._vector_store = vector_store
 
     # ---- 增 ----
 
-    def add_memory(
+    def set_llm(self, llm) -> None:
+        """延迟设置 LLM（用于首次对话时初始化）"""
+        self._llm_scorer._llm = llm
+
+    async def add_memory(
         self,
         user_id: str,
         content: str,
         level: int | None = None,
         tags: list[str] | None = None,
+        category: str | None = None,
+        source: str = "auto",
     ) -> Memory | None:
-        """添加一条记忆（JSON 存储 + 向量索引）
+        """添加一条记忆（LLM 评分 + 自动分类 + 向量索引）
 
-        自动评分 + 自动生成嵌入向量。
+        Args:
+            user_id: 用户 ID
+            content: 记忆内容
+            level: 重要度（1-5），不指定则自动评分
+            tags: 标签列表
+            category: 记忆分类，不指定则自动分类
+            source: 来源标识
+
+        Returns:
+            创建的 Memory 对象，如果评分太低则返回 None
         """
         if level is None:
-            level = self._scorer.score(content)
+            level, confidence = self._scorer.score(content)
+            if self._scorer.needs_llm_evaluation(content) and self._llm_scorer._llm:
+                llm_result = await self._llm_scorer.evaluate(content)
+                if llm_result:
+                    llm_level, llm_category = llm_result
+                    level = llm_level
+                    if category is None:
+                        category = llm_category
 
         if level < 2:
             logger.debug(f"Skipping low-importance memory: {content[:30]}...")
             return None
 
+        if category is None:
+            category = Memory.classify(content)
+
         memory = Memory(
             id=f"mem_{uuid.uuid4().hex[:8]}",
             content=content,
             level=level,
+            category=category,
             tags=tags or [],
+            source=source,
         )
 
-        # JSON 存储（元数据）
         memories = self._storage.load(user_id)
+
+        # 冲突检测
+        conflict = self._detect_conflict(memory, memories)
+        if conflict:
+            conflict.superseded_by = memory.id
+            memory.related_memory_ids = [conflict.id]
+            logger.info(
+                f"Memory conflict: '{conflict.content[:30]}' "
+                f"superseded by '{memory.content[:30]}'"
+            )
+
+        memories.append(memory)
+
+        if len(memories) > self._max_memories:
+            memories = self._cleanup_old_memories(memories)
+        self._storage.save(user_id, memories)
+
+        # 向量索引
+        self._index_memory(user_id, memory)
+
+        logger.info(
+            f"Added memory [{memory.id}] level={level} cat={category}: "
+            f"{content[:30]}..."
+        )
+        return memory
+
+    def add_memory_sync(
+        self,
+        user_id: str,
+        content: str,
+        level: int | None = None,
+        tags: list[str] | None = None,
+        category: str | None = None,
+        source: str = "auto",
+    ) -> Memory | None:
+        """同步版本 add_memory（仅规则评分，不调 LLM + 向量索引）"""
+        if level is None:
+            level, _ = self._scorer.score(content)
+        if level < 2:
+            logger.debug(f"Skipping low-importance memory: {content[:30]}...")
+            return None
+        if category is None:
+            category = Memory.classify(content)
+
+        memory = Memory(
+            id=f"mem_{uuid.uuid4().hex[:8]}",
+            content=content,
+            level=level,
+            category=category,
+            tags=tags or [],
+            source=source,
+        )
+
+        memories = self._storage.load(user_id)
+        conflict = self._detect_conflict(memory, memories)
+        if conflict:
+            conflict.superseded_by = memory.id
+            memory.related_memory_ids = [conflict.id]
+
         memories.append(memory)
         if len(memories) > self._max_memories:
             memories = self._cleanup_old_memories(memories)
         self._storage.save(user_id, memories)
 
-        # 向量索引（异步嵌入 + SQLite 存储）
-        self._index_memory_async(user_id, memory)
+        self._index_memory(user_id, memory)
 
-        logger.info(f"Added memory [{memory.id}] level={level}: {content[:30]}...")
+        logger.info(
+            f"Added memory [{memory.id}] level={level} cat={category}: "
+            f"{content[:30]}..."
+        )
         return memory
 
-    def _index_memory_async(self, user_id: str, memory: Memory):
-        """生成嵌入并写入向量库（同步调用，sentence-transformers 是同步库）"""
+    def _index_memory(self, user_id: str, memory: Memory):
+        """生成嵌入并写入向量库（同步，sentence-transformers 是同步库）"""
         if not self._embedder or not self._vector_store or not self._embedder.available:
             return
         try:
@@ -93,6 +182,37 @@ class MemoryManager:
         except Exception as e:
             logger.debug(f"Vector indexing skipped for [{memory.id}]: {e}")
 
+    def _detect_conflict(
+        self, new_memory: Memory, existing: list[Memory]
+    ) -> Memory | None:
+        """检测新记忆与已有记忆的冲突"""
+        content = new_memory.content
+        antonym_pairs = [
+            ("喜欢", "讨厌"), ("爱", "恨"), ("开心", "难过"),
+            ("养", "不养"), ("有", "没有"), ("是", "不是"),
+            ("会", "不会"), ("想", "不想"), ("去", "不去"),
+        ]
+        for mem in existing:
+            if mem.is_superseded:
+                continue
+            if mem.category != new_memory.category:
+                continue
+            mem_keywords = set(mem.content)
+            new_keywords = set(content)
+            overlap = len(mem_keywords & new_keywords)
+            if overlap < 4:
+                continue
+            for pos, neg in antonym_pairs:
+                if (pos in content and neg in mem.content) or \
+                   (neg in content and pos in mem.content):
+                    return mem
+            if new_memory.category == "personal":
+                if ("叫" in content and "叫" in mem.content) or \
+                   ("是" in content and "是" in mem.content):
+                    if content != mem.content:
+                        return mem
+        return None
+
     # ---- 查 ----
 
     def get_memories(
@@ -101,27 +221,44 @@ class MemoryManager:
         level_min: int = 1,
         level_max: int = 5,
         limit: int = 20,
+        category: str | None = None,
+        include_superseded: bool = False,
     ) -> list[Memory]:
-        """获取用户记忆，按重要度 + 最近访问排序"""
+        """获取用户记忆，按重要度和最近访问排序"""
         memories = self._storage.load(user_id)
-        filtered = [m for m in memories if level_min <= m.level <= level_max]
+        filtered = []
+        for m in memories:
+            if not include_superseded and m.is_superseded:
+                continue
+            if not (level_min <= m.level <= level_max):
+                continue
+            if category and m.category != category:
+                continue
+            filtered.append(m)
         filtered.sort(key=lambda m: (m.level, m.last_accessed), reverse=True)
         return filtered[:limit]
 
     def list_all_memories(
         self, user_id: str, offset: int = 0, limit: int = 10
     ) -> tuple[list[Memory], int]:
-        """分页获取用户全部记忆"""
+        """分页获取全部记忆（不含已被取代的）"""
         memories = self._storage.load(user_id)
-        memories.sort(key=lambda m: (m.level, m.last_accessed), reverse=True)
-        total = len(memories)
-        page = memories[offset: offset + limit]
+        active = [m for m in memories if not m.is_superseded]
+        active.sort(key=lambda m: (m.level, m.last_accessed), reverse=True)
+        total = len(active)
+        page = active[offset: offset + limit]
         return page, total
 
-    def search_memories(self, user_id: str, keyword: str, limit: int = 10) -> list[Memory]:
-        """关键词搜索记忆"""
+    def search_memories(
+        self, user_id: str, keyword: str, limit: int = 10
+    ) -> list[Memory]:
+        """关键词搜索记忆（排除已被取代的）"""
         memories = self._storage.load(user_id)
-        results = [m for m in memories if keyword in m.content or keyword in m.tags]
+        results = [
+            m for m in memories
+            if not m.is_superseded
+            and (keyword in m.content or keyword in m.tags)
+        ]
         for m in results:
             m.touch()
         if results:
@@ -129,12 +266,7 @@ class MemoryManager:
         return results[:limit]
 
     def semantic_search(self, user_id: str, query: str, top_k: int = 5) -> list[dict]:
-        """语义搜索记忆（向量 Top-K）
-
-        需要嵌入器可用，否则返回空列表。
-        Returns:
-            [{memory_id, content, score, created_at}, ...]
-        """
+        """语义搜索记忆（向量 Top-K）"""
         if not self._embedder or not self._vector_store or not self._embedder.available:
             return []
         try:
@@ -164,8 +296,8 @@ class MemoryManager:
     # ---- 改 ----
 
     def update_memory(
-        self, user_id: str, memory_id: str,
-        content: str | None = None, level: int | None = None,
+        self, user_id: str, memory_id: str, content: str | None = None,
+        level: int | None = None, category: str | None = None,
     ) -> Memory | None:
         """更新一条记忆（内容变更时重新生成嵌入）"""
         memories = self._storage.load(user_id)
@@ -175,26 +307,33 @@ class MemoryManager:
                     m.content = content
                 if level is not None:
                     m.level = level
+                if category is not None:
+                    m.category = category
                 m.last_accessed = datetime.now().isoformat()
                 self._storage.save(user_id, memories)
-                # 内容更新时重建向量索引
                 if content is not None and self._embedder and self._vector_store:
-                    self._index_memory_async(user_id, m)
+                    self._index_memory(user_id, m)
                 logger.info(f"Updated memory {memory_id}")
                 return m
         return None
 
     # ---- 上下文 ----
 
+    CATEGORY_NAMES = {
+        "personal": "个人信息",
+        "emotion": "情感",
+        "event": "事件",
+        "preference": "偏好",
+        "relationship": "关系",
+        "opinion": "观点",
+    }
+
     def get_context_prompt(self, user_id: str, limit: int = 8,
                            query: str | None = None) -> str:
         """生成记忆上下文 prompt
 
-        有 query 时优先用语义搜索（找与 query 相关的记忆），
-        否则按重要度排序取 Top-N。
-
-        Returns:
-            格式化的记忆字符串，用于 system prompt
+        有 query 时优先语义搜索，否则按重要度排序。
+        包含分类标签。
         """
         # 语义搜索路径
         if query and self._embedder and self._embedder.available:
@@ -210,11 +349,22 @@ class MemoryManager:
         if not memories:
             return ""
 
-        lines = ["【关于你的记忆】"]
+        lines = ["【你对这个用户的记忆】"]
         for m in memories:
             stars = "⭐" * m.level
-            lines.append(f"- {stars} {m.content}")
+            cat = self.CATEGORY_NAMES.get(m.category, "")
+            cat_tag = f"[{cat}]" if cat else ""
+            lines.append(f"- {stars} {cat_tag} {m.content}")
+
         return "\n".join(lines)
+
+    def get_memories_by_category(
+        self, user_id: str, category: str
+    ) -> list[Memory]:
+        """按分类获取记忆"""
+        return self.get_memories(
+            user_id, category=category, include_superseded=False
+        )
 
     # ---- 导入导出 ----
 
@@ -224,25 +374,27 @@ class MemoryManager:
         new_memories = [Memory.from_dict(d) for d in memories_data]
         existing.extend(new_memories)
         self._storage.save(user_id, existing)
-        # 异步索引新记忆
         for m in new_memories:
-            self._index_memory_async(user_id, m)
+            self._index_memory(user_id, m)
         logger.info(f"Imported {len(new_memories)} memories for user {user_id}")
         return len(new_memories)
 
-    def export_memories(self, user_id: str) -> list[dict]:
-        """导出所有记忆"""
-        return [m.to_dict() for m in self._storage.load(user_id)]
+    def export_memories(self, user_id: str) -> list[Memory]:
+        """导出所有记忆（不含已被取代的）"""
+        memories = self._storage.load(user_id)
+        return [m for m in memories if not m.is_superseded]
 
     # ---- 内部 ----
 
     def _cleanup_old_memories(self, memories: list[Memory]) -> list[Memory]:
-        """清理低重要度旧记忆（同时清理向量库）"""
-        memories.sort(key=lambda m: (m.level, m.last_accessed), reverse=True)
-        kept = memories[: self._max_memories]
-        removed_ids = {m.id for m in memories[self._max_memories:]}
-        if removed_ids and self._vector_store:
-            # 给个用户ID占位，逐个删除
-            pass  # 由调用方在 save 时处理
-        logger.info(f"Cleaned up {len(memories) - len(kept)} old memories")
+        """清理旧记忆：已取代的优先清理，其余按重要度"""
+        superseded = [m for m in memories if m.is_superseded]
+        active = [m for m in memories if not m.is_superseded]
+        target = self._max_memories
+        if len(active) <= target:
+            return active + superseded
+        active.sort(key=lambda m: (m.level, m.last_accessed), reverse=True)
+        kept = active[:target]
+        removed = len(active) - len(kept)
+        logger.info(f"Cleaned up {removed} old memories")
         return kept

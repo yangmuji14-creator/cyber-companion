@@ -1,4 +1,10 @@
-"""记忆总结器 - 参考 My-Dream-Moments 的短期→长期记忆机制"""
+"""记忆总结器 + 智能检索
+
+机制：
+1. 短期记忆：保存最近的原始对话（用户+AI）
+2. 当短期记忆达到阈值，用 LLM 总结为长期记忆
+3. 检索：多路召回（关键词 + 标签 + 分类） + LLM 重排序
+"""
 
 from loguru import logger
 
@@ -78,7 +84,7 @@ class MemorySummarizer:
             assistant_reply: AI 回复
 
         Returns:
-            {"content": "提取的信息", "importance": 1-5} 或 None
+            {"content": "提取的信息", "importance": 1-5, "category": "..."} 或 None
         """
         prompt = f"""分析这段对话，判断是否包含值得长期记住的信息。
 
@@ -86,7 +92,7 @@ class MemorySummarizer:
 助手: {assistant_reply}
 
 如果包含值得记住的信息（个人信息、偏好、重要事件、情感表达等），返回 JSON：
-{{"content": "提取的信息", "importance": 1-5}}
+{{"content": "提取的信息", "importance": 1-5, "category": "personal|emotion|event|preference|relationship|opinion|other"}}
 
 重要度说明：
 5 = 核心信息（生日、名字、关系里程碑）
@@ -139,48 +145,179 @@ class MemorySummarizer:
             logger.error(f"Memory extraction failed: {e}")
             return None
 
-    async def retrieve_relevant(self, query: str, memories: list[str], limit: int = 3) -> list[str]:
-        """用 LLM 从记忆中检索相关条目（借鉴 My-Dream-Moments）
+    async def retrieve_relevant(
+        self, query: str, memories: list, limit: int = 5
+    ) -> list[str]:
+        """智能检索相关记忆：多路召回 + LLM 重排序
 
         Args:
             query: 用户当前消息
-            memories: 长期记忆列表
+            memories: 记忆对象列表（Memory 实例或 content 字符串）
             limit: 返回条数上限
 
         Returns:
-            相关记忆列表
+            相关记忆内容列表
         """
         if not memories:
             return []
 
-        memory_text = "\n".join(memories[-20:])  # 只取最近 20 条
+        # 处理输入：兼容 Memory 对象和字符串
+        if hasattr(memories[0], 'content'):
+            # Memory 对象
+            memory_items = [
+                {
+                    "content": m.content,
+                    "category": getattr(m, 'category', 'other'),
+                    "level": getattr(m, 'level', 1),
+                    "access_count": getattr(m, 'access_count', 0),
+                }
+                for m in memories
+            ]
+        else:
+            # 纯字符串列表（兼容旧接口）
+            memory_items = [
+                {"content": m, "category": "other", "level": 1, "access_count": 0}
+                for m in memories
+            ]
 
-        prompt = f"""请从以下记忆中找到与"{query}"最相关的条目，按相关性排序返回最多{limit}条。
+        # === 第一阶段：多路召回 ===
+        recalled = self._multi_path_recall(query, memory_items, recall_limit=15)
+
+        if not recalled:
+            return []
+
+        if len(recalled) <= limit:
+            return [item["content"] for item in recalled]
+
+        # === 第二阶段：LLM 重排序 ===
+        if self._llm:
+            try:
+                ranked = await self._llm_rerank(query, recalled, limit)
+                if ranked:
+                    return ranked
+            except Exception as e:
+                logger.debug(f"LLM rerank failed, falling back to rule-based: {e}")
+
+        # 回退：按 level 降序取前 N
+        recalled.sort(key=lambda x: x.get("level", 1), reverse=True)
+        return [item["content"] for item in recalled[:limit]]
+
+    def _multi_path_recall(
+        self, query: str, memory_items: list[dict], recall_limit: int = 15
+    ) -> list[dict]:
+        """多路召回：关键词 + 分类 + 热度
+
+        Args:
+            query: 查询文本
+            memory_items: 记忆条目列表
+            recall_limit: 召回数量上限
+
+        Returns:
+            召回的记忆条目（可能有重复，需去重）
+        """
+        seen_ids: set[str] = set()
+        recalled: list[dict] = []
+
+        def _add(item: dict, match_type: str):
+            content = item["content"]
+            if content not in seen_ids:
+                seen_ids.add(content)
+                item_copy = dict(item)
+                item_copy["match_type"] = match_type
+                recalled.append(item_copy)
+
+        # 1. 关键词召回：query 中的词出现在记忆中
+        query_chars = set(query.replace(" ", "").replace("？", "").replace("。", ""))
+        for item in memory_items:
+            content = item["content"]
+            content_chars = set(content)
+            overlap = len(query_chars & content_chars)
+            if overlap >= 2:  # 至少 2 个字符匹配
+                _add(item, "keyword")
+
+        # 2. 分类召回：根据 query 意图匹配分类
+        category_hints = {
+            "personal": ["叫什么", "名字", "生日", "多大", "住哪", "在哪"],
+            "emotion": ["开心", "难过", "喜欢", "讨厌", "心情", "感觉"],
+            "event": ["什么时候", "去了", "做了", "发生", "经历"],
+            "preference": ["喜欢什么", "爱吃什么", "习惯", "爱好"],
+            "relationship": ["家人", "朋友", "爸妈", "男朋友", "女朋友"],
+        }
+        for category, hints in category_hints.items():
+            if any(hint in query for hint in hints):
+                for item in memory_items:
+                    if item.get("category") == category:
+                        _add(item, "category")
+
+        # 3. 热度召回：高访问次数 + 高重要度的记忆始终可召回
+        for item in memory_items:
+            if item.get("level", 1) >= 4 or item.get("access_count", 0) >= 3:
+                _add(item, "hot")
+
+        # 限制召回数量
+        return recalled[:recall_limit]
+
+    async def _llm_rerank(
+        self, query: str, candidates: list[dict], limit: int
+    ) -> list[str] | None:
+        """LLM 重排序：从候选中选出最相关的
+
+        Args:
+            query: 查询文本
+            candidates: 候选记忆条目
+            limit: 返回数量
+
+        Returns:
+            重排序后的记忆内容列表
+        """
+        # 构建候选列表文本
+        candidate_lines = []
+        for i, item in enumerate(candidates):
+            candidate_lines.append(f"{i + 1}. {item['content']}")
+        candidate_text = "\n".join(candidate_lines)
+
+        prompt = f"""从以下记忆中选出与用户问题最相关的条目。
+
+用户问题：{query}
 
 记忆列表：
-{memory_text}
+{candidate_text}
 
 要求：
-1. 只返回相关性最高的条目
-2. 保持原文不变，不要修改
-3. 每条一行
-4. 如果没有相关记忆，返回：无相关记忆"""
+1. 只返回最相关的 {limit} 条记忆的编号（如：1,3,5）
+2. 按相关性从高到低排序
+3. 如果都不相关，返回：无
+4. 只返回编号，不要其他内容"""
 
         try:
             response = await self._llm.chat(
-                messages=[{"role": "user", "content": "请检索"}],
+                messages=[{"role": "user", "content": "请排序"}],
                 system_prompt=prompt,
-                max_tokens=300,
+                max_tokens=100,
                 temperature=0.1,
             )
 
             content = response.content.strip()
-            if "无相关记忆" in content or not content:
+
+            if "无" in content and len(content) < 5:
                 return []
 
-            results = [line.strip() for line in content.split("\n") if line.strip() and line.strip() != "-"]
-            return results[:limit]
+            # 解析编号
+            import re
+            numbers = re.findall(r'\d+', content)
+            if not numbers:
+                return None
+
+            results = []
+            for num_str in numbers:
+                idx = int(num_str) - 1
+                if 0 <= idx < len(candidates):
+                    results.append(candidates[idx]["content"])
+                    if len(results) >= limit:
+                        break
+
+            return results if results else None
 
         except Exception as e:
-            logger.error(f"Memory retrieval failed: {e}")
-            return []
+            logger.debug(f"LLM rerank error: {e}")
+            return None
