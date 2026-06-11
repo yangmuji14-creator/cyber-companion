@@ -17,25 +17,28 @@ from core.emotion.expression import MessageSegmenter, EmotionEnhancer
 
 def test_score_basic():
     """测试基础评分"""
-    assert MemoryScorer.score("") == 1
-    assert MemoryScorer.score("hi") == 1
-    assert MemoryScorer.score("今天天气不错") >= 1
+    score, conf = MemoryScorer.score("")
+    assert score == 1
+    score, conf = MemoryScorer.score("hi")
+    assert score == 1
+    score, conf = MemoryScorer.score("今天天气不错")
+    assert score >= 1
 
 
 def test_score_high_importance():
     """测试高重要度内容"""
-    score = MemoryScorer.score("我的生日是5月20日")
+    score, conf = MemoryScorer.score("我的生日是5月20日")
     assert score >= 4
 
     # 包含地址+正则匹配
-    score = MemoryScorer.score("我叫小明，我住在北京市朝阳区，电话是13800138000")
+    score, conf = MemoryScorer.score("我叫小明，我住在北京市朝阳区，电话是13800138000")
     assert score >= 2
 
 
 def test_score_medium_importance():
     """测试中等重要度"""
     # 包含多个关键词才能达到 2 分
-    score = MemoryScorer.score("我喜欢吃火锅，最喜欢和朋友一起")
+    score, conf = MemoryScorer.score("我喜欢吃火锅，最喜欢和朋友一起")
     assert score >= 2
 
 
@@ -576,23 +579,23 @@ def test_llm_emotion_analyzer_keyword_fallback():
     assert result.emotion == EmotionType.HAPPY
 
 
-def test_llm_emotion_analyzer_needs_llm():
-    """测试 LLM 情感分析器判断是否需要 LLM"""
-    from core.emotion.llm_analyzer import LLMEmotionAnalyzer
+def test_llm_emotion_analyzer_trajectory():
+    """测试 LLM 情感分析器轨迹追踪"""
+    from core.emotion.llm_analyzer import LLMEmotionAnalyzer, EmotionTrajectory
 
     analyzer = LLMEmotionAnalyzer(llm=None)
+    import asyncio
 
-    # NEUTRAL + 短文本 → 不需要 LLM
-    neutral_short = EmotionResult(EmotionType.NEUTRAL, 0.0, [])
-    assert analyzer._should_use_llm(" hi", neutral_short) is False
+    # 多次分析后轨迹应该有记录
+    asyncio.run(analyzer.analyze("我好开心呀"))
+    asyncio.run(analyzer.analyze("今天心情不错"))
+    asyncio.run(analyzer.analyze("有点难过"))
 
-    # NEUTRAL + 长文本 → 需要 LLM
-    neutral_long = EmotionResult(EmotionType.NEUTRAL, 0.0, [])
-    assert analyzer._should_use_llm("今天发生了很多事情让我很纠结", neutral_long) is True
+    trend = analyzer.trajectory.get_trend()
+    assert trend in ("improving", "declining", "stable", "insufficient")
 
-    # 低强度 + 长文本 → 需要 LLM
-    low_confidence = EmotionResult(EmotionType.HAPPY, 0.2, [])
-    assert analyzer._should_use_llm("其实也没有特别开心吧，怎么说呢", low_confidence) is True
+    dominant = analyzer.trajectory.get_dominant_emotion()
+    assert dominant is not None
 
 
 # ========== 多消息格式化测试 ==========
