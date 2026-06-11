@@ -171,6 +171,12 @@ class RelationshipTracker:
 
         return int(round(user["level"]))
 
+    def get_last_interaction(self, user_id: str, persona_id: str = "default") -> str | None:
+        """获取用户上次交互时间 isoformat 字符串，无记录时返回 None"""
+        key = self._make_key(user_id, persona_id)
+        user = self._data.get(key)
+        return user.get("last_interaction") if user else None
+
     def get_stats(self, user_id: str, persona_id: str = "default") -> dict[str, Any]:
         """获取用户亲密度统计信息"""
         key = self._make_key(user_id, persona_id)

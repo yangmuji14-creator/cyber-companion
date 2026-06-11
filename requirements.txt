@@ -7,3 +7,6 @@ litellm>=1.65.0
 
 # Utilities
 loguru>=0.7.0
+
+# Vector Memory (optional — app falls back to keyword search if unavailable)
+sentence-transformers>=3.0.0

@@ -1,0 +1,485 @@
+"""CommandHandler — 斜杠命令系统
+
+处理所有 / 开头的斜杠命令：
+  /help /stats /memories /persona /debug /clear /export
+  /undo /regen /search /mood /quit
+"""
+
+import json
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
+
+from loguru import logger
+
+from core.chat.pipeline import get_llm_error_message
+from core.memory.stats import ChatStats, format_dashboard
+from core.memory.storage import MemoryStorage
+
+
+# ========== 命令表 ==========
+
+COMMANDS = {
+    "/help": "显示可用命令",
+    "/stats": "亲密度统计（/stats dashboard 看仪表盘）",
+    "/memories": "记忆管理（/memories help 查看帮助）",
+    "/persona": "人设管理（/persona list 查看所有人设）",
+    "/debug": "查看当前 system prompt",
+    "/clear": "清空聊天历史",
+    "/export": "导出聊天记录（/export md 或 /export json）",
+    "/undo": "撤销上一轮对话（删除最后一条用户消息和 AI 回复）",
+    "/regen": "让 AI 重新生成上一条回复",
+    "/search": "搜索聊天历史（/search <关键词>）",
+    "/mood": "查看当前情绪状态",
+    "/quit": "退出聊天",
+}
+
+# 情绪 emoji 映射
+EMOTION_ICONS = {
+    "happy": "😊", "sad": "😢", "angry": "😠", "neutral": "😐",
+    "excited": "🤩", "lonely": "🥺", "anxious": "😰", "love": "😍",
+}
+
+
+# ========== ANSI 颜色 ==========
+
+class Colors:
+    """ANSI 颜色码（Windows 10+ 原生支持）"""
+    CYAN = "\033[36m"
+    MAGENTA = "\033[35m"
+    YELLOW = "\033[33m"
+    GREEN = "\033[32m"
+    RED = "\033[31m"
+    DIM = "\033[2m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
+
+
+# ========== CommandHandler ==========
+
+class CommandHandler:
+    """斜杠命令路由和执行器"""
+
+    def __init__(self, handler: "ChatHandler"):
+        self._h = handler  # ChatHandler 实例引用
+
+    async def handle(self, cmd: str, user_id: str, persona_name: str):
+        """处理一条斜杠命令，返回 True=已处理 / False=不是命令 / "quit"=退出"""
+        cmd = cmd.strip().lower()
+
+        if cmd == "/help":
+            self._cmd_help()
+            return True
+
+        if cmd.startswith("/stats"):
+            await self._cmd_stats(cmd, user_id)
+            return True
+
+        if cmd.startswith("/memories"):
+            parts = cmd.split(maxsplit=1)
+            sub = parts[1].strip() if len(parts) > 1 else "list"
+            await self._cmd_memories(user_id, sub)
+            return True
+
+        if cmd.startswith("/persona"):
+            parts = cmd.split(maxsplit=1)
+            sub = parts[1].strip() if len(parts) > 1 else ""
+            self._cmd_persona(user_id, sub)
+            return True
+
+        if cmd == "/clear" or cmd == "/clear --confirm":
+            self._cmd_clear(user_id, cmd)
+            return True
+
+        if cmd == "/debug":
+            self._cmd_debug()
+            return True
+
+        if cmd.startswith("/export"):
+            parts = cmd.split(maxsplit=1)
+            fmt = parts[1].strip() if len(parts) > 1 else "md"
+            await self._cmd_export(user_id, fmt)
+            return True
+
+        if cmd == "/undo":
+            self._cmd_undo(user_id)
+            return True
+
+        if cmd == "/regen":
+            await self._cmd_regen(user_id, persona_name)
+            return True
+
+        if cmd.startswith("/search"):
+            keyword = cmd[8:].strip() if len(cmd) > 7 else ""
+            self._cmd_search(user_id, keyword)
+            return True
+
+        if cmd == "/mood":
+            self._cmd_mood(user_id)
+            return True
+
+        if cmd == "/quit":
+            return "quit"
+
+        return False
+
+    # ---- 命令实现 ----
+
+    def _cmd_help(self):
+        print(f"\n{Colors.YELLOW}📖 可用命令：{Colors.RESET}")
+        for name, desc in COMMANDS.items():
+            print(f"  {Colors.CYAN}{name}{Colors.RESET} — {desc}")
+        print()
+
+    async def _cmd_stats(self, cmd: str, user_id: str):
+        parts = cmd.split(maxsplit=1)
+        sub = parts[1].strip() if len(parts) > 1 else ""
+
+        if sub == "dashboard":
+            msgs = self._h.chat_history.get_messages(user_id)
+            stats = ChatStats(msgs)
+            print(f"\n{Colors.YELLOW}{format_dashboard(stats)}{Colors.RESET}\n")
+            return
+
+        rel_stats = self._h.relationship_tracker.get_stats(
+            user_id, persona_id=self._h.current_persona_id
+        )
+        days = rel_stats.get("days_known", 0)
+        level = rel_stats.get("level", 50)
+        msgs = rel_stats.get("message_count", 0)
+        pos = rel_stats.get("positive_count", 0)
+        neg = rel_stats.get("negative_count", 0)
+
+        relation = (
+            "💕 恋人" if level >= 80 else
+            "💗 亲密" if level >= 60 else
+            "💛 朋友" if level >= 40 else
+            "🤍 熟悉" if level >= 20 else
+            "⬜ 陌生"
+        )
+
+        print(f"\n{Colors.YELLOW}💕 亲密度统计{Colors.RESET}")
+        print(f"  等级：{relation}（{level}/100）")
+        print(f"  消息：{msgs} 条（👍 {pos} / 👎 {neg}）")
+        print(f"  认识：{days:.0f} 天")
+        print(f"\n  {Colors.DIM}仪表盘：/stats dashboard{Colors.RESET}")
+        print()
+
+    async def _cmd_memories(self, user_id: str, sub: str):
+        parts = sub.split(maxsplit=1)
+        action = parts[0] if parts else "list"
+
+        if action == "help":
+            print(f"\n{Colors.YELLOW}🧠 记忆管理：{Colors.RESET}")
+            print(f"  {Colors.CYAN}/memories list [page]{Colors.RESET} — 查看全部记忆（分页）")
+            print(f"  {Colors.CYAN}/memories search <关键词>{Colors.RESET} — 搜索记忆")
+            print(f"  {Colors.CYAN}/memories add <内容> [等级]{Colors.RESET} — 手动添加记忆（等级 1-5）")
+            print(f"  {Colors.CYAN}/memories delete <id>{Colors.RESET} — 删除指定记忆")
+            print(f"  {Colors.CYAN}/memories export{Colors.RESET} — 导出所有记忆到 JSON 文件")
+            print(f"  {Colors.CYAN}/memories clear --confirm{Colors.RESET} — 清空全部记忆（需确认）")
+            print()
+            return
+
+        if action == "list":
+            page = int(parts[1].strip()) if len(parts) > 1 and parts[1].strip().isdigit() else 1
+            per_page = 10
+            offset = (page - 1) * per_page
+            memories, total = self._h.memory_mgr.list_all_memories(
+                user_id, offset=offset, limit=per_page
+            )
+            total_pages = max(1, (total + per_page - 1) // per_page)
+            if total == 0:
+                print(f"\n{Colors.DIM}  还没有关于你的记忆~{Colors.RESET}\n")
+                return
+            print(f"\n{Colors.YELLOW}🧠 记忆列表（第 {page}/{total_pages} 页，共 {total} 条）：{Colors.RESET}")
+            for m in memories:
+                stars = "⭐" * m.level
+                tags = f" [{', '.join(m.tags)}]" if m.tags else ""
+                created = m.created_at[:10] if m.created_at else ""
+                print(f"  {Colors.CYAN}{m.id}{Colors.RESET} {stars} {m.content[:60]}{Colors.DIM}{tags} {created}{Colors.RESET}")
+            if total_pages > 1:
+                print(f"\n  {Colors.DIM}翻页：/memories list {page + 1 if page < total_pages else 1}{Colors.RESET}")
+            print()
+            return
+
+        if action == "search":
+            keyword = parts[1].strip() if len(parts) > 1 else ""
+            if not keyword:
+                print(f"\n{Colors.DIM}  用法：/memories search <关键词>{Colors.RESET}\n")
+                return
+            results = self._h.memory_mgr.search_memories(user_id, keyword)
+            if not results:
+                print(f"\n{Colors.DIM}  未找到包含「{keyword}」的记忆{Colors.RESET}\n")
+            else:
+                print(f"\n{Colors.YELLOW}🔍 搜索「{keyword}」找到 {len(results)} 条记忆：{Colors.RESET}")
+                for m in results:
+                    stars = "⭐" * m.level
+                    print(f"  {Colors.CYAN}{m.id}{Colors.RESET} {stars} {m.content[:60]}")
+                print()
+            return
+
+        if action == "add":
+            if len(parts) < 2 or not parts[1].strip():
+                print(f"\n{Colors.DIM}  用法：/memories add <内容> [等级1-5]{Colors.RESET}\n")
+                return
+            add_parts = parts[1].strip().rsplit(maxsplit=1)
+            content = add_parts[0]
+            level = None
+            if len(add_parts) > 1 and add_parts[1].isdigit():
+                level = max(1, min(5, int(add_parts[1])))
+            mem = self._h.memory_mgr.add_memory(user_id, content, level=level)
+            if mem:
+                print(f"\n{Colors.GREEN}✅ 已添加记忆 {mem.id}（等级 {mem.level}）：{mem.content[:40]}{Colors.RESET}\n")
+            else:
+                print(f"\n{Colors.DIM}  记忆内容太简单，没有记住~（评分 < 2）{Colors.RESET}\n")
+            return
+
+        if action == "delete":
+            if len(parts) < 2 or not parts[1].strip():
+                print(f"\n{Colors.DIM}  用法：/memories delete <记忆id>{Colors.RESET}\n")
+                return
+            mid = parts[1].strip()
+            if self._h.memory_mgr.delete_memory(user_id, mid):
+                print(f"\n{Colors.GREEN}✅ 已删除记忆 {mid}{Colors.RESET}\n")
+            else:
+                print(f"\n{Colors.DIM}  未找到记忆 {mid}{Colors.RESET}\n")
+            return
+
+        if action == "export":
+            all_ms = self._h.memory_mgr.export_memories(user_id)
+            if not all_ms:
+                print(f"\n{Colors.DIM}  还没有记忆可以导出~{Colors.RESET}\n")
+                return
+            data = {
+                "user_id": user_id,
+                "count": len(all_ms),
+                "memories": [
+                    {"id": m.id, "content": m.content, "level": m.level,
+                     "tags": m.tags, "created_at": m.created_at}
+                    for m in all_ms
+                ],
+            }
+            export_path = Path(self._h.memory_mgr._MemoryManager__data_dir) / f"memories_{user_id}.json"
+            with open(export_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"\n{Colors.GREEN}✅ 已导出 {len(all_ms)} 条记忆到 {export_path}{Colors.RESET}\n")
+            return
+
+        if action == "clear":
+            all_ms = self._h.memory_mgr.export_memories(user_id)
+            if not all_ms:
+                print(f"\n{Colors.DIM}  已经没有记忆了~{Colors.RESET}\n")
+                return
+            rest = parts[1].strip() if len(parts) > 1 else ""
+            if "--confirm" not in rest:
+                print(f"\n{Colors.YELLOW}⚠ 这会清空全部 {len(all_ms)} 条记忆，无法恢复{Colors.RESET}")
+                print(f"  {Colors.DIM}输入 /memories clear --confirm 确认清空{Colors.RESET}")
+                print(f"  {Colors.DIM}输入 /memories export 先备份记忆{Colors.RESET}\n")
+                return
+            storage = MemoryStorage(str(Path(self._h.memory_mgr._MemoryManager__data_dir)))
+            storage.delete_all(user_id)
+            print(f"\n{Colors.GREEN}✅ 已清空全部 {len(all_ms)} 条记忆{Colors.RESET}\n")
+            return
+
+        print(f"\n{Colors.DIM}  未知操作：{action}，输入 /memories help 查看帮助{Colors.RESET}\n")
+
+    def _cmd_persona(self, user_id: str, sub: str):
+        parts = sub.split(maxsplit=1)
+
+        if sub == "list":
+            all_p = self._h.persona_loader.list_all()
+            if not all_p:
+                print(f"\n{Colors.DIM}  没有可用的人设{Colors.RESET}\n")
+                return
+            print(f"\n{Colors.YELLOW}🎀 人设列表：{Colors.RESET}")
+            for p in all_p:
+                marker = f" {Colors.GREEN}← 当前{Colors.RESET}" if p.id == self._h.current_persona_id else ""
+                mbti = f" [{p.mbti}]" if p.mbti else ""
+                traits = f" {'、'.join(p.personality[:3])}" if p.personality else ""
+                print(f"  {Colors.CYAN}{p.id}{Colors.RESET} — {p.name}（{p.age}岁{mbti}）{traits}{marker}")
+            print(f"\n  {Colors.DIM}切换：/persona switch <id>{Colors.RESET}\n")
+            return
+
+        if parts[0] == "switch":
+            if len(parts) < 2 or not parts[1]:
+                print(f"\n{Colors.DIM}  用法：/persona switch <id>{Colors.RESET}\n")
+                return
+            target_id = parts[1].strip()
+            target = self._h.persona_loader.get(target_id)
+            if not target:
+                print(f"\n{Colors.DIM}  未找到人设 {target_id}{Colors.RESET}\n")
+                return
+            if target_id == self._h.current_persona_id:
+                print(f"\n{Colors.DIM}  已经在使用 {target.name} 了~{Colors.RESET}\n")
+                return
+            self._h.current_persona_id = target_id
+            print(f"\n{Colors.GREEN}✅ 已切换到 {target.name}（{target.id}）{Colors.RESET}")
+            level = self._h.relationship_tracker.get_level(
+                user_id, base_level=target.relationship_level, persona_id=target_id
+            )
+            print(f"  {Colors.DIM}💕 与 {target.name} 的亲密度：{level}/100{Colors.RESET}\n")
+            return
+
+        # 默认显示当前人设详情
+        p = self._h.persona_loader.get(self._h.current_persona_id)
+        if p:
+            print(f"\n{Colors.YELLOW}🎀 人设信息{Colors.RESET}")
+            print(f"  名字：{p.name}")
+            print(f"  年龄：{p.age}岁")
+            if p.personality:
+                print(f"  性格：{'、'.join(p.personality)}")
+            if p.hobbies:
+                hobbies = [h.get("name", "") for h in p.hobbies[:3]]
+                print(f"  爱好：{'、'.join(hobbies)}")
+            if p.catchphrases:
+                print(f"  口头禅：{'、'.join(p.catchphrases)}")
+            print(f"\n  {Colors.DIM}人设列表：/persona list | 切换：/persona switch <id>{Colors.RESET}\n")
+
+    def _cmd_clear(self, user_id: str, cmd: str):
+        if cmd == "/clear":
+            msgs = self._h.chat_history.get_messages(user_id)
+            count = len(msgs)
+            print(f"\n{Colors.YELLOW}⚠ 这会清空所有聊天历史（{count} 条消息），无法恢复{Colors.RESET}")
+            print(f"  {Colors.DIM}输入 /clear --confirm 确认清空，或 /export 先备份{Colors.RESET}\n")
+            return
+        self._h.chat_history.delete_user(user_id)
+        print(f"\n{Colors.GREEN}✅ 聊天历史已清空{Colors.RESET}\n")
+
+    def _cmd_debug(self):
+        prompt = self._h.pipeline.get_last_system_prompt()
+        if prompt:
+            print(f"\n{Colors.YELLOW}🔧 当前 System Prompt：{Colors.RESET}")
+            print(f"{Colors.DIM}{'─' * 50}{Colors.RESET}")
+            for line in prompt.split("\n"):
+                print(f"  {line}")
+            print(f"{Colors.DIM}{'─' * 50}{Colors.RESET}")
+            print(f"  {Colors.DIM}共 {len(prompt)} 字符{Colors.RESET}\n")
+        else:
+            print(f"\n{Colors.DIM}  还没有发送过消息，没有 system prompt 可查看{Colors.RESET}\n")
+
+    async def _cmd_export(self, user_id: str, fmt: str):
+        msgs = self._h.chat_history.get_messages(user_id)
+        if not msgs:
+            print(f"\n{Colors.DIM}  没有可导出的聊天记录{Colors.RESET}\n")
+            return
+
+        persona = self._h.persona_loader.get(self._h.current_persona_id)
+        persona_name = persona.name if persona else "AI"
+        export_dir = Path(self._h.chat_history._ChatHistoryStorage__root) / "exports"
+        export_dir.mkdir(parents=True, exist_ok=True)
+
+        if fmt == "json":
+            filename = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            filepath = export_dir / filename
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(msgs, f, ensure_ascii=False, indent=2)
+        else:
+            filename = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+            filepath = export_dir / filename
+            md_content = self._h.chat_history.export_markdown(user_id, persona_name)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(md_content)
+
+        print(f"\n{Colors.GREEN}✅ 已导出到 {filepath}{Colors.RESET}")
+        print(f"  {Colors.DIM}格式：{'Markdown' if fmt != 'json' else 'JSON'}（用 /export json 或 /export md 切换）{Colors.RESET}\n")
+
+    def _cmd_undo(self, user_id: str):
+        msgs = self._h.chat_history.get_messages(user_id)
+        if len(msgs) < 2:
+            print(f"\n{Colors.DIM}  没有可以撤销的消息{Colors.RESET}\n")
+            return
+        if msgs[-1]["role"] != "assistant" or msgs[-2]["role"] != "user":
+            print(f"\n{Colors.YELLOW}⚠ 最后两条消息不是完整的对话轮次，跳过{Colors.RESET}\n")
+            return
+        deleted = self._h.chat_history.delete_last_messages(user_id, 2)
+        print(f"\n{Colors.GREEN}✅ 已撤销最后 {len(deleted)} 条消息{Colors.RESET}")
+        for msg in deleted:
+            role = "🧑" if msg["role"] == "user" else "💕"
+            preview = msg["content"][:40] + ("..." if len(msg["content"]) > 40 else "")
+            print(f"  {Colors.DIM}{role} {preview}{Colors.RESET}")
+        print()
+
+    async def _cmd_regen(self, user_id: str, persona_name: str):
+        msgs = self._h.chat_history.get_messages(user_id)
+        if not msgs:
+            print(f"\n{Colors.DIM}  还没有对话记录{Colors.RESET}\n")
+            return
+        if msgs[-1]["role"] != "assistant":
+            print(f"\n{Colors.YELLOW}⚠ 最后一条消息不是 AI 回复，无法重新生成{Colors.RESET}\n")
+            return
+
+        self._h.chat_history.delete_last_messages(user_id, 1)
+        user_msgs = [m for m in msgs if m["role"] == "user"]
+        if not user_msgs:
+            print(f"\n{Colors.YELLOW}⚠ 找不到对应的用户消息{Colors.RESET}\n")
+            return
+
+        last_user = user_msgs[-1]["content"]
+        print(f"\n  {Colors.DIM}🔄 重新生成中...{Colors.RESET}")
+
+        reply, rel_level = await self._h.pipeline.process(
+            user_id, last_user, self._h.current_persona_id, skip_user_message=True,
+        )
+        p = self._h.persona_loader.get(self._h.current_persona_id)
+        name = p.name if p else persona_name
+        print(f"\r  {name}: {reply}\n")
+
+    def _cmd_search(self, user_id: str, keyword: str):
+        if not keyword:
+            print(f"\n{Colors.YELLOW}用法：/search <关键词>{Colors.RESET}")
+            print(f"  {Colors.DIM}示例：/search 生日{Colors.RESET}\n")
+            return
+        results = self._h.chat_history.search_messages(user_id, keyword)
+        if not results:
+            print(f"\n{Colors.DIM}  未找到包含「{keyword}」的消息{Colors.RESET}\n")
+            return
+        print(f"\n{Colors.YELLOW}🔍 搜索「{keyword}」找到 {len(results)} 条结果：{Colors.RESET}")
+        for r in results:
+            msg = r["message"]
+            before = r["before"]
+            after = r["after"]
+            role_icon = "🧑" if msg["role"] == "user" else "💕"
+            ts = msg.get("timestamp", "")
+            time_str = ""
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(ts)
+                    time_str = f" {Colors.DIM}{dt.strftime('%m-%d %H:%M')}{Colors.RESET}"
+                except (ValueError, TypeError):
+                    pass
+            if before:
+                b_role = "🧑" if before["role"] == "user" else "💕"
+                b_preview = before["content"][:30] + ("..." if len(before["content"]) > 30 else "")
+                print(f"  {Colors.DIM}{b_role} {b_preview}{Colors.RESET}")
+            content = msg["content"]
+            highlighted = content.replace(keyword, f"{Colors.YELLOW}{keyword}{Colors.RESET}")
+            print(f"  {Colors.CYAN}[#{r['index']}]{Colors.RESET} {role_icon}{time_str} {highlighted}")
+            if after:
+                a_role = "🧑" if after["role"] == "user" else "💕"
+                a_preview = after["content"][:30] + ("..." if len(after["content"]) > 30 else "")
+                print(f"  {Colors.DIM}{a_role} {a_preview}{Colors.RESET}")
+            print()
+
+    def _cmd_mood(self, user_id: str):
+        msgs = self._h.chat_history.get_messages(user_id)
+        user_msgs = [m for m in msgs if m["role"] == "user" and "emotion" in m]
+        if not user_msgs:
+            print(f"\n{Colors.DIM}  还没有足够的情绪数据{Colors.RESET}\n")
+            return
+        emotions = Counter(m["emotion"] for m in user_msgs)
+        total = len(user_msgs)
+        latest = user_msgs[-1]
+        latest_emoji = EMOTION_ICONS.get(latest["emotion"], "❓")
+        latest_intensity = latest.get("emotion_intensity", 0)
+
+        print(f"\n{Colors.YELLOW}🎭 情绪状态{Colors.RESET}")
+        print(f"  当前：{latest_emoji} {latest['emotion']}（强度 {latest_intensity:.0%}）")
+        print(f"  {Colors.DIM}基于最近 {total} 条消息{Colors.RESET}\n")
+        print(f"  {Colors.CYAN}情绪分布：{Colors.RESET}")
+        for emotion, count in emotions.most_common():
+            icon = EMOTION_ICONS.get(emotion, "❓")
+            pct = count / total * 100
+            bar_len = int(pct / 5)
+            bar = "█" * bar_len + "░" * (20 - bar_len)
+            print(f"  {icon} {emotion:8s} {bar} {count}次 ({pct:.0f}%)")
+        print()

@@ -114,10 +114,7 @@ class ProactiveMessenger:
         msg_count = stats.get("message_count", 0)
         if msg_count > 0 and days_known > self.missing_days:
             if not self._already_fired("missing"):
-                # 检查 last_interaction
-                last = self._relationship_tracker._data.get(
-                    self._relationship_tracker._make_key(user_id, persona_id), {}
-                ).get("last_interaction")
+                last = self._relationship_tracker.get_last_interaction(user_id, persona_id)
                 if last:
                     try:
                         last_dt = datetime.fromisoformat(last)

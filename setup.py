@@ -106,14 +106,6 @@ def _prompt_int(msg: str, default: int, desc: str = "") -> int:
             print(f"  ⚠ 请输入数字")
 
 
-def _prompt_choice(msg: str, options: list[str], default: str = "") -> str:
-    while True:
-        val = _prompt(msg, default)
-        if val.lower() in [o.lower() for o in options]:
-            return val.lower()
-        print(f"  ⚠ 请输入 {', '.join(options)} 中的一个")
-
-
 def _prompt_yes_no(msg: str, default: bool = True) -> bool:
     hint = "Y/n" if default else "y/N"
     val = _prompt(f"{msg} ({hint})", "")
@@ -345,11 +337,14 @@ skill 文件内容：
 
 
 def _manual_persona() -> dict:
-    """手动配置人设"""
+    """手动配置人设（含基础+进阶两阶段）"""
     print("  填写人设信息（直接回车使用默认值）：\n")
 
+    # === 基础信息 ===
     name = _prompt("名字", DEFAULT_PERSONA["name"])
     age = _prompt_int("年龄", DEFAULT_PERSONA["age"])
+    gender = _prompt("性别", "女")
+    birthday = _prompt("生日（如 3月14日）", "")
 
     default_personality = "、".join(DEFAULT_PERSONA["personality"])
     personality_str = _prompt("性格特征（顿号分隔）", default_personality)
@@ -358,10 +353,13 @@ def _manual_persona() -> dict:
     speaking_style = _prompt("说话风格", DEFAULT_PERSONA["speaking_style"])
     background = _prompt("背景描述", DEFAULT_PERSONA["background"])
 
-    return {
+    # 基础人设
+    persona = {
         "id": "girlfriend_001",
         "name": name,
         "age": age,
+        "gender": gender,
+        "birthday": birthday,
         "personality": personality,
         "background": background,
         "speaking_style": speaking_style,
@@ -369,6 +367,74 @@ def _manual_persona() -> dict:
         "relationship_level": 50,
         "system_prompt": "",
     }
+
+    # === 进阶配置 ===
+    if not _prompt_yes_no("\n是否进行进阶人设配置？（性格细节/兴趣爱好/关系背景等）", default=False):
+        return persona
+
+    print(f"\n  好的，继续丰富 {name} 的人设~\n")
+
+    # 身份细节
+    persona["hometown"] = _prompt("家乡/出身地", "")
+    persona["occupation"] = _prompt("职业/身份（如：大学生、程序员）", "")
+    persona["daily_routine"] = _prompt("日常作息（如：通常几点起床、喜欢做什么）", "")
+    persona["appearance"] = _prompt("外貌描述", "")
+
+    # 性格深度
+    persona["mbti"] = _prompt("MBTI 类型（如 INFP、ENFJ）", "")
+    values_str = _prompt("价值观/在意的事（逗号分隔）", "")
+    if values_str:
+        persona["values"] = [v.strip() for v in values_str.split("，") if v.strip()] or \
+                            [v.strip() for v in values_str.split(",") if v.strip()]
+    taboos_str = _prompt("禁忌/反感的事（逗号分隔）", "")
+    if taboos_str:
+        persona["taboos"] = [t.strip() for t in taboos_str.split("，") if t.strip()] or \
+                            [t.strip() for t in taboos_str.split(",") if t.strip()]
+
+    # 兴趣爱好
+    hobbies_str = _prompt("爱好（逗号分隔，如：画画、打游戏、看书）", "")
+    if hobbies_str:
+        persona["hobbies"] = [
+            {"name": h.strip()}
+            for h in hobbies_str.replace("，", ",").split(",") if h.strip()
+        ]
+    persona["music_taste"] = _prompt("喜欢的音乐类型", "")
+    persona["movie_taste"] = _prompt("喜欢的电影/剧集类型", "")
+    persona["food_preferences"] = _prompt("口味偏好（如：爱吃辣、甜食控）", "")
+
+    # 语言习惯
+    catchphrases_str = _prompt("口头禅（逗号分隔）", "")
+    if catchphrases_str:
+        persona["catchphrases"] = [
+            c.strip() for c in catchphrases_str.replace("，", ",").split(",") if c.strip()
+        ]
+    persona["nickname_for_user"] = _prompt("对你的专属称呼（如：主人/亲爱的/笨蛋）", "")
+
+    # 行为倾向
+    persona["initiative_level"] = _prompt_choice("主动性", ["高", "中", "低"], "中")
+    persona["clinginess"] = _prompt_choice("粘人程度", ["高", "中", "低"], "中")
+    persona["jealous_tendency"] = _prompt_choice("吃醋倾向", ["高", "中", "低"], "中")
+
+    # 关系背景
+    persona["how_we_met"] = _prompt("你们是怎么认识的？", "")
+    persona["first_impression"] = _prompt("对你的第一印象", "")
+
+    return persona
+
+
+def _prompt_choice(msg: str, options: list[str], default: str = "") -> str:
+    """选择题型输入"""
+    hint = f"（{'/'.join(options)}）" if options else ""
+    while True:
+        val = _prompt(f"{msg}{hint}", default)
+        if val in options:
+            return val
+        # 允许输入首字母匹配
+        for opt in options:
+            if val.lower() == opt[0].lower():
+                return opt
+        print(f"  ⚠ 请输入 {'、'.join(options)} 中的一个")
+
 
 
 # ========== 步骤 3：高级参数 ==========
@@ -475,11 +541,14 @@ def run_setup():
         settings = {}
     settings["default_model"] = provider
     settings.pop("webui", None)
-    settings["advanced"] = {
+    # 合并 advanced 参数，不覆盖已有配置
+    adv = settings.get("advanced", {})
+    adv.update({
         "segment_max_length": advanced["segment_max_length"],
         "debounce_seconds": advanced["debounce_seconds"],
         "summarize_threshold": advanced["summarize_threshold"],
-    }
+    })
+    settings["advanced"] = adv
     path.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # personas.json

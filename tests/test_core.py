@@ -497,35 +497,35 @@ def test_chat_history_special_chars():
 
 def test_get_time_context():
     """测试时间上下文生成"""
-    from main import _get_time_context
-    ctx = _get_time_context()
+    from core.chat import get_time_context
+    ctx = get_time_context()
     assert "现在是" in ctx
 
 
 def test_timestamp():
     """测试时间戳格式"""
-    from main import _timestamp
-    ts = _timestamp()
+    from core.chat import timestamp
+    ts = timestamp()
     assert ":" in ts
     assert len(ts) == 5  # HH:MM
 
 
 def test_get_llm_error_message():
     """测试 LLM 错误消息转换"""
-    from main import _get_llm_error_message
-    msg = _get_llm_error_message(Exception("rate limit exceeded"))
+    from core.chat import get_llm_error_message
+    msg = get_llm_error_message(Exception("rate limit exceeded"))
     assert "忙" in msg or "稍等" in msg
 
-    msg = _get_llm_error_message(Exception("unauthorized 401"))
+    msg = get_llm_error_message(Exception("unauthorized 401"))
     assert "API key" in msg
 
-    msg = _get_llm_error_message(Exception("connection refused"))
+    msg = get_llm_error_message(Exception("connection refused"))
     assert "网络" in msg
 
 
 def test_session_stats_summary():
     """测试会话总结生成"""
-    from main import SessionStats
+    from core.chat import SessionStats
     stats = SessionStats()
     stats.message_count = 10
     stats.memories_added = 3
@@ -599,17 +599,17 @@ def test_llm_emotion_analyzer_needs_llm():
 
 def test_format_single_message():
     """测试单条消息不格式化"""
-    from main import _format_multi_message
-    result, count = _format_multi_message("你好呀")
+    from core.chat import format_multi_message
+    result, count = format_multi_message("你好呀")
     assert count == 1
     assert result == "你好呀"
 
 
 def test_format_multi_message():
     """测试多条消息格式化"""
-    from main import _format_multi_message
+    from core.chat import format_multi_message
     content = "今天好累\n考试考砸了\n心情超差"
-    result, count = _format_multi_message(content)
+    result, count = format_multi_message(content)
     assert count == 3
     assert "[消息1] 今天好累" in result
     assert "[消息2] 考试考砸了" in result
@@ -618,9 +618,9 @@ def test_format_multi_message():
 
 def test_format_multi_message_empty_lines():
     """测试多消息中的空行被过滤"""
-    from main import _format_multi_message
+    from core.chat import format_multi_message
     content = "第一条\n\n第二条\n"
-    result, count = _format_multi_message(content)
+    result, count = format_multi_message(content)
     assert count == 2
     assert "[消息1] 第一条" in result
     assert "[消息2] 第二条" in result
@@ -628,9 +628,9 @@ def test_format_multi_message_empty_lines():
 
 def test_format_multi_message_whitespace():
     """测试多消息中的空白被清理"""
-    from main import _format_multi_message
+    from core.chat import format_multi_message
     content = "  第一条  \n  第二条  "
-    result, count = _format_multi_message(content)
+    result, count = format_multi_message(content)
     assert count == 2
     assert "[消息1] 第一条" in result
     assert "[消息2] 第二条" in result
