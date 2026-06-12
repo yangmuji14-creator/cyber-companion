@@ -159,7 +159,7 @@ class ChatPipeline:
         self._chat_history = chat_history
         self._llm_emotion_analyzer = llm_emotion_analyzer
         self._relationship_tracker = relationship_tracker
-        self._mood_engine = mood_engine
+        self._mood_engine = mood_manager
         self._personality_engine = personality_engine
         self._tool_registry = tool_registry
         self._open_loop = open_loop

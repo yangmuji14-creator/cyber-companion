@@ -176,3 +176,12 @@ class Memory:
             return MemoryCategory.OTHER.value
 
         return max(scores, key=scores.get).value  # type: ignore
+
+    @staticmethod
+    def classify_confidence(content: str) -> float:
+        """基于内容长度和关键词评估记忆置信度"""
+        if len(content) < 5:
+            return 0.3
+        if any(kw in content for kw in ["我的", "我叫", "我是", "我喜欢", "我讨厌"]):
+            return 0.9
+        return 0.7
