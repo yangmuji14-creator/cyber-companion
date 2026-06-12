@@ -10,6 +10,7 @@ import json
 import re
 from loguru import logger
 
+from core.utils import parse_json_response
 from ..llm.base import BaseLLM
 
 
@@ -128,14 +129,9 @@ class DialogueThinker:
                 temperature=0.1,
             )
 
-            result_text = response.content.strip()
-
-            # 解析 JSON（从 markdown 代码块中提取）
-            code_block = re.search(r'```(?:json)?\s*\n(.*?)\n```', result_text, re.DOTALL)
-            if code_block:
-                result_text = code_block.group(1).strip()
-
-            result = json.loads(result_text)
+            result = parse_json_response(response.content)
+            if not result:
+                return None
 
             logger.debug(
                 f"Thought: intent={result.get('intent')}, "

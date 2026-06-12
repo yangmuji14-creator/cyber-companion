@@ -10,6 +10,8 @@ import json
 import sys
 from pathlib import Path
 
+from core.utils import parse_json_response
+
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -292,41 +294,17 @@ skill 文件内容：
         result_text = response.content.strip()
 
         # 提取 JSON
-        if "```" in result_text:
-            parts = result_text.split("```")
-            for part in parts:
-                part = part.strip()
-                if part.startswith("json"):
-                    part = part[4:]
-                try:
-                    persona = json.loads(part)
-                    if "name" in persona:
-                        persona["id"] = "girlfriend_001"
-                        persona.setdefault("age", 20)
-                        persona.setdefault("personality", ["温柔"])
-                        persona.setdefault("speaking_style", "可爱自然")
-                        persona.setdefault("background", "")
-                        persona.setdefault("core_memories", [])
-                        persona.setdefault("relationship_level", 50)
-                        persona.setdefault("system_prompt", "")
-                        return persona
-                except json.JSONDecodeError:
-                    continue
-        else:
-            try:
-                persona = json.loads(result_text)
-                if "name" in persona:
-                    persona["id"] = "girlfriend_001"
-                    persona.setdefault("age", 20)
-                    persona.setdefault("personality", ["温柔"])
-                    persona.setdefault("speaking_style", "可爱自然")
-                    persona.setdefault("background", "")
-                    persona.setdefault("core_memories", [])
-                    persona.setdefault("relationship_level", 50)
-                    persona.setdefault("system_prompt", "")
-                    return persona
-            except json.JSONDecodeError:
-                pass
+        persona = parse_json_response(result_text)
+        if persona and "name" in persona:
+            persona["id"] = "girlfriend_001"
+            persona.setdefault("age", 20)
+            persona.setdefault("personality", ["温柔"])
+            persona.setdefault("speaking_style", "可爱自然")
+            persona.setdefault("background", "")
+            persona.setdefault("core_memories", [])
+            persona.setdefault("relationship_level", 50)
+            persona.setdefault("system_prompt", "")
+            return persona
 
         print("  ⚠ LLM 返回格式异常，无法解析")
         return None
@@ -475,18 +453,21 @@ def _check_venv():
     """检查是否在虚拟环境中运行"""
     in_venv = sys.prefix != sys.base_prefix
     if not in_venv:
+        venv_dir = Path(__file__).parent / ".venv"
         print()
-        print("  ⚠️  未检测到虚拟环境！")
+        print("  ! 未激活虚拟环境！")
         print()
-        print("  建议先运行安装脚本创建虚拟环境：")
-        print("    python install.py")
+        if venv_dir.exists():
+            print("  检测到 .venv 目录，请先激活：")
+            print("    .venv\\Scripts\\activate.bat")
+            print("    python main.py setup")
+            print()
+            print("  或运行 python main.py 直接启动")
+        else:
+            print("  请先运行安装脚本：")
+            print("    python install.py")
         print()
-        ans = input("  是否继续？(y/N): ").strip().lower()
-        if ans != "y":
-            print("
-  请先运行: python install.py")
-            sys.exit(0)
-        print()
+        sys.exit(0)
 
 
 def run_setup():

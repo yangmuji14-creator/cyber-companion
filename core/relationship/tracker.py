@@ -4,13 +4,13 @@
 """
 
 import json
-import os
-import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
+
+from core.utils import atomic_write_json
 
 
 class RelationshipTracker:
@@ -40,7 +40,7 @@ class RelationshipTracker:
     MAX_LEVEL = 100
     MIN_LEVEL = 0
 
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str | Path):
         """
         Args:
             data_dir: 数据存储目录
@@ -65,12 +65,7 @@ class RelationshipTracker:
     def _save(self) -> None:
         """保存数据到文件（原子写入）"""
         try:
-            fd, tmp_path = tempfile.mkstemp(
-                dir=str(self._data_dir), suffix=".tmp"
-            )
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, str(self._file))
+            atomic_write_json(self._file, self._data)
         except Exception as e:
             logger.error(f"Failed to save relationship data: {e}")
 

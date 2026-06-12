@@ -1,10 +1,14 @@
-"""Cyber Girlfriend — 赛博女友（纯 CMD 聊天）
+"""Cyber Girlfriend — 赛博女友
 
 集成情绪状态机、人格引擎、工具调用、向量记忆等完整功能。
 
-运行方式：
-    python main.py setup   — 首次运行设置向导
-    python main.py         — 直接进聊天
+最简单的用法：
+    python main.py 启动
+    
+或者用命令行：
+    python main.py setup   — 首次运行，配置模型
+    python main.py         — 启动聊天（自动检测微信配置）
+    python main.py wechat  — 首次配置微信
 """
 
 import asyncio
@@ -28,80 +32,24 @@ logger.add("logs/app.log", rotation="10 MB", retention="7 days", level="DEBUG")
 
 ADVANCED = load_advanced()
 
+# ========== 微信配置检测 ==========
 
-# ========== 核心组件初始化 ==========
-
-from core.llm import init_registry
-from core.memory import MemoryManager, ChatHistoryStorage
-from core.memory.embedder import SentenceTransformerEmbedder
-from core.memory.vector_store import VectorStore
-from core.persona import PersonaLoader
-from core.emotion import EmotionAnalyzer, LLMEmotionAnalyzer, MoodEngine
-from core.relationship import RelationshipTracker
-from core.proactive import ProactiveMessenger
-from core.personality import PersonalityEngine
-from core.tools import ToolRegistry, TimeTool, CalculatorTool, WeatherTool
-from core.chat import ChatHandler
-
-registry = init_registry(CONFIG_DIR / "settings.json")
-
-# 向量记忆：嵌入器不可用时自动降级为关键词搜索
-embedder = SentenceTransformerEmbedder()
-vector_store = VectorStore(str(ROOT / "data" / "vectors.db"))
-memory_mgr = MemoryManager(
-    str(ROOT / "data"),
-    embedder=embedder,
-    vector_store=vector_store,
-)
-persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
-emotion_analyzer = EmotionAnalyzer()
-llm_emotion_analyzer = LLMEmotionAnalyzer()
-relationship_tracker = RelationshipTracker(str(ROOT / "data"))
-chat_history = ChatHistoryStorage(str(ROOT / "data"), max_messages=ADVANCED["max_messages"])
-proactive = ProactiveMessenger(
-    persona_loader, memory_mgr, relationship_tracker,
-    config=ADVANCED,
-)
-
-# ---- 新增模块初始化 ----
-
-# 情绪状态机
-mood_engine = MoodEngine(str(ROOT / "data"))
-
-# 人格引擎
-personality_engine = PersonalityEngine(str(ROOT / "data"))
-
-# 工具注册
-tool_registry = ToolRegistry()
-tool_registry.register(TimeTool())
-tool_registry.register(CalculatorTool())
-tool_registry.register(WeatherTool())
-
-handler = ChatHandler(
-    registry=registry,
-    memory_mgr=memory_mgr,
-    persona_loader=persona_loader,
-    chat_history=chat_history,
-    llm_emotion_analyzer=llm_emotion_analyzer,
-    relationship_tracker=relationship_tracker,
-    proactive=proactive,
-    mood_engine=mood_engine,
-    personality_engine=personality_engine,
-    tool_registry=tool_registry,
-    config=ADVANCED,
-)
+def _has_wechat_config() -> bool:
+    """检查是否已配置微信"""
+    credentials_file = ROOT / "data" / "credentials" / "wechat.json"
+    return credentials_file.exists()
 
 
-# ========== 命令行入口 ==========
+# ========== CLI 入口 ==========
 
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="🎀 Cyber Girlfriend")
+    parser = argparse.ArgumentParser(description="Cyber Girlfriend")
     parser.add_argument(
         "command", nargs="?", default="run",
-        choices=["setup", "run"],
-        help="setup=设置向导, run=开始聊天（默认）",
+        choices=["setup", "run", "wechat"],
+        help="setup=首次配置, run=启动聊天（默认）, wechat=配置微信",
     )
     args = parser.parse_args()
 
@@ -110,16 +58,71 @@ def main():
         run_setup()
         return
 
-    if not (ROOT / ".env").exists():
-        logger.warning("未检测到 .env 文件，请先运行: python main.py setup")
+    if args.command == "wechat":
+        _setup_wechat()
         return
 
-    logger.info("🎀 Cyber Girlfriend 启动中...")
+    if not (ROOT / ".env").exists():
+        print("\n" + "="*40)
+        print("  首次使用，请先运行设置向导")
+        print("="*40)
+        print("\n  命令: python main.py setup")
+        print("\n  按回车键退出...")
+        input()
+        return
+
+    logger.info("Cyber Girlfriend 启动中...")
+    app: AppComponents = create_components()
+
+    # 智能启动：如果已配置微信，自动启动微信+CLI
+    if _has_wechat_config():
+        print("\n  检测到微信配置，同时启动微信 Bot + 本地聊天")
+        print("  微信消息和本地消息都会由同一个 AI 处理")
+        print("  按 Ctrl+C 退出\n")
+        from core.app import run_with_adapters
+        try:
+            asyncio.run(run_with_adapters(app, ["wechat"]))
+        except KeyboardInterrupt:
+            print()
+            logger.info("拜拜~")
+    else:
+        print("\n  本地聊天模式")
+        print("  输入 /help 查看命令，输入 /quit 退出\n")
+        try:
+            asyncio.run(app.handler.run())
+        except KeyboardInterrupt:
+            print()
+            logger.info("拜拜~")
+
+
+def _setup_wechat():
+    """配置微信"""
+    print("\n" + "="*40)
+    print("  微信配置向导")
+    print("="*40)
+    print("\n  1. 确保你已安装微信 ClawBot 插件")
+    print("  2. 准备好微信手机客户端")
+    print("\n  按回车键开始扫码登录...")
+    input()
+
     try:
-        asyncio.run(handler.run())
-    except KeyboardInterrupt:
-        print()
-        logger.info("拜拜~")
+        from adapters.wechat import WeChatAdapter
+        from adapters.base import AdapterConfig
+        import asyncio
+
+        adapter = WeChatAdapter()
+        asyncio.run(adapter.start())
+
+        print("\n" + "="*40)
+        print("  微信配置完成！")
+        print("="*40)
+        print("\n  以后运行 'python main.py' 会自动启动微信")
+        print("\n  按回车键退出...")
+        input()
+    except Exception as e:
+        print(f"\n  配置失败: {e}")
+        print("\n  按回车键退出...")
+        input()
 
 
 if __name__ == "__main__":
