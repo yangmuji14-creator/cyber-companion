@@ -14,6 +14,8 @@ from loguru import logger
 from .models import Memory, MemoryCategory
 from .scorer import MemoryScorer, LLMMemoryScorer
 from .storage import MemoryStorage
+from .conflict_resolver import MemoryConflictResolver
+from .decay import MemoryDecaySystem
 
 if TYPE_CHECKING:
     from .embedder import BaseEmbedder
@@ -41,6 +43,8 @@ class MemoryManager:
         self._max_memories = max_memories
         self._embedder = embedder
         self._vector_store = vector_store
+        self._conflict_resolver = MemoryConflictResolver()
+        self._decay_system = MemoryDecaySystem()
 
     @property
     def data_dir(self) -> Path:
@@ -103,15 +107,20 @@ class MemoryManager:
 
         memories = self._storage.load(user_id)
 
-        # 冲突检测
-        conflict = self._detect_conflict(memory, memories)
-        if conflict:
+        # 冲突检测（使用 MemoryConflictResolver）
+        conflicts = self._conflict_resolver.detect(memory, memories)
+        for conflict in conflicts:
             conflict.superseded_by = memory.id
-            memory.related_memory_ids = [conflict.id]
+            memory.related_memory_ids.append(conflict.id)
             logger.info(
                 f"Memory conflict: '{conflict.content[:30]}' "
                 f"superseded by '{memory.content[:30]}'"
             )
+
+        # 设置置信度
+        if level is not None:
+            memory.confidence = min(1.0, level / 5.0)
+        self._set_memory_confidence(memory, memories)
 
         memories.append(memory)
 
@@ -156,10 +165,14 @@ class MemoryManager:
         )
 
         memories = self._storage.load(user_id)
-        conflict = self._detect_conflict(memory, memories)
-        if conflict:
+        conflicts = self._conflict_resolver.detect(memory, memories)
+        for conflict in conflicts:
             conflict.superseded_by = memory.id
-            memory.related_memory_ids = [conflict.id]
+            memory.related_memory_ids.append(conflict.id)
+
+        if level is not None:
+            memory.confidence = min(1.0, level / 5.0)
+        self._set_memory_confidence(memory, memories)
 
         memories.append(memory)
         if len(memories) > self._max_memories:
@@ -173,6 +186,23 @@ class MemoryManager:
             f"{content[:30]}..."
         )
         return memory
+
+    def _set_memory_confidence(self, memory: Memory, existing: list[Memory]) -> None:
+        """根据记忆类型和已有信息设置置信度"""
+        # 个人信息类：有多个不一致来源时降低置信度
+        if memory.category == "personal":
+            for mem in existing:
+                if mem.is_superseded:
+                    continue
+                if mem.category != "personal":
+                    continue
+                # 相同关键字的个人信息 → 降低置信度（可能有冲突）
+                shared_words = set(memory.content) & set(mem.content)
+                if len(shared_words) >= 3:
+                    memory.confidence *= 0.8
+        # 情感类：默认较高置信度
+        elif memory.category == "emotion":
+            memory.confidence = max(memory.confidence, 0.7)
 
     def _index_memory(self, user_id: str, memory: Memory):
         """生成嵌入并写入向量库（同步，sentence-transformers 是同步库）"""
@@ -191,33 +221,9 @@ class MemoryManager:
     def _detect_conflict(
         self, new_memory: Memory, existing: list[Memory]
     ) -> Memory | None:
-        """检测新记忆与已有记忆的冲突"""
-        content = new_memory.content
-        antonym_pairs = [
-            ("喜欢", "讨厌"), ("爱", "恨"), ("开心", "难过"),
-            ("养", "不养"), ("有", "没有"), ("是", "不是"),
-            ("会", "不会"), ("想", "不想"), ("去", "不去"),
-        ]
-        for mem in existing:
-            if mem.is_superseded:
-                continue
-            if mem.category != new_memory.category:
-                continue
-            mem_keywords = set(mem.content)
-            new_keywords = set(content)
-            overlap = len(mem_keywords & new_keywords)
-            if overlap < 4:
-                continue
-            for pos, neg in antonym_pairs:
-                if (pos in content and neg in mem.content) or \
-                   (neg in content and pos in mem.content):
-                    return mem
-            if new_memory.category == "personal":
-                if ("叫" in content and "叫" in mem.content) or \
-                   ("是" in content and "是" in mem.content):
-                    if content != mem.content:
-                        return mem
-        return None
+        """保留的旧接口 —— 内部委托给 MemoryConflictResolver"""
+        conflicts = self._conflict_resolver.detect(new_memory, existing)
+        return conflicts[0] if conflicts else None
 
     # ---- 查 ----
 
@@ -229,9 +235,24 @@ class MemoryManager:
         limit: int = 20,
         category: str | None = None,
         include_superseded: bool = False,
+        min_confidence: float = 0.0,
     ) -> list[Memory]:
-        """获取用户记忆，按重要度和最近访问排序"""
+        """获取用户记忆，按重要度和最近访问排序
+
+        Args:
+            user_id: 用户 ID
+            level_min: 最低重要度
+            level_max: 最高重要度
+            limit: 最大返回数
+            category: 分类过滤
+            include_superseded: 是否包含已被取代的
+            min_confidence: 最低置信度（v1.2 新增，过滤低置信度记忆）
+        """
         memories = self._storage.load(user_id)
+
+        # 应用衰减更新（检查是否需要衰减）
+        self._decay_system.apply_forget_decay(user_id, memories)
+
         filtered = []
         for m in memories:
             if not include_superseded and m.is_superseded:
@@ -240,9 +261,25 @@ class MemoryManager:
                 continue
             if category and m.category != category:
                 continue
+            if m.confidence < min_confidence:
+                continue
             filtered.append(m)
         filtered.sort(key=lambda m: (m.level, m.last_accessed), reverse=True)
         return filtered[:limit]
+
+    def apply_decay(self, user_id: str) -> int:
+        """显式触发记忆衰减，返回被归档/清理的记忆数"""
+        memories = self._storage.load(user_id)
+        result = self._decay_system.apply_forget_decay(user_id, memories)
+        # 持久化更新后的 forget_score
+        for m in memories:
+            self._storage.update(user_id, m)
+        archived = 0
+        for m in memories:
+            if m.is_superseded and m.forget_score >= 0.8:
+                archived += 1
+        logger.info(f"Decay applied for {user_id}: {result} affected")
+        return result
 
     def list_all_memories(
         self, user_id: str, offset: int = 0, limit: int = 10
@@ -258,18 +295,12 @@ class MemoryManager:
     def search_memories(
         self, user_id: str, keyword: str, limit: int = 10
     ) -> list[Memory]:
-        """关键词搜索记忆（排除已被取代的）"""
-        memories = self._storage.load(user_id)
-        results = [
-            m for m in memories
-            if not m.is_superseded
-            and (keyword in m.content or keyword in m.tags)
-        ]
+        """关键词搜索记忆（SQLite LIKE，排除已被取代的）"""
+        results = self._storage.search(user_id, keyword, limit=limit)
         for m in results:
             m.touch()
-        if results:
-            self._storage.save(user_id, memories)
-        return results[:limit]
+            self._storage.update(user_id, m)
+        return results
 
     def semantic_search(self, user_id: str, query: str, top_k: int = 5) -> list[dict]:
         """语义搜索记忆（向量 Top-K）"""
@@ -284,20 +315,20 @@ class MemoryManager:
             logger.debug(f"Semantic search failed: {e}")
             return []
 
+    def get_memory(self, user_id: str, memory_id: str) -> Memory | None:
+        """获取单条记忆"""
+        return self._storage.get(user_id, memory_id)
+
     # ---- 删 ----
 
     def delete_memory(self, user_id: str, memory_id: str) -> bool:
-        """删除一条记忆（JSON + 向量）"""
-        memories = self._storage.load(user_id)
-        original = len(memories)
-        memories = [m for m in memories if m.id != memory_id]
-        if len(memories) < original:
-            self._storage.save(user_id, memories)
-            if self._vector_store:
-                self._vector_store.delete(user_id, memory_id)
+        """删除一条记忆（SQLite + 向量）"""
+        deleted = self._storage.delete(user_id, memory_id)
+        if deleted and self._vector_store:
+            self._vector_store.delete(user_id, memory_id)
+        if deleted:
             logger.info(f"Deleted memory {memory_id}")
-            return True
-        return False
+        return deleted
 
     # ---- 改 ----
 
@@ -306,22 +337,21 @@ class MemoryManager:
         level: int | None = None, category: str | None = None,
     ) -> Memory | None:
         """更新一条记忆（内容变更时重新生成嵌入）"""
-        memories = self._storage.load(user_id)
-        for m in memories:
-            if m.id == memory_id:
-                if content is not None:
-                    m.content = content
-                if level is not None:
-                    m.level = level
-                if category is not None:
-                    m.category = category
-                m.last_accessed = datetime.now().isoformat()
-                self._storage.save(user_id, memories)
-                if content is not None and self._embedder and self._vector_store:
-                    self._index_memory(user_id, m)
-                logger.info(f"Updated memory {memory_id}")
-                return m
-        return None
+        memory = self._storage.get(user_id, memory_id)
+        if not memory:
+            return None
+        if content is not None:
+            memory.content = content
+        if level is not None:
+            memory.level = level
+        if category is not None:
+            memory.category = category
+        memory.last_accessed = datetime.now().isoformat()
+        self._storage.update(user_id, memory)
+        if content is not None and self._embedder and self._vector_store:
+            self._index_memory(user_id, memory)
+        logger.info(f"Updated memory {memory_id}")
+        return memory
 
     # ---- 上下文 ----
 

@@ -53,7 +53,7 @@ CATEGORY_KEYWORDS: dict[MemoryCategory, list[str]] = {
 class Memory:
     """单条记忆
 
-    支持结构化分类、标签、关系关联等。
+    支持结构化分类、标签、关系关联、置信度评分、遗忘分数。
     """
 
     id: str
@@ -68,6 +68,11 @@ class Memory:
     superseded_by: str = ""  # 被哪条记忆取代（冲突更新用）
     source: str = "auto"  # 来源：auto=自动提取, user=用户添加, summary=总结
 
+    # v1.2 新增字段
+    confidence: float = 0.5  # 置信度 0.0~1.0（明确陈述=0.9，猜测=0.4，不确定=0.3）
+    forget_score: float = 0.0  # 遗忘分数（越高越容易被归档）
+    archived: bool = False  # 是否已归档（不再参与检索）
+
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
             "id": self.id,
@@ -78,8 +83,10 @@ class Memory:
             "last_accessed": self.last_accessed,
             "access_count": self.access_count,
             "tags": self.tags,
+            "confidence": round(self.confidence, 2),
+            "forget_score": round(self.forget_score, 4),
+            "archived": self.archived,
         }
-        # 只在有值时写入可选字段，节省空间
         if self.related_memory_ids:
             result["related_memory_ids"] = self.related_memory_ids
         if self.superseded_by:
@@ -102,6 +109,9 @@ class Memory:
             related_memory_ids=data.get("related_memory_ids", []),
             superseded_by=data.get("superseded_by", ""),
             source=data.get("source", "auto"),
+            confidence=data.get("confidence", 0.5),
+            forget_score=data.get("forget_score", 0.0),
+            archived=data.get("archived", False),
         )
 
     def touch(self) -> None:
@@ -113,6 +123,38 @@ class Memory:
     def is_superseded(self) -> bool:
         """是否已被取代"""
         return bool(self.superseded_by)
+
+    @staticmethod
+    def infer_confidence(content: str) -> float:
+        """根据表达方式推断记忆置信度
+
+        - 明确陈述（"我是"、"我喜欢"、"我今年"）→ 0.9
+        - 一般陈述（"我可能"、"我觉得"）→ 0.6
+        - 猜测表达（"也许"、"大概"、"可能"）→ 0.4
+        - 不确定（"不知道"、"也许吧"）→ 0.3
+        """
+        content_lower = content.lower()
+        # 明确
+        if any(kw in content for kw in ("我叫", "我是", "我今年", "我的", "我住在",
+                                         "我工作", "我在", "我学", "我喜欢", "我讨厌",
+                                         "我爱", "我恨", "我有", "我没有")):
+            return 0.9
+        # 较强
+        if any(kw in content for kw in ("我觉得", "我认为", "我想", "我打算",
+                                         "我准备", "我计划", "我决定")):
+            return 0.7
+        # 一般表达
+        if any(kw in content for kw in ("我可能", "我应该", "我可以", "我会",
+                                         "我不太", "有点", "稍微")):
+            return 0.5
+        # 猜测
+        if any(kw in content for kw in ("也许", "大概", "可能", "说不定", "或许")):
+            return 0.4
+        # 不确定
+        if any(kw in content for kw in ("不知道", "不确定", "也许吧", "随便",
+                                         "都行", "无所谓")):
+            return 0.3
+        return 0.6  # 默认
 
     @staticmethod
     def classify(content: str) -> str:
