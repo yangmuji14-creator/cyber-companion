@@ -14,6 +14,7 @@ import re
 from collections import deque
 from loguru import logger
 
+from core.utils import parse_json_response
 from .analyzer import EmotionAnalyzer, EmotionType, EmotionResult
 from ..llm.base import BaseLLM
 
@@ -228,14 +229,9 @@ class LLMEmotionAnalyzer:
                 temperature=0.1,
             )
 
-            content = response.content.strip()
-
-            # 解析 JSON（从 markdown 代码块中提取）
-            code_block = re.search(r'```(?:json)?\s*\n(.*?)\n```', content, re.DOTALL)
-            if code_block:
-                content = code_block.group(1).strip()
-
-            result = json.loads(content)
+            result = parse_json_response(response.content)
+            if not result:
+                return None
 
             emotion_cn = result.get("emotion", "中性")
             intensity = float(result.get("intensity", 0.5))

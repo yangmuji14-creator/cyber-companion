@@ -9,6 +9,8 @@ import re
 import json
 from loguru import logger
 
+from core.utils import parse_json_response
+
 
 # 关键词权重表：关键词 -> 加分
 KEYWORD_WEIGHTS: dict[str, int] = {
@@ -224,14 +226,11 @@ class LLMMemoryScorer:
                 temperature=0.1,
             )
 
-            result_text = response.content.strip()
+            result = parse_json_response(response.content)
+            if not result:
+                logger.debug("LLM memory evaluation: failed to parse JSON response")
+                return None
 
-            # 解析 JSON（从 markdown 代码块中提取）
-            code_block = re.search(r'```(?:json)?\s*\n(.*?)\n```', result_text, re.DOTALL)
-            if code_block:
-                result_text = code_block.group(1).strip()
-
-            result = json.loads(result_text)
             importance = max(1, min(5, int(result.get("importance", 3))))
             category = result.get("category", "other")
             reason = result.get("reason", "")

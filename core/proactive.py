@@ -21,6 +21,7 @@ class ProactiveMessenger:
     """主动消息调度器
 
     根据时间、关系等级、记忆事件决定是否触发主动消息。
+    v1.2 增强：增加主动回忆系统（追问/回忆/关怀）。
     """
 
     def __init__(
@@ -30,11 +31,15 @@ class ProactiveMessenger:
         relationship_tracker: "RelationshipTracker",
         config: dict | None = None,
         mood_manager=None,
+        open_loop=None,
+        identity=None,
     ):
         self._persona_loader = persona_loader
         self._memory_mgr = memory_mgr
         self._relationship_tracker = relationship_tracker
         self._mood_manager = mood_manager
+        self._open_loop = open_loop
+        self._identity = identity
 
         cfg = config or {}
         self.enabled = cfg.get("proactive_enabled", True)
@@ -45,6 +50,10 @@ class ProactiveMessenger:
 
         # 记录今天已触发的时段，避免重复
         self._fired_today: dict[str, datetime] = {}
+        # 记录已发送的记忆追问，避免重复
+        self._asked_memories: set[str] = set()
+        # 记录关怀触发
+        self._care_fired: dict[str, datetime] = {}
 
     def _today_key(self, period: str) -> str:
         """构建当日触发键"""
@@ -129,6 +138,106 @@ class ProactiveMessenger:
                             return self._apply_mood(msg, persona_id, level)
                     except (ValueError, TypeError):
                         pass
+
+        # 4. 主动追问（OpenLoop）
+        if self._open_loop:
+            follow_up = self._open_loop.get_follow_up(user_id)
+            if follow_up:
+                self._mark_fired("follow_up")
+                return self._apply_mood(follow_up, persona_id, level)
+
+        # 5. 主动回忆（基于记忆）
+        memory_msg = self._check_memory_recall(user_id, level)
+        if memory_msg:
+            self._mark_fired("memory_recall")
+            return self._apply_mood(memory_msg, persona_id, level)
+
+        # 6. 持续关怀（负面情绪连续检测）
+        care_msg = self._check_care(user_id, level, persona_id)
+        if care_msg:
+            self._mark_fired("care")
+            return self._apply_mood(care_msg, persona_id, level)
+
+        return None
+
+    def _check_memory_recall(self, user_id: str, level: int) -> str | None:
+        """基于记忆的主动回忆
+
+        例如：用户之前提到"明天生日" → 次日主动说"生日快乐"。
+        """
+        if level < 40:
+            return None
+
+        memories = self._memory_mgr.get_memories(user_id, level_min=2, limit=30)
+        if not memories:
+            return None
+
+        now = datetime.now()
+        for m in memories:
+            # 跳过已追问过的
+            if m.id in self._asked_memories:
+                continue
+            # 只关注最近 7 天的记忆
+            try:
+                created = datetime.fromisoformat(m.created_at)
+                days = (now - created).total_seconds() / 86400
+                if days > 7 or days < 1:
+                    continue
+            except (ValueError, TypeError):
+                continue
+
+            # 检查是否有可追问的关键词
+            recall_keywords = {
+                "生日": "生日快乐呀~ 🎂",
+                "考试": "考试怎么样？顺利吗？",
+                "面试": "面试结果出来了吗？",
+                "搬家": "搬家顺利吗？安顿好了吗？",
+                "旅行": "旅行玩得开心吗？",
+                "感冒": "身体好点了吗？记得多喝水~",
+                "生病": "身体恢复了吗？有没有去看医生？",
+                "项目": "项目进展怎么样？",
+            }
+            for keyword, msg in recall_keywords.items():
+                if keyword in m.content:
+                    self._asked_memories.add(m.id)
+                    return msg
+
+        return None
+
+    def _check_care(self, user_id: str, level: int, persona_id: str) -> str | None:
+        """持续关怀：检测连续负面情绪
+
+        连续检测到负面情绪 >= 3 天 → 触发主动关心。
+        """
+        if level < 40:
+            return None
+
+        # 检查最近 3 天的情绪记录
+        try:
+            msgs = self._memory_mgr._storage.load(user_id)
+        except Exception:
+            return None
+
+        # 简化检查：从聊天历史中统计情绪
+        negative_days = set()
+        now = datetime.now()
+        for m in msgs:
+            if hasattr(m, 'category') and m.category == 'emotion':
+                try:
+                    created = datetime.fromisoformat(m.created_at)
+                    day = created.date()
+                    if (now - created).total_seconds() / 86400 <= 3:
+                        negative_days.add(day)
+                except (ValueError, TypeError):
+                    pass
+
+        if len(negative_days) >= 2:
+            # 检查今天是否已触发关怀
+            today = now.date()
+            if self._care_fired.get(user_id) == today:
+                return None
+            self._care_fired[user_id] = today
+            return "最近看你心情不太好... 想聊聊吗？我在这儿呢~"
 
         return None
 

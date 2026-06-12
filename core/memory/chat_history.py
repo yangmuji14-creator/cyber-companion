@@ -4,14 +4,14 @@
 """
 
 import json
-import os
 import re
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
+
+from core.utils import atomic_write_json
 
 
 class ChatHistoryStorage:
@@ -22,7 +22,7 @@ class ChatHistoryStorage:
     - short_memories: 短期记忆（user/assistant 对，用于总结）
     """
 
-    def __init__(self, data_dir: str, max_messages: int = 20):
+    def __init__(self, data_dir: str | Path, max_messages: int = 20):
         """
         Args:
             data_dir: 数据存储目录
@@ -86,12 +86,7 @@ class ChatHistoryStorage:
         data = self._cache[user_id]
 
         try:
-            fd, tmp_path = tempfile.mkstemp(
-                dir=str(self._data_dir), suffix=".tmp"
-            )
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, str(filepath))
+            atomic_write_json(filepath, data)
         except Exception as e:
             logger.error(f"Failed to save chat history for {user_id}: {e}")
             self._cache.pop(user_id, None)

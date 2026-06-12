@@ -10,6 +10,7 @@ import re
 
 from loguru import logger
 
+from core.utils import parse_json_response
 from ..llm.base import BaseLLM
 
 
@@ -120,17 +121,9 @@ class MemorySummarizer:
                 return None
 
             # 尝试解析 JSON
-            import json
-            try:
-                # 处理可能的 markdown 代码块
-                code_block = re.search(r'```(?:json)?\s*\n(.*?)\n```', content, re.DOTALL)
-                if code_block:
-                    content = code_block.group(1).strip()
-                result = json.loads(content.strip())
-                if "content" in result and "importance" in result:
-                    return result
-            except json.JSONDecodeError:
-                pass
+            result = parse_json_response(content)
+            if result and "content" in result and "importance" in result:
+                return result
 
             # JSON 解析失败，尝试从文本中提取
             if "content" in content and "importance" in content:
@@ -304,7 +297,6 @@ class MemorySummarizer:
                 return []
 
             # 解析编号
-            import re
             numbers = re.findall(r'\d+', content)
             if not numbers:
                 return None

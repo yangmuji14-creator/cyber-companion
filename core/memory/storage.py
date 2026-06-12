@@ -1,13 +1,12 @@
 """记忆存储层 - JSON 文件存储"""
 
 import json
-import os
 import re
-import tempfile
 from pathlib import Path
 
 from loguru import logger
 
+from core.utils import atomic_write_json
 from .models import Memory
 
 
@@ -54,18 +53,7 @@ class MemoryStorage:
         """保存用户的所有记忆（原子写入）"""
         file_path = self._get_user_file(user_id)
         data = {"memories": [m.to_dict() for m in memories]}
-
-        # 先写入临时文件，再原子替换，防止崩溃导致数据丢失
-        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(self._data_dir), suffix=".tmp")
-        try:
-            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, str(file_path))
-        except Exception:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-            raise
-
+        atomic_write_json(file_path, data)
         logger.debug(f"Saved {len(memories)} memories for user {user_id}")
 
     def delete_all(self, user_id: str) -> bool:

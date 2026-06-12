@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+from loguru import logger
+
 # 项目路径常量
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
@@ -30,6 +32,6 @@ def load_advanced() -> dict:
             defaults.update(
                 {k: v for k, v in data.get("advanced", {}).items() if k in defaults}
             )
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"Failed to load settings.json, using defaults: {e}")
     return defaults

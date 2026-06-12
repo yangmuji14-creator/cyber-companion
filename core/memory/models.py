@@ -68,6 +68,22 @@ class Memory:
     superseded_by: str = ""  # 被哪条记忆取代（冲突更新用）
     source: str = "auto"  # 来源：auto=自动提取, user=用户添加, summary=总结
 
+    # === 记忆可信度 (v1.2) ===
+    confidence: float = 0.7  # 可信度 0.0~1.0
+    # 默认规则：
+    #   - 明确陈述（"我喜欢Python"）→ 0.9
+    #   - 猜测表达（"我可能转专业"）→ 0.4
+    #   - 不确定表达（"也许吧"）→ 0.3
+
+    # === 遗忘评分 (v1.2) ===
+    forget_score: float = 0.0  # 遗忘评分，越高越容易被清理
+    # 衰减规则：
+    #   - 每天自然衰减 +0.01
+    #   - 重要度越高衰减越慢（level 5 → ×0.2）
+    #   - 引用次数越高衰减越慢（access_count × 保护因子）
+    #   - 最近访问越近衰减越慢
+    # 删除阈值：forget_score >= 0.8 且 importance < 3
+
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
             "id": self.id,
@@ -78,6 +94,8 @@ class Memory:
             "last_accessed": self.last_accessed,
             "access_count": self.access_count,
             "tags": self.tags,
+            "confidence": round(self.confidence, 2),
+            "forget_score": round(self.forget_score, 3),
         }
         # 只在有值时写入可选字段，节省空间
         if self.related_memory_ids:
@@ -102,7 +120,30 @@ class Memory:
             related_memory_ids=data.get("related_memory_ids", []),
             superseded_by=data.get("superseded_by", ""),
             source=data.get("source", "auto"),
+            confidence=data.get("confidence", 0.7),
+            forget_score=data.get("forget_score", 0.0),
         )
+
+    @staticmethod
+    def classify_confidence(content: str) -> float:
+        """基于内容表达确定性自动判断可信度
+
+        规则:
+            - 明确陈述（"我喜欢Python"）→ 0.9
+            - 猜测表达（"我可能转专业"）→ 0.4
+            - 不确定表达（"也许吧"）→ 0.3
+        """
+        uncertain_keywords = ["可能", "也许", "大概", "应该", "或许", "说不定", "好像"]
+        guess_keywords = ["可能", "也许", "大概", "或许", "说不定", "我觉得"]
+        explicit_keywords = ["肯定", "绝对", "一定", "确实", "真的", "特别喜欢"]
+
+        if any(kw in content for kw in explicit_keywords):
+            return 0.9
+        if any(kw in content for kw in guess_keywords):
+            return 0.4
+        if any(kw in content for kw in uncertain_keywords):
+            return 0.3
+        return 0.7
 
     def touch(self) -> None:
         """更新访问时间和次数"""

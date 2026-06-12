@@ -8,5 +8,11 @@ litellm>=1.65.0
 # Utilities
 loguru>=0.7.0
 
+# Numeric (vector computation)
+numpy>=1.24.0
+
 # Vector Memory (optional — app falls back to keyword search if unavailable)
 sentence-transformers>=3.0.0
+
+# WeChat Adapter
+weixin-ilink>=0.3.5

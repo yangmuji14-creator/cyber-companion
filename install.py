@@ -4,10 +4,14 @@
 用法：python install.py
 """
 
+import os
 import subprocess
 import sys
-import sysconfig
 from pathlib import Path
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).parent
 VENV_DIR = ROOT / ".venv"
@@ -17,7 +21,7 @@ REQ_FILE = ROOT / "requirements.txt"
 MIRRORS = [
     ("清华", "https://pypi.tuna.tsinghua.edu.cn/simple"),
     ("阿里", "https://mirrors.aliyun.com/pypi/simple"),
-    ("中科大", "https://pypi.mirrors.ustc.edu.cn/simple"),
+    ("中科大", "https://mirrors.ustc.edu.cn/pypi/web/simple"),
     ("官方", "https://pypi.org/simple"),
 ]
 
@@ -61,6 +65,27 @@ def _get_pip():
     return VENV_DIR / "bin" / "pip"
 
 
+def _run_pip(args: list[str]) -> tuple[int, str, str]:
+    """运行 pip 命令，实时显示进度条输出（解决无输出的"卡死"假象）"""
+    env = {**os.environ, "PYTHONUTF8": "1"}
+    all_output: list[str] = []
+    proc = subprocess.Popen(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,  # 合并 stderr → stdout，统一处理
+        env=env,
+    )
+    # 逐行读取并实时打印，让用户看到 pip 进度条
+    for raw_line in iter(proc.stdout.readline, b""):
+        line = raw_line.decode("utf-8", errors="replace")
+        all_output.append(line)
+        print(f"  {line}", end="", flush=True)
+    proc.wait()
+
+    full = "".join(all_output)
+    return (proc.returncode, full, full)
+
+
 def _install_deps():
     """用国内镜像安装依赖"""
     pip = _get_pip()
@@ -72,27 +97,46 @@ def _install_deps():
         print(f"  ❌ 找不到 requirements.txt: {REQ_FILE}")
         sys.exit(1)
 
+    # 先升级 pip 本身
+    print("  ⬆️  升级 pip...")
+    _run_pip([str(pip), "install", "--upgrade", "pip"])
+
     print("  📦 安装依赖...\n")
 
     for name, url in MIRRORS:
-        print(f"  尝试源: {name} ({url})")
-        result = subprocess.run(
-            [str(pip), "install", "-r", str(REQ_FILE), "-i", url],
-            capture_output=True,
-            text=True,
+        print(f"  → 尝试源: {name} ({url})")
+        ret, out_text, err_text = _run_pip(
+            [str(pip), "install", "-r", str(REQ_FILE), "-i", url,
+             "--timeout", "120"]
         )
-        if result.returncode == 0:
+        if ret == 0:
             print(f"\n  ✅ 依赖安装成功！（使用 {name} 源）")
             return True
+
+        # 提取关键错误行
+        err_lines = [l.strip() for l in err_text.split("\n") if l.strip()]
+        show = []
+        for line in err_lines[-15:]:
+            if any(kw in line.lower() for kw in
+                   ["error", "could not", "connection", "timeout",
+                    "no matching", "not found", "ssl"]):
+                show.append(line)
+
+        print(f"  ❌ {name} 源失败:")
+        if show:
+            for line in show[-5:]:
+                print(f"     {line}")
         else:
-            # 只显示最后几行错误
-            err_lines = result.stderr.strip().split("\n")
-            print(f"  ❌ {name} 源失败: {err_lines[-1] if err_lines else '未知错误'}")
-            print()
+            print(f"     {err_lines[-1] if err_lines else '未知错误'}")
+        print()
 
     print("  ❌ 所有镜像源都失败了，请检查网络连接")
     print("  你可以手动尝试：")
-    print(f"    {pip} install -r {REQ_FILE} -i https://pypi.tuna.tsinghua.edu.cn/simple")
+    pip_show = str(pip)
+    print(f"    {pip_show} install -r {REQ_FILE} -i https://pypi.tuna.tsinghua.edu.cn/simple")
+    print()
+    print("  如果 SSL 证书报错，可以尝试：")
+    print(f"    {pip_show} install -r {REQ_FILE} -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn")
     return False
 
 
@@ -124,7 +168,7 @@ def main():
         print("    python main.py setup   # 配置模型和人设")
         print("    python main.py         # 开始聊天")
         print()
-        print("  或者双击 start.bat 直接启动")
+        print("  或者运行 python main.py 直接启动")
         print()
     else:
         print("=" * 50)
