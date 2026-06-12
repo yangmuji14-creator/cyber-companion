@@ -1002,15 +1002,6 @@ class SeqMockLLM:
     async def close(self):
         pass
 
-    async def chat(self, messages, system_prompt="", **kwargs):
-        return type("Resp", (), {"content": self.reply})()
-
-    async def chat_stream(self, messages, system_prompt="", **kwargs):
-        yield self.reply
-
-    async def close(self):
-        pass
-
 
 def test_pipeline_no_llm():
     """无 LLM 时 pipeline 返回占位消息"""

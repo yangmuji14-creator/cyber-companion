@@ -21,6 +21,11 @@ class MemoryStorage:
         self._data_dir = Path(data_dir) / "memories"
         self._data_dir.mkdir(parents=True, exist_ok=True)
 
+    @property
+    def data_dir(self) -> Path:
+        """公开数据目录路径"""
+        return self._data_dir.parent
+
     def _get_user_file(self, user_id: str) -> Path:
         # 防止路径穿越：只允许字母数字下划线连字符
         safe_id = re.sub(r'[^a-zA-Z0-9_\-.]', '_', user_id)

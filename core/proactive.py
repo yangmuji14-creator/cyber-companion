@@ -134,8 +134,6 @@ class ProactiveMessenger:
 
     def _generate_morning_message(self, persona, level: int) -> str:
         """生成早安消息"""
-        hour = datetime.now().hour
-
         if level >= 80:
             messages = [
                 f"早安呀~ 昨晚有没有梦到我？嘻嘻 ☀️",
@@ -159,8 +157,6 @@ class ProactiveMessenger:
 
     def _generate_evening_message(self, persona, level: int) -> str:
         """生成晚安/关心消息"""
-        hour = datetime.now().hour
-
         if level >= 80:
             messages = [
                 f"忙了一天辛苦啦~ 今晚好好休息哦 💤",
