@@ -161,20 +161,25 @@ class SessionStats:
 class ChatHandler:
     """聊天会话管理器：输入、输出、状态、生命周期"""
 
-    def __init__(self, registry, memory_mgr, persona_loader, chat_history,
-                 llm_emotion_analyzer, relationship_tracker, proactive, config: dict,
-                 mood_engine=None, personality_engine=None, tool_registry=None):
+    def __init__(self, registry, memory_mgr, persona_loader, personality_engine,
+                 chat_history, llm_emotion_analyzer, relationship_tracker,
+                 proactive, mood_manager, config: dict,
+                 tool_registry=None, open_loop=None, identity=None, life_summary=None):
         self._registry = registry
         self.memory_mgr = memory_mgr
         self.persona_loader = persona_loader
+        self._personality_engine = personality_engine
         self.chat_history = chat_history
         self._llm_emotion_analyzer = llm_emotion_analyzer
         self.relationship_tracker = relationship_tracker
         self._proactive = proactive
-        self._mood_engine = mood_engine
+        self._mood_manager = mood_manager
         self._personality_engine = personality_engine
         self._tool_registry = tool_registry
         self.config = config
+        self._open_loop = open_loop
+        self._identity = identity
+        self._life_summary = life_summary
 
         # 当前人设 ID
         self.current_persona_id = "girlfriend_001"
@@ -185,17 +190,80 @@ class ChatHandler:
         # v3.5 新组件
         dialogue_thinker = DialogueThinker(llm=llm) if llm else None
         sticker_replier = StickerReplier(use_ascii_art=False)
+        consistency_guard = ConsistencyGuard(persona_loader=persona_loader) if persona_loader else None
+        topic_tracker = TopicTracker() if llm else None
 
         self.pipeline = ChatPipeline(
-            llm, memory_mgr, persona_loader, chat_history,
-            llm_emotion_analyzer, relationship_tracker, config,
-            mood_engine=mood_engine,
-            personality_engine=personality_engine,
-            tool_registry=tool_registry,
+            llm, memory_mgr, persona_loader, personality_engine, chat_history,
+            llm_emotion_analyzer, relationship_tracker, self._mood_manager, config,
             dialogue_thinker=dialogue_thinker,
-            sticker_replier=sticker_replier,
+            consistency_guard=consistency_guard,
+            topic_tracker=topic_tracker,
+            tool_registry=tool_registry,
+            open_loop=open_loop,
+            identity=identity,
+            life_summary=life_summary,
         )
         self.commands = CommandHandler(self)
+
+    # ---- 内部 ----
+
+    async def _process_and_respond(
+        self,
+        user_id: str,
+        text: str,
+        persona_name: str,
+        stats: SessionStats,
+        last_reply: list[str],
+        *,
+        clear_spinner: bool = False,
+    ) -> None:
+        """处理用户输入并流式输出 AI 回复
+
+        Args:
+            user_id: 用户 ID
+            text: 用户输入文本
+            persona_name: 当前人设名称
+            stats: 会话统计对象
+            last_reply: 用于累积回复 token 的列表（单元素）
+            clear_spinner: 是否先清除 spinner 行（去抖模式用）
+        """
+        first_token = [True]
+        spinner_stop = asyncio.Event()
+
+        def _on_token(token: str):
+            nonlocal first_token
+            last_reply[0] += token
+            if first_token[0]:
+                spinner_stop.set()
+                if clear_spinner:
+                    print(f"\r{' ' * 50}\r", end="", flush=True)
+                _print_reply_token(persona_name, token, True)
+                first_token[0] = False
+            else:
+                _print_reply_token(persona_name, token, False)
+
+        spinner = asyncio.create_task(
+            _spinner_task(spinner_stop, persona_name)
+        )
+
+        reply, rel_level = await self.pipeline.process(
+            user_id, text, self.current_persona_id,
+            on_token=_on_token,
+        )
+
+        if not spinner_stop.is_set():
+            spinner_stop.set()
+        spinner.cancel()
+        stats.end_level = rel_level
+
+        if first_token[0]:
+            await _print_reply(persona_name, reply, self.config)
+        else:
+            print()
+
+        _print_rel_change(rel_level)
+        last_reply[0] = ""
 
     # ---- 主入口 ----
 
@@ -275,43 +343,12 @@ class ChatHandler:
                     count = len(message_queue)
                     combined = "\n".join(message_queue)
                     message_queue = []
-
-                    first_token = [True]
-                    spinner_stop = asyncio.Event()
-
-                    def _on_token(token: str):
-                        nonlocal first_token
-                        last_reply[0] += token
-                        if first_token[0]:
-                            spinner_stop.set()
-                            print(f"\r{' ' * 50}\r", end="", flush=True)
-                            _print_reply_token(persona_name, token, True)
-                            first_token[0] = False
-                        else:
-                            _print_reply_token(persona_name, token, False)
-
-                    spinner = asyncio.create_task(
-                        _spinner_task(spinner_stop, persona_name)
-                    )
-
-                    reply, rel_level = await self.pipeline.process(
-                        user_id, combined, self.current_persona_id,
-                        on_token=_on_token,
-                    )
-
-                    if not spinner_stop.is_set():
-                        spinner_stop.set()
-                    spinner.cancel()
                     stats.message_count += count
-                    stats.end_level = rel_level
 
-                    if first_token[0]:
-                        await _print_reply(persona_name, reply, self.config)
-                    else:
-                        print()
-
-                    _print_rel_change(rel_level)
-                    last_reply[0] = ""
+                    await self._process_and_respond(
+                        user_id, combined, persona_name, stats, last_reply,
+                        clear_spinner=True,
+                    )
                     continue
 
                 # 收到输入
@@ -331,41 +368,9 @@ class ChatHandler:
                 # 不用去抖
                 if debounce_seconds <= 0:
                     stats.message_count += 1
-
-                    first_token = [True]
-                    spinner_stop = asyncio.Event()
-
-                    def _on_token_direct(token: str):
-                        nonlocal first_token
-                        last_reply[0] += token
-                        if first_token[0]:
-                            spinner_stop.set()
-                            _print_reply_token(persona_name, token, True)
-                            first_token[0] = False
-                        else:
-                            _print_reply_token(persona_name, token, False)
-
-                    spinner = asyncio.create_task(
-                        _spinner_task(spinner_stop, persona_name)
+                    await self._process_and_respond(
+                        user_id, user_input, persona_name, stats, last_reply,
                     )
-
-                    reply, rel_level = await self.pipeline.process(
-                        user_id, user_input, self.current_persona_id,
-                        on_token=_on_token_direct,
-                    )
-
-                    if not spinner_stop.is_set():
-                        spinner_stop.set()
-                    spinner.cancel()
-                    stats.end_level = rel_level
-
-                    if first_token[0]:
-                        await _print_reply(persona_name, reply, self.config)
-                    else:
-                        print()
-
-                    _print_rel_change(rel_level)
-                    last_reply[0] = ""
                     continue
 
                 # 加入消息队列（去抖模式）
