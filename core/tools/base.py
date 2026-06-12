@@ -75,6 +75,18 @@ class BaseTool(ABC):
         }
 
 
+# Tool 别名（兼容 builtin.py 导入）
+Tool = BaseTool
+
+
+@dataclass
+class ToolCall:
+    """解析后的工具调用"""
+    name: str
+    params: dict[str, str] = field(default_factory=dict)
+    raw_text: str = ""
+
+
 class ToolRegistry:
     """工具注册中心
 
@@ -99,6 +111,39 @@ class ToolRegistry:
     def get_function_specs(self) -> list[dict[str, Any]]:
         """获取所有工具的 function calling 格式定义"""
         return [t.to_function_spec() for t in self._tools.values()]
+
+    def get_prompt_block(self) -> str:
+        """生成工具描述 prompt 块"""
+        if not self._tools:
+            return ""
+        lines = ["可用工具："]
+        for tool in self._tools.values():
+            lines.append(f"- {tool.name}: {tool.description}")
+        return "\n".join(lines)
+
+    def parse_calls(self, text: str) -> list[ToolCall]:
+        """从文本中解析工具调用
+
+        支持格式：
+        - /call 工具名(参数名="值")
+        - /call 工具名 参数名="值"
+        - /call 工具名
+        """
+        import re
+        results = []
+        # 匹配 /call 工具名(参数名="值", ...)
+        pattern = re.compile(r'/call\s+(\w+)(?:\(([^)]*)\))?')
+        for match in pattern.finditer(text):
+            name = match.group(1)
+            if name not in self._tools:
+                continue
+            params = {}
+            params_str = match.group(2) or ""
+            if params_str.strip():
+                for param_match in re.finditer(r'(\w+)\s*=\s*["\']([^"\']*)["\']', params_str):
+                    params[param_match.group(1)] = param_match.group(2)
+            results.append(ToolCall(name=name, params=params, raw_text=match.group(0)))
+        return results
 
     @property
     def available(self) -> bool:

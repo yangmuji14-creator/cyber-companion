@@ -14,7 +14,10 @@ class ClockTool(Tool):
 
     name = "clock"
     description = "查看当前日期和时间，包括星期几"
-    parameters = []
+
+    @property
+    def parameters(self) -> dict:
+        return {"type": "object", "properties": {}, "required": []}
 
     async def execute(self, **kwargs) -> ToolResult:
         now = datetime.now()
@@ -32,10 +35,17 @@ class DateCalcTool(Tool):
 
     name = "date_calc"
     description = "计算两个日期之间的天数差"
-    parameters = [
-        {"name": "date1", "type": "str", "description": "第一个日期 YYYY-MM-DD", "required": True},
-        {"name": "date2", "type": "str", "description": "第二个日期 YYYY-MM-DD", "required": False},
-    ]
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "date1": {"type": "string", "description": "第一个日期 YYYY-MM-DD"},
+                "date2": {"type": "string", "description": "第二个日期 YYYY-MM-DD"},
+            },
+            "required": ["date1"],
+        }
 
     async def execute(self, date1: str = "", date2: str = "") -> ToolResult:
         try:
@@ -52,9 +62,16 @@ class ReminderTool(Tool):
 
     name = "reminder"
     description = "记录一个提醒事项，以后可以查看"
-    parameters = [
-        {"name": "content", "type": "str", "description": "提醒内容", "required": True},
-    ]
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "提醒内容"},
+            },
+            "required": ["content"],
+        }
 
     def __init__(self, data_dir: str = ""):
         self._path = Path(data_dir) / "reminders" if data_dir else Path("data/reminders")
@@ -85,10 +102,17 @@ class NoteTool(Tool):
 
     name = "note"
     description = "记录一段笔记/日记，存档到本地文件"
-    parameters = [
-        {"name": "content", "type": "str", "description": "笔记内容", "required": True},
-        {"name": "tags", "type": "str", "description": "标签，用逗号分隔", "required": False},
-    ]
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "笔记内容"},
+                "tags": {"type": "string", "description": "标签，用逗号分隔"},
+            },
+            "required": ["content"],
+        }
 
     def __init__(self, data_dir: str = ""):
         self._path = Path(data_dir) / "notes" if data_dir else Path("data/notes")
@@ -112,10 +136,17 @@ class TimerTool(Tool):
 
     name = "timer"
     description = "设置一个倒计时，指定分钟后提醒"
-    parameters = [
-        {"name": "minutes", "type": "int", "description": "多少分钟后提醒", "required": True},
-        {"name": "note", "type": "str", "description": "提醒内容", "required": False},
-    ]
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "minutes": {"type": "integer", "description": "多少分钟后提醒"},
+                "note": {"type": "string", "description": "提醒内容"},
+            },
+            "required": ["minutes"],
+        }
     _timers: list[dict] = []
 
     async def execute(self, minutes: int = 1, note: str = "") -> ToolResult:
@@ -149,10 +180,17 @@ class TranslateTool(Tool):
 
     name = "translate"
     description = "翻译文本（中英互译，无需 API）"
-    parameters = [
-        {"name": "text", "type": "str", "description": "需要翻译的文本", "required": True},
-        {"name": "target", "type": "str", "description": "目标语言：zh 或 en", "required": False},
-    ]
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "需要翻译的文本"},
+                "target": {"type": "string", "description": "目标语言：zh 或 en"},
+            },
+            "required": ["text"],
+        }
 
     _dict = {
         "早上好": "Good morning",
