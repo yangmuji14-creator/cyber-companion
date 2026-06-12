@@ -5,8 +5,8 @@
   → 记忆保存（含向量索引）→ 后台 LLM 提取+总结
 
 用法:
-    pipeline = ChatPipeline(llm, memory_mgr, persona_loader, chat_history,
-                            llm_emotion_analyzer, relationship_tracker, config)
+    pipeline = ChatPipeline(llm, memory_mgr, persona_loader, personality_engine,
+                            chat_history, llm_emotion_analyzer, relationship_tracker, config)
     reply, level = await pipeline.process(user_id, content, persona_id)
 """
 
@@ -86,13 +86,15 @@ def get_llm_error_message(error: Exception) -> str:
 class ChatPipeline:
     """消息处理管线：封装从用户输入到 AI 回复的完整编排"""
 
-    def __init__(self, llm, memory_mgr, persona_loader, chat_history,
-                 llm_emotion_analyzer, relationship_tracker, mood_manager, config: dict,
-                 dialogue_thinker=None, consistency_guard=None, topic_tracker=None,
-                 tool_registry=None):
+    def __init__(self, llm, memory_mgr, persona_loader, personality_engine,
+                 chat_history, llm_emotion_analyzer, relationship_tracker,
+                 mood_manager, config: dict, dialogue_thinker=None,
+                 consistency_guard=None, topic_tracker=None, tool_registry=None,
+                 open_loop=None, identity=None, life_summary=None):
         self._llm = llm
         self._memory_mgr = memory_mgr
         self._persona_loader = persona_loader
+        self._personality_engine = personality_engine
         self._chat_history = chat_history
         self._llm_emotion_analyzer = llm_emotion_analyzer
         self._relationship_tracker = relationship_tracker
@@ -101,6 +103,9 @@ class ChatPipeline:
         self._consistency_guard = consistency_guard or ConsistencyGuard()
         self._topic_tracker = topic_tracker or TopicTracker()
         self._tool_registry = tool_registry
+        self._open_loop = open_loop
+        self._identity = identity
+        self._life_summary = life_summary
         self._config = config
 
         # 运行时状态
@@ -136,6 +141,9 @@ class ChatPipeline:
         # 首次使用初始化 LLM 情感分析器
         self._llm_emotion_analyzer.set_llm(self._llm)
 
+        # 会话开始时更新人格状态
+        self._personality_engine.update_on_session_start(persona_id)
+
         # 格式化多消息
         formatted_content, msg_count = format_multi_message(content)
 
@@ -159,8 +167,23 @@ class ChatPipeline:
             persona_id=persona_id,
         )
 
+        # 更新人格状态
+        personality_state = self._personality_engine.update_on_message(
+            persona_id=persona_id,
+            emotion=emotion.emotion.value,
+            relationship_level=rel_level,
+        )
+
         # 话题追踪
-        self._topic_tracker.update(content) if not skip_user_message else None
+        if not skip_user_message: self._topic_tracker.update(content)
+
+        # v1.3 Open Loop: 检测未完成事件
+        if self._open_loop and not skip_user_message:
+            self._open_loop.detect(user_id, content)
+
+        # v1.3 Identity: 提取身份线索
+        if self._identity and not skip_user_message:
+            self._identity.extract_from_message(user_id, content)
 
         # 对话思考
         thought = await self._dialogue_thinker.think(
@@ -174,6 +197,19 @@ class ChatPipeline:
         memory_context = self._memory_mgr.get_context_prompt(
             user_id, limit=8, query=content
         )
+
+        # v1.3 新增上下文层
+        open_loop_context = ""
+        if self._open_loop:
+            open_loop_context = self._open_loop.get_context(user_id)
+
+        identity_context = ""
+        if self._identity:
+            identity_context = self._identity.get_context(user_id)
+
+        life_summary_context = ""
+        if self._life_summary:
+            life_summary_context = self._life_summary.get_context(user_id)
 
         # 当嵌入器不可用时，用 LLM 做二次相关性过滤作为补充
         relevant_context = ""
@@ -209,12 +245,23 @@ class ChatPipeline:
             persona_id, relationship_level=rel_level
         )
 
+        # 获取人格状态指令
+        personality_instruction = personality_state.to_prompt_block()
+
         # 合并额外指令
         extra_parts = [extra]
         if thought_instruction:
             extra_parts.append(thought_instruction)
         if topic_context:
             extra_parts.append(topic_context)
+        if personality_instruction:
+            extra_parts.append(personality_instruction)
+        if open_loop_context:
+            extra_parts.append(open_loop_context)
+        if identity_context:
+            extra_parts.append(identity_context)
+        if life_summary_context:
+            extra_parts.append(life_summary_context)
         if self._tool_registry:
             tool_block = self._tool_registry.get_prompt_block()
             if tool_block:
