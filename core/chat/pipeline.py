@@ -1,38 +1,37 @@
 """ChatPipeline — 消息处理管线
 
 从用户消息到 AI 回复的完整流程：
-  情绪分析 → 记忆检索（向量/关键词）→ Prompt构建 → LLM调用
-  → 记忆保存（含向量索引）→ 后台 LLM 提取+总结
+  情绪分析 → Mood更新 → 记忆检索（向量/关键词）→ Prompt构建（含Mood/人格/工具）
+  → LLM调用（支持工具调用）→ 工具执行（如有）→ 最终回复
+  → 记忆保存（含向量索引）→ 人格更新 → 后台 LLM 提取+总结
 
 用法:
     pipeline = ChatPipeline(llm, memory_mgr, persona_loader, chat_history,
-                            llm_emotion_analyzer, relationship_tracker, config)
+                            llm_emotion_analyzer, relationship_tracker, config,
+                            mood_engine=None, personality_engine=None, tool_registry=None)
     reply, level = await pipeline.process(user_id, content, persona_id)
 """
 
 import asyncio
+import json
+import re
 from collections.abc import Callable
 from datetime import datetime
 
 from loguru import logger
 
-from core.emotion import EmotionEnhancer
+from core.emotion import EmotionEnhancer, MoodExpressionEngine
+from core.dialogue import DialogueThinker, PersonaConsistencyChecker, ConsistencyGuard
 from core.memory import MemorySummarizer
+from core.multimodal import StickerReplier
 from core.persona import PromptBuilder
-from core.dialogue.thinker import DialogueThinker
-from core.dialogue.consistency import ConsistencyGuard
-from core.dialogue.topic_tracker import TopicTracker
-from core.tools import ToolRegistry
+from core.relationship import RelationshipEvolution
 
 
 # ========== 模块级工具函数（可独立测试）==========
 
 def format_multi_message(content: str) -> tuple[str, int]:
-    """将多行消息格式化为 [消息1]/[消息2]... 格式
-
-    Returns:
-        (formatted_content, message_count) 元组
-    """
+    """将多行消息格式化为 [消息1]/[消息2]... 格式"""
     lines = [line.strip() for line in content.split("\n") if line.strip()]
     if len(lines) <= 1:
         return content, 1
@@ -81,31 +80,95 @@ def get_llm_error_message(error: Exception) -> str:
         return "哎呀，出了点小问题，再试一次？"
 
 
+# 工具调用正则：从 LLM 回复中解析工具调用
+# 格式：【工具调用：工具名(参数名="值", 参数名2="值2")】
+_TOOL_CALL_PATTERN = re.compile(r'【工具调用：(\w+)\(([^)]*)\)】')
+
+
+def _parse_tool_call(text: str) -> list[tuple[str, dict[str, str]]]:
+    """从 LLM 回复中解析工具调用
+
+    Returns:
+        [(tool_name, {param: value}), ...]
+    """
+    results = []
+    for match in _TOOL_CALL_PATTERN.finditer(text):
+        name = match.group(1)
+        params_str = match.group(2)
+        params: dict[str, str] = {}
+        if params_str.strip():
+            # 解析 key="value" 或 key='value' 格式的参数
+            for param_match in re.finditer(r'(\w+)\s*=\s*["\']([^"\']*)["\']', params_str):
+                params[param_match.group(1)] = param_match.group(2)
+        results.append((name, params))
+    return results
+
+
+def _build_tools_prompt(tool_registry) -> str:
+    """构建工具描述 prompt，告诉 LLM 可用的工具"""
+    if not tool_registry or not tool_registry.available:
+        return ""
+
+    lines = [
+        "你有以下工具可以使用。当用户需要相关信息时，你可以调用工具来获取。",
+        "调用格式：【工具调用：工具名(参数名=\"值\")】",
+        "注意：一次只能调用一个工具。工具结果会自动呈现给你。",
+        "",
+        "可用工具：",
+    ]
+    for tool in tool_registry.list_tools():
+        params = tool.parameters
+        props = params.get("properties", {})
+        param_desc = []
+        for pname, pinfo in props.items():
+            required = "（必填）" if pname in params.get("required", []) else "（可选）"
+            desc = pinfo.get("description", "")
+            param_desc.append(f"    - {pname}: {desc} {required}")
+        param_str = "\n".join(param_desc) if param_desc else "    无参数"
+        lines.append(f"\n- {tool.name}：{tool.description}")
+        lines.append(param_str)
+
+    lines.extend([
+        "",
+        "示例：如果用户问「今天几号」，你可以调用：",
+        "【工具调用：get_current_time(format='date')】",
+        "等待工具返回结果后，把结果告诉用户即可。",
+    ])
+    return "\n".join(lines)
+
+
 # ========== ChatPipeline ==========
 
 class ChatPipeline:
     """消息处理管线：封装从用户输入到 AI 回复的完整编排"""
 
     def __init__(self, llm, memory_mgr, persona_loader, chat_history,
-                 llm_emotion_analyzer, relationship_tracker, mood_manager, config: dict,
-                 dialogue_thinker=None, consistency_guard=None, topic_tracker=None,
-                 tool_registry=None):
+                 llm_emotion_analyzer, relationship_tracker, config: dict,
+                 mood_engine=None, personality_engine=None, tool_registry=None,
+                 dialogue_thinker=None, sticker_replier=None):
         self._llm = llm
         self._memory_mgr = memory_mgr
         self._persona_loader = persona_loader
         self._chat_history = chat_history
         self._llm_emotion_analyzer = llm_emotion_analyzer
         self._relationship_tracker = relationship_tracker
-        self._mood_manager = mood_manager
-        self._dialogue_thinker = dialogue_thinker or DialogueThinker()
-        self._consistency_guard = consistency_guard or ConsistencyGuard()
-        self._topic_tracker = topic_tracker or TopicTracker()
+        self._mood_engine = mood_engine
+        self._personality_engine = personality_engine
         self._tool_registry = tool_registry
+        self._dialogue_thinker = dialogue_thinker
+        self._sticker_replier = sticker_replier
         self._config = config
 
         # 运行时状态
         self._last_system_prompt = ""
         self._background_tasks: set = set()
+        self._last_thought: dict | None = None
+
+        # v1.2：人设一致性检查 & 关系进化
+        self._persona_checker = PersonaConsistencyChecker(
+            persona_loader=persona_loader,
+        )
+        self._consistency_guard = ConsistencyGuard()
 
     # ---- 主入口 ----
 
@@ -134,13 +197,35 @@ class ChatPipeline:
             return "我找不到我的人设了 (´;ω`)", 50
 
         # 首次使用初始化 LLM 情感分析器
-        self._llm_emotion_analyzer.set_llm(self._llm)
+        if self._llm_emotion_analyzer._llm is None:
+            self._llm_emotion_analyzer._llm = self._llm
 
         # 格式化多消息
         formatted_content, msg_count = format_multi_message(content)
 
         # 情感分析（必须在 add_message 之前）
         emotion = await self._llm_emotion_analyzer.analyze(content)
+
+        # ---- Mood 更新 ----
+        if self._mood_engine:
+            self._mood_engine.update_from_emotion(user_id, emotion)
+
+        # ---- 人格更新 ----
+        if self._personality_engine:
+            self._personality_engine.update_after_interaction(
+                user_id, emotion_type=emotion.emotion.value,
+            )
+
+        # ---- 对话思考（v3.5）— 在 prompt 构建前分析用户意图 ----
+        self._last_thought = None
+        if self._dialogue_thinker:
+            try:
+                recent_msgs = self._chat_history.get_messages(user_id)[-6:] if not skip_user_message else None
+                self._last_thought = await self._dialogue_thinker.think(
+                    content, recent_messages=recent_msgs,
+                )
+            except Exception as e:
+                logger.debug(f"Dialogue thinker failed: {e}")
 
         # 存储用户消息
         if not skip_user_message:
@@ -159,23 +244,14 @@ class ChatPipeline:
             persona_id=persona_id,
         )
 
-        # 话题追踪
-        self._topic_tracker.update(content) if not skip_user_message else None
-
-        # 对话思考
-        thought = await self._dialogue_thinker.think(
-            content, recent_messages=messages[-6:] if messages else None
-        )
-
         # 构建上下文
         time_context = get_time_context()
 
-        # 语义/关键词混合记忆检索：传 query 则优先向量搜索，否则按重要度
+        # 语义/关键词混合记忆检索
         memory_context = self._memory_mgr.get_context_prompt(
             user_id, limit=8, query=content
         )
 
-        # 当嵌入器不可用时，用 LLM 做二次相关性过滤作为补充
         relevant_context = ""
         if not memory_context:
             relevant_memories = await self._retrieve_relevant_memories(user_id, content)
@@ -184,75 +260,104 @@ class ChatPipeline:
                     f"- {m}" for m in relevant_memories
                 )
 
-        # extra_instructions：多消息时增加上下文说明
-        extra = (
-            f"时间：{time_context}\n"
-            f"用户当前情绪：{emotion.emotion.value}（强度 {emotion.intensity}）"
-        )
+        # extra_instructions：包含 mood 风格/思考/人格/工具上下文
+        extra_parts = [f"时间：{time_context}\n用户当前情绪：{emotion.emotion.value}（强度 {emotion.intensity}）"]
+
+        # ---- Mood 表达风格指令（v3.5）----
+        if self._mood_engine:
+            mood_state = self._mood_engine.get_mood(user_id)
+            style_instructions = MoodExpressionEngine.get_style_instructions(mood_state)
+            extra_parts.append(style_instructions)
+            energy_bar = MoodExpressionEngine.get_energy_bar(mood_state.energy)
+            extra_parts.append(f"你的精力：{energy_bar}")
+
+        # ---- 对话思考结果注入（v3.5）----
+        if self._last_thought and self._dialogue_thinker:
+            thought_instruction = DialogueThinker.format_thought_as_instruction(self._last_thought)
+            if thought_instruction:
+                extra_parts.append(thought_instruction)
+
+        # ---- 人格上下文 ----
+        if self._personality_engine:
+            personality_context = self._personality_engine.get_personality_context(user_id)
+            extra_parts.append(personality_context)
+
+        # 多消息提示
         if msg_count > 1:
-            extra += (
-                f"\n【重要】用户连续发了 {msg_count} 条消息，这是用户在短时间内快速输入的碎片化想法。"
+            extra_parts.append(
+                f"【重要】用户连续发了 {msg_count} 条消息，这是用户在短时间内快速输入的碎片化想法。"
                 f"请把它们作为一个整体来理解用户的情绪和意图，"
                 f"回复时自然地回应所有内容，不要逐条回复，也不要提到「你发了很多消息」之类的话。"
                 f"像真人聊天一样，抓住重点，整体回应。"
             )
 
-        # 对话分析指令
-        thought_instruction = ""
-        if thought:
-            thought_instruction = DialogueThinker.format_thought_as_instruction(thought)
+        # ---- 工具描述（新增）----
+        tools_prompt = _build_tools_prompt(self._tool_registry)
+        if tools_prompt:
+            extra_parts.append(tools_prompt)
 
-        topic_context = self._topic_tracker.get_topic_context()
+        extra = "\n\n".join(extra_parts)
 
-        # 获取 AI 今日状态（mood）
-        mood_instruction = self._mood_manager.get_style_instruction(
-            persona_id, relationship_level=rel_level
-        )
-
-        # 合并额外指令
-        extra_parts = [extra]
-        if thought_instruction:
-            extra_parts.append(thought_instruction)
-        if topic_context:
-            extra_parts.append(topic_context)
-        if self._tool_registry:
-            tool_block = self._tool_registry.get_prompt_block()
-            if tool_block:
-                extra_parts.append(tool_block)
-        extra_combined = "\n\n".join(extra_parts)
+        # ---- v1.2：行为画像（由 RelationshipEvolution 动态生成）----
+        behavior_profile = None
+        try:
+            behavior_profile = RelationshipEvolution.get_profile(rel_level)
+        except Exception as e:
+            logger.debug(f"Behavior profile generation failed: {e}")
 
         # 构建 system prompt
         system_prompt = PromptBuilder.build(
             persona,
             memory_context=memory_context + relevant_context,
-            extra_instructions=extra_combined,
+            extra_instructions=extra,
             relationship_level=rel_level,
-            mood_instruction=mood_instruction,
+            behavior_profile=behavior_profile,
         )
         self._last_system_prompt = system_prompt
 
-        # LLM 调用（含工具链：LLM → 工具 → LLM → ...）
+        # LLM 调用（含工具循环）
         reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
         if reply.startswith(("模型太忙了", "API key", "网络", "哎呀")):
             return reply, rel_level
 
-        # 一致性检查（快速关键词 + 可选 LLM 深度检查）
-        self._consistency_guard.set_llm(self._llm)
-        checked_reply = await self._consistency_guard.check_and_fix(
-            reply, persona_summary=mood_instruction,
-            regenerate_fn=lambda: self._llm_call(messages, system_prompt),
-        )
-        reply = checked_reply
+        # ---- v1.2：人设一致性检查 ----
+        try:
+            result = self._persona_checker.check_reply(reply, persona_id)
+            if not result.passed:
+                logger.warning(f"Persona consistency issues: {result.issues}")
+        except Exception as e:
+            logger.debug(f"Persona consistency check failed: {e}")
 
-        # 情感增强
-        reply = EmotionEnhancer.enhance_reply(reply, emotion)
+        # ---- 情绪表达增强（v3.5 使用 MoodState 而非 EmotionResult）----
+        mood_state_for_emoji = None
+        if self._mood_engine:
+            mood_state_for_emoji = self._mood_engine.get_mood(user_id)
+        reply = EmotionEnhancer.enhance_reply(reply, mood_state=mood_state_for_emoji)
+
+        # ---- 表情包/颜文字增强（v3.5 新增）----
+        if self._sticker_replier and mood_state_for_emoji:
+            # 从 MoodState 反推 EmotionResult 用于 sticker 选择
+            from core.emotion import EmotionResult, EmotionType
+            mood_to_etype = {
+                "ecstatic": EmotionType.HAPPY, "happy": EmotionType.HAPPY,
+                "content": EmotionType.HAPPY, "calm": EmotionType.NEUTRAL,
+                "neutral": EmotionType.NEUTRAL, "tired": EmotionType.SAD,
+                "sad": EmotionType.SAD, "depressed": EmotionType.SAD,
+                "lonely": EmotionType.LONELY, "anxious": EmotionType.ANXIOUS,
+                "angry": EmotionType.ANGRY, "frustrated": EmotionType.ANGRY,
+                "excited": EmotionType.EXCITED, "love": EmotionType.LOVE,
+                "grateful": EmotionType.HAPPY,
+            }
+            mood_etype = mood_to_etype.get(mood_state_for_emoji.mood.value, EmotionType.NEUTRAL)
+            mock_emotion = EmotionResult(emotion=mood_etype, intensity=mood_state_for_emoji.intensity)
+            reply = self._sticker_replier.enhance_reply(reply, mock_emotion, rel_level)
 
         # 保存回复
         self._chat_history.add_message(user_id, "assistant", reply)
         self._chat_history.add_short_memory(user_id, content, reply)
 
-        # 基础记忆存储（关键词评分）
-        await self._memory_mgr.add_memory(user_id, content)
+        # 基础记忆存储
+        self._memory_mgr.add_memory(user_id, content)
 
         # 后台任务
         self._run_background(self._extract_memory(user_id, content, reply))
@@ -264,7 +369,55 @@ class ChatPipeline:
         logger.debug(f"[{persona.name}] → {user_id}: {reply[:80]}...")
         return reply, rel_level
 
-    # ---- LLM 调用 ----
+    # ---- LLM 调用（含工具循环）----
+
+    async def _llm_call_with_tools(self, messages, system_prompt, on_token=None) -> str:
+        """LLM 调用 + 工具调用循环
+
+        如果 LLM 回复中包含工具调用，执行工具并将结果喂回，
+        最多进行 1 轮工具调用（防止无限循环）。
+        """
+        if not self._tool_registry or not self._tool_registry.available:
+            # 没有工具，走标准调用
+            return await self._llm_call(messages, system_prompt, on_token)
+
+        # 第一轮调用
+        reply = await self._llm_call(messages, system_prompt, on_token)
+
+        # 检查是否有工具调用
+        tool_calls = _parse_tool_call(reply)
+        if not tool_calls:
+            return reply
+
+        # 只处理第一个工具调用（避免多工具复杂度）
+        tool_name, params = tool_calls[0]
+        tool = self._tool_registry.get(tool_name)
+        if not tool:
+            logger.warning(f"Unknown tool called: {tool_name}")
+            return reply
+
+        logger.info(f"Tool call: {tool_name}({params})")
+
+        # 执行工具
+        try:
+            result = await tool.execute(**params)
+        except Exception as e:
+            result = type("Result", (), {"output": f"工具执行失败：{e}", "success": False})()
+
+        if result.success:
+            tool_feedback = (
+                f"\n\n【工具 {tool_name} 执行结果】\n{result.output}\n"
+                f"请根据以上信息，自然地回复用户。如果结果是数据，直接告诉用户即可。"
+                f"不要提及「工具」或「调用」等词。"
+            )
+        else:
+            tool_feedback = (
+                f"\n\n【工具 {tool_name} 执行失败】\n{result.output}\n"
+                f"请告诉用户暂时无法提供这个信息，说点别的。"
+            )
+
+        # 如果原来是流式输出，工具调用后会走非流式
+        return await self._llm_call(messages, system_prompt + tool_feedback, on_token=None)
 
     async def _llm_call(self, messages, system_prompt, on_token=None) -> str:
         """流式或非流式 LLM 调用"""
@@ -289,48 +442,6 @@ class ChatPipeline:
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             return get_llm_error_message(e)
-
-    async def _llm_call_with_tools(self, messages, system_prompt, on_token=None,
-                                    max_tool_rounds: int = 3) -> str:
-        """LLM 调用 + 工具链：LLM → 工具执行 → LLM → ...
-
-        非流式模式才支持工具调用（流式模式直接走原始 _llm_call）。
-        """
-        if on_token or not self._tool_registry:
-            return await self._llm_call(messages, system_prompt, on_token)
-
-        current_messages = list(messages)
-        reply = ""
-
-        for _round in range(max_tool_rounds):
-            reply = await self._llm_call(current_messages, system_prompt)
-
-            # 检查是否需要工具调用
-            calls = self._tool_registry.parse_calls(reply)
-            if not calls:
-                break
-
-            # 执行所有工具
-            logger.info(f"Tool calls in round {_round}: {[c.name for c in calls]}")
-            tool_results = []
-            for call in calls:
-                result = await self._tool_registry.execute_call(call)
-                tool_results.append(result)
-                logger.info(f"  -> {call.name}: {'OK' if result.success else 'FAIL'}")
-
-            # 将工具结果加入对话历史
-            tool_block_parts = ["【工具执行结果】"]
-            for call, result in zip(calls, tool_results):
-                if result.success:
-                    tool_block_parts.append(f"{call.name}：{result.output}")
-                else:
-                    tool_block_parts.append(f"{call.name} 执行失败：{result.error}")
-            tool_block = "\n".join(tool_block_parts)
-
-            current_messages.append({"role": "assistant", "content": reply})
-            current_messages.append({"role": "user", "content": tool_block})
-
-        return reply
 
     # ---- system prompt 读取 ----
 
