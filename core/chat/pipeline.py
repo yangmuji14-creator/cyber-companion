@@ -19,6 +19,10 @@ from loguru import logger
 from core.emotion import EmotionEnhancer
 from core.memory import MemorySummarizer
 from core.persona import PromptBuilder
+from core.dialogue.thinker import DialogueThinker
+from core.dialogue.consistency import ConsistencyGuard
+from core.dialogue.topic_tracker import TopicTracker
+from core.tools import ToolRegistry
 
 
 # ========== 模块级工具函数（可独立测试）==========
@@ -83,13 +87,20 @@ class ChatPipeline:
     """消息处理管线：封装从用户输入到 AI 回复的完整编排"""
 
     def __init__(self, llm, memory_mgr, persona_loader, chat_history,
-                 llm_emotion_analyzer, relationship_tracker, config: dict):
+                 llm_emotion_analyzer, relationship_tracker, mood_manager, config: dict,
+                 dialogue_thinker=None, consistency_guard=None, topic_tracker=None,
+                 tool_registry=None):
         self._llm = llm
         self._memory_mgr = memory_mgr
         self._persona_loader = persona_loader
         self._chat_history = chat_history
         self._llm_emotion_analyzer = llm_emotion_analyzer
         self._relationship_tracker = relationship_tracker
+        self._mood_manager = mood_manager
+        self._dialogue_thinker = dialogue_thinker or DialogueThinker()
+        self._consistency_guard = consistency_guard or ConsistencyGuard()
+        self._topic_tracker = topic_tracker or TopicTracker()
+        self._tool_registry = tool_registry
         self._config = config
 
         # 运行时状态
@@ -123,8 +134,7 @@ class ChatPipeline:
             return "我找不到我的人设了 (´;ω`)", 50
 
         # 首次使用初始化 LLM 情感分析器
-        if self._llm_emotion_analyzer._llm is None:
-            self._llm_emotion_analyzer._llm = self._llm
+        self._llm_emotion_analyzer.set_llm(self._llm)
 
         # 格式化多消息
         formatted_content, msg_count = format_multi_message(content)
@@ -147,6 +157,14 @@ class ChatPipeline:
             user_id, emotion=emotion.emotion.value,
             base_level=persona.relationship_level,
             persona_id=persona_id,
+        )
+
+        # 话题追踪
+        self._topic_tracker.update(content) if not skip_user_message else None
+
+        # 对话思考
+        thought = await self._dialogue_thinker.think(
+            content, recent_messages=messages[-6:] if messages else None
         )
 
         # 构建上下文
@@ -179,19 +197,52 @@ class ChatPipeline:
                 f"像真人聊天一样，抓住重点，整体回应。"
             )
 
+        # 对话分析指令
+        thought_instruction = ""
+        if thought:
+            thought_instruction = DialogueThinker.format_thought_as_instruction(thought)
+
+        topic_context = self._topic_tracker.get_topic_context()
+
+        # 获取 AI 今日状态（mood）
+        mood_instruction = self._mood_manager.get_style_instruction(
+            persona_id, relationship_level=rel_level
+        )
+
+        # 合并额外指令
+        extra_parts = [extra]
+        if thought_instruction:
+            extra_parts.append(thought_instruction)
+        if topic_context:
+            extra_parts.append(topic_context)
+        if self._tool_registry:
+            tool_block = self._tool_registry.get_prompt_block()
+            if tool_block:
+                extra_parts.append(tool_block)
+        extra_combined = "\n\n".join(extra_parts)
+
         # 构建 system prompt
         system_prompt = PromptBuilder.build(
             persona,
             memory_context=memory_context + relevant_context,
-            extra_instructions=extra,
+            extra_instructions=extra_combined,
             relationship_level=rel_level,
+            mood_instruction=mood_instruction,
         )
         self._last_system_prompt = system_prompt
 
-        # LLM 调用
-        reply = await self._llm_call(messages, system_prompt, on_token)
+        # LLM 调用（含工具链：LLM → 工具 → LLM → ...）
+        reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
         if reply.startswith(("模型太忙了", "API key", "网络", "哎呀")):
             return reply, rel_level
+
+        # 一致性检查（快速关键词 + 可选 LLM 深度检查）
+        self._consistency_guard.set_llm(self._llm)
+        checked_reply = await self._consistency_guard.check_and_fix(
+            reply, persona_summary=mood_instruction,
+            regenerate_fn=lambda: self._llm_call(messages, system_prompt),
+        )
+        reply = checked_reply
 
         # 情感增强
         reply = EmotionEnhancer.enhance_reply(reply, emotion)
@@ -238,6 +289,48 @@ class ChatPipeline:
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             return get_llm_error_message(e)
+
+    async def _llm_call_with_tools(self, messages, system_prompt, on_token=None,
+                                    max_tool_rounds: int = 3) -> str:
+        """LLM 调用 + 工具链：LLM → 工具执行 → LLM → ...
+
+        非流式模式才支持工具调用（流式模式直接走原始 _llm_call）。
+        """
+        if on_token or not self._tool_registry:
+            return await self._llm_call(messages, system_prompt, on_token)
+
+        current_messages = list(messages)
+        reply = ""
+
+        for _round in range(max_tool_rounds):
+            reply = await self._llm_call(current_messages, system_prompt)
+
+            # 检查是否需要工具调用
+            calls = self._tool_registry.parse_calls(reply)
+            if not calls:
+                break
+
+            # 执行所有工具
+            logger.info(f"Tool calls in round {_round}: {[c.name for c in calls]}")
+            tool_results = []
+            for call in calls:
+                result = await self._tool_registry.execute_call(call)
+                tool_results.append(result)
+                logger.info(f"  -> {call.name}: {'OK' if result.success else 'FAIL'}")
+
+            # 将工具结果加入对话历史
+            tool_block_parts = ["【工具执行结果】"]
+            for call, result in zip(calls, tool_results):
+                if result.success:
+                    tool_block_parts.append(f"{call.name}：{result.output}")
+                else:
+                    tool_block_parts.append(f"{call.name} 执行失败：{result.error}")
+            tool_block = "\n".join(tool_block_parts)
+
+            current_messages.append({"role": "assistant", "content": reply})
+            current_messages.append({"role": "user", "content": tool_block})
+
+        return reply
 
     # ---- system prompt 读取 ----
 

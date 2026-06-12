@@ -5,10 +5,9 @@
 模型不存在时优雅降级（调用方回退关键词搜索）。
 """
 
-import logging
 from abc import ABC, abstractmethod
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 # 默认嵌入模型（中文优化，33MB，输出 512 维）
 DEFAULT_MODEL = "BAAI/bge-small-zh-v1.5"

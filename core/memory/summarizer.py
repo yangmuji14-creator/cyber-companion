@@ -6,6 +6,8 @@
 3. 检索：多路召回（关键词 + 标签 + 分类） + LLM 重排序
 """
 
+import re
+
 from loguru import logger
 
 from ..llm.base import BaseLLM
@@ -121,10 +123,9 @@ class MemorySummarizer:
             import json
             try:
                 # 处理可能的 markdown 代码块
-                if "```" in content:
-                    content = content.split("```")[1]
-                    if content.startswith("json"):
-                        content = content[4:]
+                code_block = re.search(r'```(?:json)?\s*\n(.*?)\n```', content, re.DOTALL)
+                if code_block:
+                    content = code_block.group(1).strip()
                 result = json.loads(content.strip())
                 if "content" in result and "importance" in result:
                     return result

@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+import numpy as np
 from loguru import logger
 
 from .models import Memory, MemoryCategory
@@ -40,6 +41,11 @@ class MemoryManager:
         self._max_memories = max_memories
         self._embedder = embedder
         self._vector_store = vector_store
+
+    @property
+    def data_dir(self) -> Path:
+        """公开数据目录路径"""
+        return self._storage._data_dir.parent
 
     # ---- 增 ----
 
@@ -332,30 +338,84 @@ class MemoryManager:
                            query: str | None = None) -> str:
         """生成记忆上下文 prompt
 
-        有 query 时优先语义搜索，否则按重要度排序。
-        包含分类标签。
+        混合评分：语义相似度 × 0.5 + 重要度 × 0.3 + 时效 × 0.2
+        嵌入器不可用时降级为纯重要度排序。
         """
-        # 语义搜索路径
-        if query and self._embedder and self._embedder.available:
-            semantic_results = self.semantic_search(user_id, query, top_k=limit)
-            if semantic_results:
-                lines = ["【关于你的记忆】"]
-                for r in semantic_results:
-                    lines.append(f"- {r['content']}")
-                return "\n".join(lines)
-
-        # 重要度降级路径
-        memories = self.get_memories(user_id, level_min=2, limit=limit)
-        if not memories:
+        candidates = self.get_memories(user_id, level_min=2, limit=30)
+        if not candidates:
             return ""
 
-        lines = ["【你对这个用户的记忆】"]
+        if query and self._embedder and self._embedder.available:
+            try:
+                query_vec = self._embedder.embed(query)
+                if query_vec is not None:
+                    # 批量生成候选记忆的嵌入
+                    candidate_texts = [m.content for m in candidates]
+                    cand_vecs = self._embedder.embed_batch(candidate_texts)
+                    if cand_vecs and len(cand_vecs) == len(candidates):
+                        return self._hybrid_rank_prompt(
+                            candidates, cand_vecs, query_vec, limit
+                        )
+            except Exception as e:
+                logger.debug(f"Hybrid ranking failed, fallback to importance: {e}")
+
+        # 降级路径：按重要度排列
+        candidates.sort(key=lambda m: (m.level, m.last_accessed), reverse=True)
+        return self._format_memory_prompt(candidates[:limit])
+
+    def _hybrid_rank_prompt(
+        self, candidates: list[Memory], cand_vecs: list[list[float]],
+        query_vec: list[float], limit: int,
+    ) -> str:
+        """混合评分排序 + 去重，返回格式化 prompt"""
+        now = datetime.now()
+        query_np = np.array(query_vec, dtype=np.float32).reshape(1, -1)
+        scored: list[tuple[float, Memory]] = []
+
+        for mem, vec in zip(candidates, cand_vecs):
+            mem_np = np.array(vec, dtype=np.float32).reshape(1, -1)
+            sim = float(np.dot(query_np, mem_np.T)[0, 0])
+
+            # 重要度归一化
+            imp_norm = (mem.level - 1) / 4.0
+
+            # 时效因子：30 天内满权重，之后逐渐衰减
+            try:
+                days_old = (now - datetime.fromisoformat(mem.created_at)).total_seconds() / 86400
+            except (ValueError, TypeError):
+                days_old = 0
+            recency = max(0.2, 1.0 - days_old * 0.02)
+
+            # 混合评分
+            final = sim * 0.5 + imp_norm * 0.3 + recency * 0.2
+            scored.append((final, mem))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        # 内容级去重：跳过内容相似度过高的
+        selected: list[Memory] = []
+        seen_contents: set[str] = set()
+        for _, mem in scored:
+            # 内容指纹：取前 10 个字做去重
+            fingerprint = mem.content[:10]
+            if fingerprint not in seen_contents:
+                seen_contents.add(fingerprint)
+                selected.append(mem)
+            if len(selected) >= limit:
+                break
+
+        return self._format_memory_prompt(selected)
+
+    def _format_memory_prompt(self, memories: list[Memory]) -> str:
+        """格式化记忆列表为 prompt 文本"""
+        if not memories:
+            return ""
+        lines = ["【与当前话题相关的记忆】"]
         for m in memories:
             stars = "⭐" * m.level
             cat = self.CATEGORY_NAMES.get(m.category, "")
             cat_tag = f"[{cat}]" if cat else ""
             lines.append(f"- {stars} {cat_tag} {m.content}")
-
         return "\n".join(lines)
 
     def get_memories_by_category(

@@ -34,6 +34,11 @@ class ChatHistoryStorage:
         # 内存缓存：user_id -> {"messages": [...], "short_memories": [...]}
         self._cache: dict[str, dict[str, list]] = {}
 
+    @property
+    def data_dir(self) -> Path:
+        """公开数据目录路径"""
+        return self._data_dir
+
     def _get_user_file(self, user_id: str) -> Path:
         """获取用户历史文件路径（带路径穿越防护）"""
         safe_id = re.sub(r"[^a-zA-Z0-9_\-.]", "_", user_id)
@@ -89,6 +94,7 @@ class ChatHistoryStorage:
             os.replace(tmp_path, str(filepath))
         except Exception as e:
             logger.error(f"Failed to save chat history for {user_id}: {e}")
+            self._cache.pop(user_id, None)
 
     def get_messages(self, user_id: str) -> list[dict[str, str]]:
         """获取用户 LLM 对话历史"""

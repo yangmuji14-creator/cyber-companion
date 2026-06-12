@@ -226,12 +226,10 @@ class LLMMemoryScorer:
 
             result_text = response.content.strip()
 
-            # 解析 JSON（处理可能的 markdown 代码块）
-            if "```" in result_text:
-                result_text = result_text.split("```")[1]
-                if result_text.startswith("json"):
-                    result_text = result_text[4:]
-                result_text = result_text.strip()
+            # 解析 JSON（从 markdown 代码块中提取）
+            code_block = re.search(r'```(?:json)?\s*\n(.*?)\n```', result_text, re.DOTALL)
+            if code_block:
+                result_text = code_block.group(1).strip()
 
             result = json.loads(result_text)
             importance = max(1, min(5, int(result.get("importance", 3))))

@@ -1,6 +1,9 @@
 """向量记忆集成测试（同步，sentence-transformers 是同步库）"""
-import sys, tempfile
-sys.path.insert(0, "C:\\Users\\30216\\cyber-girlfriend")
+import asyncio
+import sys
+import tempfile
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.memory.embedder import SentenceTransformerEmbedder
 from core.memory.vector_store import VectorStore
@@ -62,7 +65,7 @@ def test_vector_memory():
         mm = MemoryManager(tmp, embedder=emb, vector_store=vs2)
 
         # level=3 绕过关键词评分（测试向量功能而非关键词）
-        mem = mm.add_memory("u1", "我住在北京朝阳区", level=3)
+        mem = mm.add_memory_sync("u1", "我住在北京朝阳区", level=3)
         assert mem is not None
         print(f"  added: [{mem.id}] {mem.content[:30]}")
 
@@ -83,7 +86,7 @@ def test_vector_memory():
         assert "北京" in ctx2
 
         # 删除同步清理向量
-        mm.add_memory("u1", "我不喜欢吃香菜", level=3)
+        mm.add_memory_sync("u1", "我不喜欢吃香菜", level=3)
         cnt_before = vs2.count("u1")
         print(f"  memories before delete: {cnt_before}")
         assert cnt_before >= 2

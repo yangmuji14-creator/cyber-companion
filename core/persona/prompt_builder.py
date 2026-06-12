@@ -36,8 +36,10 @@ class PromptBuilder:
     }
 
     @staticmethod
-    def build(persona, memory_context="", extra_instructions="", relationship_level=None):
+    def build(persona, memory_context="", extra_instructions="", relationship_level=None, mood_instruction=""):
         parts = []
+        if mood_instruction:
+            parts.append(mood_instruction)
         identity = PromptBuilder._build_identity(persona)
         if identity:
             parts.append(identity)

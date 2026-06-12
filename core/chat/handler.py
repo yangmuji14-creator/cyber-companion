@@ -18,6 +18,9 @@ from loguru import logger
 from core.chat.commands import Colors, CommandHandler
 from core.chat.pipeline import ChatPipeline
 from core.emotion import MessageSegmenter
+from core.dialogue.thinker import DialogueThinker
+from core.dialogue.consistency import ConsistencyGuard
+from core.dialogue.topic_tracker import TopicTracker
 
 
 # ========== Spinner 动画 ==========
@@ -160,7 +163,7 @@ class ChatHandler:
     """聊天会话管理器：输入、输出、状态、生命周期"""
 
     def __init__(self, registry, memory_mgr, persona_loader, chat_history,
-                 llm_emotion_analyzer, relationship_tracker, proactive, config: dict):
+                 llm_emotion_analyzer, relationship_tracker, proactive, mood_manager, config: dict):
         self._registry = registry
         self.memory_mgr = memory_mgr
         self.persona_loader = persona_loader
@@ -168,16 +171,33 @@ class ChatHandler:
         self._llm_emotion_analyzer = llm_emotion_analyzer
         self.relationship_tracker = relationship_tracker
         self._proactive = proactive
+        self._mood_manager = mood_manager
         self.config = config
 
         # 当前人设 ID
         self.current_persona_id = "girlfriend_001"
 
         # 构建子组件
-        llm = registry.get() if registry.available_models else None
+        try:
+            llm = registry.get() if registry.available_models else None
+        except Exception:
+            llm = None
+        from core.tools import ToolRegistry
+        from core.tools.builtin import register_all
+
+        dialogue_thinker = DialogueThinker()
+        consistency_guard = ConsistencyGuard()
+        topic_tracker = TopicTracker()
+        tool_registry = ToolRegistry()
+        register_all(tool_registry, data_dir=str(self._mood_manager.base_data_dir))
+
         self.pipeline = ChatPipeline(
             llm, memory_mgr, persona_loader, chat_history,
-            llm_emotion_analyzer, relationship_tracker, config,
+            llm_emotion_analyzer, relationship_tracker, self._mood_manager, config,
+            dialogue_thinker=dialogue_thinker,
+            consistency_guard=consistency_guard,
+            topic_tracker=topic_tracker,
+            tool_registry=tool_registry,
         )
         self.commands = CommandHandler(self)
 
@@ -205,9 +225,13 @@ class ChatHandler:
         logger.info(f"模型: {self._registry.get().model_name}")
         logger.info(f"人设: {persona_name}")
 
-        # 欢迎语
+        # 欢迎语 + 今日状态
         welcome = _get_welcome_message(persona, stats.start_level)
         print(f"\n{Colors.MAGENTA}{persona_name}:{Colors.RESET} {welcome}")
+        mood_summary = self._mood_manager.get_display_summary(
+            self.current_persona_id, relationship_level=stats.start_level
+        )
+        print(f"  {Colors.DIM}{mood_summary}{Colors.RESET}")
         print(f"{Colors.DIM}输入 /help 查看可用命令{Colors.RESET}")
         if debounce_seconds > 0:
             print(f"{Colors.DIM}消息累积: 输入后 {debounce_seconds} 秒内可继续输入，合并后一起发送{Colors.RESET}")

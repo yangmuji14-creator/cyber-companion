@@ -259,7 +259,7 @@ class CommandHandler:
                     for m in all_ms
                 ],
             }
-            export_path = Path(self._h.memory_mgr._MemoryManager__data_dir) / f"memories_{user_id}.json"
+            export_path = Path(self._h.memory_mgr.data_dir) / f"memories_{user_id}.json"
             with open(export_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             print(f"\n{Colors.GREEN}✅ 已导出 {len(all_ms)} 条记忆到 {export_path}{Colors.RESET}\n")
@@ -276,7 +276,7 @@ class CommandHandler:
                 print(f"  {Colors.DIM}输入 /memories clear --confirm 确认清空{Colors.RESET}")
                 print(f"  {Colors.DIM}输入 /memories export 先备份记忆{Colors.RESET}\n")
                 return
-            storage = MemoryStorage(str(Path(self._h.memory_mgr._MemoryManager__data_dir)))
+            storage = MemoryStorage(str(self._h.memory_mgr.data_dir))
             storage.delete_all(user_id)
             print(f"\n{Colors.GREEN}✅ 已清空全部 {len(all_ms)} 条记忆{Colors.RESET}\n")
             return
@@ -365,7 +365,7 @@ class CommandHandler:
 
         persona = self._h.persona_loader.get(self._h.current_persona_id)
         persona_name = persona.name if persona else "AI"
-        export_dir = Path(self._h.chat_history._ChatHistoryStorage__root) / "exports"
+        export_dir = Path(self._h.chat_history.data_dir) / "exports"
         export_dir.mkdir(parents=True, exist_ok=True)
 
         if fmt == "json":

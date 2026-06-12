@@ -3,6 +3,7 @@
 import sys
 import tempfile
 from pathlib import Path
+from datetime import date
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -764,6 +765,399 @@ def test_search_messages_context():
         assert r["index"] == 2
         assert r["before"]["content"] == "第二条"
         assert r["after"]["content"] == "第四条"
+
+
+# ========== ImageHandler 测试 ==========
+
+def test_parse_img_command_normal():
+    """测试正常图片命令解析"""
+    from core.multimodal.image_handler import ImageHandler
+    path, text = ImageHandler.parse_img_command('/img cat.jpg 看看这只猫')
+    assert path == "cat.jpg"
+    assert text == "看看这只猫"
+
+
+def test_parse_img_command_quoted_path():
+    """测试带引号的路径"""
+    from core.multimodal.image_handler import ImageHandler
+    path, text = ImageHandler.parse_img_command('/img "my cat.jpg" 好可爱')
+    assert path == "my cat.jpg"
+    assert text == "好可爱"
+
+
+def test_parse_img_command_unclosed_quote():
+    """测试未闭合的引号（之前会 crash）"""
+    from core.multimodal.image_handler import ImageHandler
+    path, text = ImageHandler.parse_img_command('/img "my cat.jpg')
+    assert path == ""
+    assert text == ""
+
+
+def test_parse_img_command_no_text():
+    """测试只有路径没有文字"""
+    from core.multimodal.image_handler import ImageHandler
+    path, text = ImageHandler.parse_img_command('/img cat.jpg')
+    assert path == "cat.jpg"
+    assert text == ""
+
+
+# ========== ChatHistoryStorage data_dir property 测试 ==========
+
+def test_chat_history_data_dir_property():
+    """测试 data_dir 公开属性"""
+    from core.memory import ChatHistoryStorage
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = ChatHistoryStorage(tmpdir)
+        data_dir = storage.data_dir
+        assert data_dir is not None
+        assert str(tmpdir) in str(data_dir)
+
+
+# ========== AI Mood 测试 ==========
+
+def test_mood_compute_daily():
+    """测试每天生成不同的 mood"""
+    from core.state import AIMoodManager
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mgr = AIMoodManager(tmpdir)
+        state = mgr.get_or_today("test_persona", 50)
+        assert state.persona_id == "test_persona"
+        assert state.emotion in ["happy", "calm", "excited", "tired", "melancholy", "playful", "affectionate", "quiet"]
+        assert 0 <= state.energy <= 100
+        assert state.today_theme != ""
+        assert state.last_updated is not None
+
+
+def test_mood_persistence():
+    """测试 mood 跨 session 持久化"""
+    from core.state import AIMoodManager
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mgr1 = AIMoodManager(tmpdir)
+        state1 = mgr1.get_or_today("test_persona", 50)
+
+        # 新实例读取同一文件
+        mgr2 = AIMoodManager(tmpdir)
+        state2 = mgr2.get_or_today("test_persona", 50)
+
+        assert state1.emotion == state2.emotion
+
+
+def test_mood_relationship_affects():
+    """测试亲密度影响 mood 倾向"""
+    from core.state import AIMoodManager
+    import tempfile
+    from collections import Counter
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mgr = AIMoodManager(tmpdir)
+        emotions_high = Counter()
+        emotions_low = Counter()
+        for _ in range(100):
+            emotions_high[mgr._compute_daily("x", 80).emotion] += 1
+            emotions_low[mgr._compute_daily("x", 10).emotion] += 1
+        # 亲密度高时正面情绪应更多
+        assert emotions_high["happy"] + emotions_high["affectionate"] + emotions_high["excited"] > \
+               emotions_low["happy"] + emotions_low["affectionate"] + emotions_low["excited"]
+
+
+def test_mood_style_instruction():
+    """测试生成风格指令"""
+    from core.state import AIMoodManager
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mgr = AIMoodManager(tmpdir)
+        inst = mgr.get_style_instruction("test_persona", 50)
+        assert "你今天的状态" in inst
+        assert "心情：" in inst
+
+
+def test_mood_display_summary():
+    """测试摘要字符串包含 mood 信息"""
+    from core.state import AIMoodManager
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mgr = AIMoodManager(tmpdir)
+        summary = mgr.get_display_summary("test_persona", 50)
+        assert "精力" in summary
+
+
+# ========== ToolCalling 测试 ==========
+
+def test_tool_clock():
+    """测试时钟工具"""
+    from core.tools.builtin import ClockTool
+    import asyncio
+    tool = ClockTool()
+    result = asyncio.run(tool.execute())
+    assert result.success
+    assert "年" in result.output
+    assert "月" in result.output
+
+
+def test_tool_registry_parse_call():
+    """测试工具调用解析"""
+    from core.tools import ToolRegistry, ToolCall
+    registry = ToolRegistry()
+    text = "今天的天气真好啊 /call clock 然后我们出去玩吧"
+    calls = registry.parse_calls(text)
+    assert len(calls) == 0  # clock 尚未注册，不应被解析到
+    from core.tools.builtin import ClockTool
+    registry.register(ClockTool())
+    calls = registry.parse_calls(text)
+    assert len(calls) == 1
+    assert calls[0].name == "clock"
+
+
+def test_tool_prompt_block():
+    """测试 prompt 块生成"""
+    from core.tools import ToolRegistry
+    from core.tools.builtin import ClockTool, DateCalcTool
+    registry = ToolRegistry()
+    assert registry.get_prompt_block() == ""
+    registry.register(ClockTool())
+    registry.register(DateCalcTool())
+    block = registry.get_prompt_block()
+    assert "clock" in block
+    assert "date_calc" in block
+
+
+def test_tool_reminder():
+    """测试提醒工具持久化"""
+    from core.tools.builtin import ReminderTool
+    import asyncio
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tool = ReminderTool(tmpdir)
+        result = asyncio.run(tool.execute(content="明天记得买牛奶"))
+        assert result.success
+        file = Path(tmpdir) / "reminders" / f"{date.today().strftime('%Y%m')}.json"
+        assert file.exists()
+
+
+def test_tool_timer():
+    """测试倒计时工具"""
+    import asyncio
+    from core.tools.builtin import TimerTool
+    tool = TimerTool()
+    result = asyncio.run(tool.execute(minutes=5, note="休息一下"))
+    assert result.success
+    assert "5 分钟" in result.output
+
+
+def test_tool_translate():
+    """测试翻译工具"""
+    import asyncio
+    from core.tools.builtin import TranslateTool
+    tool = TranslateTool()
+    r = asyncio.run(tool.execute(text="你好", target="en"))
+    assert r.success
+    assert r.output == "Hello"
+    r2 = asyncio.run(tool.execute(text="Hello", target="zh"))
+    assert r2.success
+    assert r2.output == "你好"
+
+
+# ========== Pipeline 集成测试 ==========
+
+class MockLLM:
+    """模拟 LLM，返回固定回复"""
+    def __init__(self, reply: str = "测试回复"):
+        self.reply = reply
+
+    async def chat(self, messages, system_prompt="", **kwargs):
+        return type("Resp", (), {"content": self.reply})()
+
+    async def chat_stream(self, messages, system_prompt="", **kwargs):
+        yield self.reply
+
+    async def close(self):
+        pass
+
+
+class SeqMockLLM:
+    """模拟 LLM，按顺序返回多个回复（用于测试工具调用循环）"""
+    def __init__(self, replies: list[str]):
+        self._replies = list(replies)
+        self._index = 0
+        self.reply = replies[0] if replies else ""
+
+    async def chat(self, messages, system_prompt="", **kwargs):
+        idx = self._index
+        self._index += 1
+        reply = self._replies[idx % len(self._replies)] if self._replies else ""
+        return type("Resp", (), {"content": reply})()
+
+    async def chat_stream(self, messages, system_prompt="", **kwargs):
+        idx = self._index
+        self._index += 1
+        reply = self._replies[idx % len(self._replies)] if self._replies else ""
+        yield reply
+
+    async def close(self):
+        pass
+
+    async def chat(self, messages, system_prompt="", **kwargs):
+        return type("Resp", (), {"content": self.reply})()
+
+    async def chat_stream(self, messages, system_prompt="", **kwargs):
+        yield self.reply
+
+    async def close(self):
+        pass
+
+
+def test_pipeline_no_llm():
+    """无 LLM 时 pipeline 返回占位消息"""
+    import asyncio
+    from core.chat.pipeline import ChatPipeline
+    pipeline = ChatPipeline(None, None, None, None, None, None, None, {})
+    reply, level = asyncio.run(pipeline.process("test_user", "你好", "girlfriend_001"))
+    assert level == 50
+
+
+def test_pipeline_full_flow():
+    """使用 MockLLM 测试完整 pipeline 流程"""
+    import asyncio
+    import gc
+    import tempfile
+    from core.chat.pipeline import ChatPipeline
+    from core.memory.embedder import SentenceTransformerEmbedder
+    from core.memory.vector_store import VectorStore
+    from core.memory import MemoryManager, ChatHistoryStorage
+    from core.persona import PersonaLoader
+    from core.emotion import LLMEmotionAnalyzer
+    from core.relationship import RelationshipTracker
+    from core.state import AIMoodManager
+    from core.config import CONFIG_DIR
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        llm = MockLLM("我挺好的呀，今天心情不错~")
+
+        embedder = SentenceTransformerEmbedder()
+        vector_store = VectorStore(str(Path(tmpdir) / "vectors.db"))
+        memory_mgr = MemoryManager(tmpdir, embedder=embedder, vector_store=vector_store)
+        persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
+        chat_history = ChatHistoryStorage(tmpdir)
+        emotion = LLMEmotionAnalyzer()
+        rel = RelationshipTracker(tmpdir)
+        mood = AIMoodManager(tmpdir)
+
+        pipeline = ChatPipeline(
+            llm, memory_mgr, persona_loader, chat_history,
+            emotion, rel, mood, {},
+        )
+
+        reply, level = asyncio.run(
+            pipeline.process("test_user", "你最近怎么样？", "girlfriend_001")
+        )
+        assert reply == "我挺好的呀，今天心情不错~"
+        assert level > 0
+
+        msgs = chat_history.get_messages("test_user")
+        assert len(msgs) == 2
+        assert msgs[0]["role"] == "user"
+        assert msgs[1]["role"] == "assistant"
+
+        # 清理：关闭数据库连接，确保 tempdir 可删除
+        vector_store.close()
+        del pipeline, memory_mgr, chat_history, rel, mood, embedder, vector_store
+        gc.collect()
+
+
+def test_pipeline_multi_message():
+    """多消息成组发送"""
+    import asyncio
+    import gc
+    import tempfile
+    from core.chat.pipeline import ChatPipeline
+    from core.memory.embedder import SentenceTransformerEmbedder
+    from core.memory.vector_store import VectorStore
+    from core.memory import MemoryManager, ChatHistoryStorage
+    from core.persona import PersonaLoader
+    from core.emotion import LLMEmotionAnalyzer
+    from core.relationship import RelationshipTracker
+    from core.state import AIMoodManager
+    from core.config import CONFIG_DIR
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        llm = MockLLM("嗯嗯，我都看到了~")
+        embedder = SentenceTransformerEmbedder()
+        vector_store = VectorStore(str(Path(tmpdir) / "multi_vectors.db"))
+        memory_mgr = MemoryManager(tmpdir, embedder=embedder, vector_store=vector_store)
+        pipeline = ChatPipeline(
+            llm, memory_mgr,
+            PersonaLoader(CONFIG_DIR / "personas.json"),
+            ChatHistoryStorage(tmpdir), LLMEmotionAnalyzer(),
+            RelationshipTracker(tmpdir), AIMoodManager(tmpdir), {},
+        )
+        reply, level = asyncio.run(
+            pipeline.process("test_user", "今天天气真好\n我们一起出去玩吧\n好不好嘛", "girlfriend_001")
+        )
+        assert reply == "嗯嗯，我都看到了~"
+        assert level > 0
+
+        vector_store.close()
+        del pipeline, memory_mgr, embedder, vector_store
+        gc.collect()
+
+
+def test_pipeline_tool_call():
+    """工具调用通过 pipeline 流转：LLM 输出 /call → 工具执行 → LLM 再次调用"""
+    import asyncio
+    import gc
+    import tempfile
+    from core.chat.pipeline import ChatPipeline
+    from core.tools import ToolRegistry
+    from core.tools.builtin import ClockTool
+    from core.memory.embedder import SentenceTransformerEmbedder
+    from core.memory.vector_store import VectorStore
+    from core.memory import MemoryManager, ChatHistoryStorage
+    from core.persona import PersonaLoader
+    from core.emotion import LLMEmotionAnalyzer
+    from core.relationship import RelationshipTracker
+    from core.state import AIMoodManager
+    from core.config import CONFIG_DIR
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # 第一轮回复包含工具调用，第二轮为最终回复
+        llm = SeqMockLLM([
+            "我来看看现在几点了 /call clock",
+            "现在是10点30分",
+        ])
+
+        embedder = SentenceTransformerEmbedder()
+        vector_store = VectorStore(str(Path(tmpdir) / "tool_vectors.db"))
+        memory_mgr = MemoryManager(tmpdir, embedder=embedder, vector_store=vector_store)
+
+        tool_registry = ToolRegistry()
+        tool_registry.register(ClockTool())
+
+        pipeline = ChatPipeline(
+            llm, memory_mgr,
+            PersonaLoader(CONFIG_DIR / "personas.json"),
+            ChatHistoryStorage(tmpdir), LLMEmotionAnalyzer(),
+            RelationshipTracker(tmpdir), AIMoodManager(tmpdir), {},
+            tool_registry=tool_registry,
+        )
+
+        reply, level = asyncio.run(
+            pipeline.process("test_user", "现在几点了？", "girlfriend_001")
+        )
+
+        # 验证 LLM 被调用了至少两轮
+        assert llm._index >= 2
+        assert reply == "现在是10点30分"
+        assert level > 0
+
+        vector_store.close()
+        del pipeline, tool_registry, memory_mgr, embedder, vector_store
+        gc.collect()
 
 
 # ========== 运行所有测试 ==========

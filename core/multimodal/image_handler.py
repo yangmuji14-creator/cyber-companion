@@ -139,13 +139,19 @@ class ImageHandler:
         # 尝试分离文件路径和文字说明
         # 支持带引号的路径：/img "path with spaces.jpg" 看看这个
         if content.startswith('"'):
-            end_quote = content.index('"', 1)
-            image_path = content[1:end_quote]
-            user_text = content[end_quote + 1:].strip()
+            try:
+                end_quote = content.index('"', 1)
+                image_path = content[1:end_quote]
+                user_text = content[end_quote + 1:].strip()
+            except ValueError:
+                return "", ""
         elif content.startswith("'"):
-            end_quote = content.index("'", 1)
-            image_path = content[1:end_quote]
-            user_text = content[end_quote + 1:].strip()
+            try:
+                end_quote = content.index("'", 1)
+                image_path = content[1:end_quote]
+                user_text = content[end_quote + 1:].strip()
+            except ValueError:
+                return "", ""
         else:
             # 按空格分割，第一部分是路径
             parts = content.split(maxsplit=1)

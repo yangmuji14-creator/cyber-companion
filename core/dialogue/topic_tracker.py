@@ -7,6 +7,7 @@
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
+import re
 from typing import Any
 
 from loguru import logger
@@ -149,8 +150,6 @@ class TopicTracker:
         简单实现：按字符分割，排除停用词和短词。
         对中文按 2-gram 提取有意义的词组。
         """
-        import re
-
         # 清理文本
         text = re.sub(r'[^\u4e00-\u9fff\w]', ' ', text)
         words = set()

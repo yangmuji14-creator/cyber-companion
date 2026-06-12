@@ -5,6 +5,7 @@
 
 import json
 import os
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -64,7 +65,6 @@ class RelationshipTracker:
     def _save(self) -> None:
         """保存数据到文件（原子写入）"""
         try:
-            import tempfile
             fd, tmp_path = tempfile.mkstemp(
                 dir=str(self._data_dir), suffix=".tmp"
             )

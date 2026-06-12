@@ -29,10 +29,12 @@ class ProactiveMessenger:
         memory_mgr: "MemoryManager",
         relationship_tracker: "RelationshipTracker",
         config: dict | None = None,
+        mood_manager=None,
     ):
         self._persona_loader = persona_loader
         self._memory_mgr = memory_mgr
         self._relationship_tracker = relationship_tracker
+        self._mood_manager = mood_manager
 
         cfg = config or {}
         self.enabled = cfg.get("proactive_enabled", True)
@@ -100,13 +102,15 @@ class ProactiveMessenger:
         if self.morning_enabled and 8 <= hour < 10:
             if not self._already_fired("morning"):
                 self._mark_fired("morning")
-                return self._generate_morning_message(persona, level)
+                msg = self._generate_morning_message(persona, level)
+                return self._apply_mood(msg, persona_id, level)
 
         # 晚安/关心 21-22 点
         if self.evening_enabled and 21 <= hour < 23:
             if not self._already_fired("evening"):
                 self._mark_fired("evening")
-                return self._generate_evening_message(persona, level)
+                msg = self._generate_evening_message(persona, level)
+                return self._apply_mood(msg, persona_id, level)
 
         # 长时间未联系：上次交互超过 N 天
         stats = self._relationship_tracker.get_stats(user_id, persona_id=persona_id)
@@ -121,7 +125,8 @@ class ProactiveMessenger:
                         days_idle = (now - last_dt).total_seconds() / 86400
                         if days_idle >= self.missing_days:
                             self._mark_fired("missing")
-                            return self._generate_missing_message(persona, level, int(days_idle))
+                            msg = self._generate_missing_message(persona, level, int(days_idle))
+                            return self._apply_mood(msg, persona_id, level)
                     except (ValueError, TypeError):
                         pass
 
@@ -130,7 +135,6 @@ class ProactiveMessenger:
     def _generate_morning_message(self, persona, level: int) -> str:
         """生成早安消息"""
         hour = datetime.now().hour
-        name = persona.name
 
         if level >= 80:
             messages = [
@@ -199,3 +203,29 @@ class ProactiveMessenger:
             ]
 
         return random.choice(messages)
+
+    def _apply_mood(self, msg: str, persona_id: str, level: int) -> str:
+        """根据 AI 今日心情微调主动消息"""
+        if not self._mood_manager:
+            return msg
+        try:
+            state = self._mood_manager.get_or_today(persona_id, level)
+            mood_emoji = {
+                "happy": "😊", "calm": "😌", "excited": "🥰",
+                "tired": "😴", "melancholy": "🥺", "playful": "😏",
+                "affectionate": "💕", "quiet": "🤗",
+            }
+            emoji = mood_emoji.get(state.emotion, "")
+            if state.emotion == "tired":
+                return msg + " 今天有点累呢..."
+            elif state.emotion == "melancholy":
+                return msg + " （有点想你了）"
+            elif state.emotion == "playful" and not msg.endswith("~"):
+                return msg.replace("。", "~").replace("！", "~").rstrip("~") + "~"
+            elif state.emotion == "quiet":
+                return msg
+            elif emoji:
+                return msg + " " + emoji
+        except Exception:
+            pass
+        return msg

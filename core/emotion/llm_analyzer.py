@@ -10,6 +10,7 @@
 """
 
 import json
+import re
 from collections import deque
 from loguru import logger
 
@@ -150,6 +151,10 @@ class LLMEmotionAnalyzer:
         self._llm = llm
         self._trajectory = EmotionTrajectory()
 
+    def set_llm(self, llm: BaseLLM) -> None:
+        """延迟设置 LLM（首次对话时初始化）"""
+        self._llm = llm
+
     @property
     def trajectory(self) -> EmotionTrajectory:
         """获取情感轨迹"""
@@ -225,12 +230,10 @@ class LLMEmotionAnalyzer:
 
             content = response.content.strip()
 
-            # 解析 JSON
-            if "```" in content:
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-                content = content.strip()
+            # 解析 JSON（从 markdown 代码块中提取）
+            code_block = re.search(r'```(?:json)?\s*\n(.*?)\n```', content, re.DOTALL)
+            if code_block:
+                content = code_block.group(1).strip()
 
             result = json.loads(content)
 

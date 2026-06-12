@@ -7,6 +7,7 @@
 """
 
 import json
+import re
 from loguru import logger
 
 from ..llm.base import BaseLLM
@@ -77,7 +78,6 @@ class DialogueThinker:
             return False
 
         # 纯 emoji（没有中文/英文字符）
-        import re
         if not re.search(r'[\u4e00-\u9fff\u0041-\u005a\u0061-\u007a]', stripped):
             return False
 
@@ -130,12 +130,10 @@ class DialogueThinker:
 
             result_text = response.content.strip()
 
-            # 解析 JSON
-            if "```" in result_text:
-                result_text = result_text.split("```")[1]
-                if result_text.startswith("json"):
-                    result_text = result_text[4:]
-                result_text = result_text.strip()
+            # 解析 JSON（从 markdown 代码块中提取）
+            code_block = re.search(r'```(?:json)?\s*\n(.*?)\n```', result_text, re.DOTALL)
+            if code_block:
+                result_text = code_block.group(1).strip()
 
             result = json.loads(result_text)
 
