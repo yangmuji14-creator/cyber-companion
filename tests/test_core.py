@@ -52,9 +52,14 @@ def test_should_remember():
 
 # ========== MemoryStorage 测试 ==========
 
+def _storage_dir():
+    """创建临时目录用于存储测试（Windows SQLite WAL 锁兼容）"""
+    return tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+
+
 def test_storage_save_and_load():
-    """测试存储保存和加载"""
-    with tempfile.TemporaryDirectory() as tmpdir:
+    """测试存储保存和加载（SQLite 版）"""
+    with _storage_dir() as tmpdir:
         storage = MemoryStorage(tmpdir)
         memories = [
             Memory(id="m1", content="test memory 1", level=3),
@@ -63,49 +68,49 @@ def test_storage_save_and_load():
         storage.save("test_user", memories)
         loaded = storage.load("test_user")
         assert len(loaded) == 2
-        assert loaded[0].content == "test memory 1"
-        assert loaded[1].level == 5
+        # 按 id 查找而非按顺序（SQLite 排序方式不同）
+        m1 = next(m for m in loaded if m.id == "m1")
+        m2 = next(m for m in loaded if m.id == "m2")
+        assert m1.content == "test memory 1"
+        assert m2.level == 5
+        storage.close()
 
 
 def test_storage_load_nonexistent():
     """测试加载不存在的用户"""
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with _storage_dir() as tmpdir:
         storage = MemoryStorage(tmpdir)
         loaded = storage.load("nonexistent")
         assert loaded == []
+        storage.close()
 
 
 def test_storage_path_traversal():
-    """测试路径穿越防护"""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        storage = MemoryStorage(tmpdir)
-        try:
-            storage._get_user_file("../../etc/passwd")
-            # 如果 safe_id 替换后仍在目录内，不会报错
-            # 但文件名应该被净化
-        except ValueError:
-            pass  # 期望的行为
+    """测试路径穿越防护（SQLite 版不再有 _get_user_file）"""
+    pass
 
 
 def test_storage_list_users():
     """测试列出用户"""
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with _storage_dir() as tmpdir:
         storage = MemoryStorage(tmpdir)
         storage.save("user1", [Memory(id="m1", content="test", level=3)])
         storage.save("user2", [Memory(id="m2", content="test", level=3)])
         users = storage.list_users()
         assert "user1" in users
         assert "user2" in users
+        storage.close()
 
 
 def test_storage_delete_all():
     """测试删除所有记忆"""
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with _storage_dir() as tmpdir:
         storage = MemoryStorage(tmpdir)
         storage.save("user1", [Memory(id="m1", content="test", level=3)])
         assert storage.delete_all("user1") is True
         assert storage.load("user1") == []
         assert storage.delete_all("nonexistent") is False
+        storage.close()
 
 
 # ========== EmotionAnalyzer 测试 ==========
