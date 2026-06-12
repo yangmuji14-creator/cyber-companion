@@ -4,6 +4,7 @@
 嵌入器不可用时自动降级为关键词排序。
 """
 
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +23,9 @@ if TYPE_CHECKING:
     from .embedder import BaseEmbedder
     from .vector_store import VectorStore
 
+# Extract meaningful tokens: 2+ char Chinese phrases, 2+ letter English words, numbers
+TOKEN_RE = re.compile(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{2,}|\d+', re.UNICODE)
+
 
 class MemoryManager:
     """记忆管理器
@@ -32,7 +36,7 @@ class MemoryManager:
 
     def __init__(
         self,
-        data_dir: str,
+        data_dir: str | Path,
         max_memories: int = 500,
         llm=None,
         embedder: "BaseEmbedder | None" = None,
@@ -81,7 +85,7 @@ class MemoryManager:
             创建的 Memory 对象，如果评分太低则返回 None
         """
         if level is None:
-            level, confidence = self._scorer.score(content)
+            level, _ = self._scorer.score(content)
             if self._scorer.needs_llm_evaluation(content) and self._llm_scorer._llm:
                 llm_result = await self._llm_scorer.evaluate(content)
                 if llm_result:
@@ -90,6 +94,35 @@ class MemoryManager:
                     if category is None:
                         category = llm_category
 
+        return self._add_memory_impl(user_id, content, level, category, tags, source)
+
+    def add_memory_sync(
+        self,
+        user_id: str,
+        content: str,
+        level: int | None = None,
+        tags: list[str] | None = None,
+        category: str | None = None,
+        source: str = "auto",
+    ) -> Memory | None:
+        """同步版本 add_memory（仅规则评分，不调 LLM）"""
+        if level is None:
+            level, _ = self._scorer.score(content)
+        return self._add_memory_impl(user_id, content, level, category, tags, source)
+
+    def _add_memory_impl(
+        self,
+        user_id: str,
+        content: str,
+        level: int,
+        category: str | None,
+        tags: list[str] | None,
+        source: str,
+    ) -> Memory | None:
+        """记忆添加核心实现（同步）
+
+        处理评分过滤、创建、冲突检测、持久化、向量索引。
+        """
         if level < 2:
             logger.debug(f"Skipping low-importance memory: {content[:30]}...")
             return None
@@ -104,6 +137,7 @@ class MemoryManager:
             category=category,
             tags=tags or [],
             source=source,
+            confidence=Memory.classify_confidence(content),
         )
 
         memories = self._storage.load(user_id)
@@ -138,72 +172,6 @@ class MemoryManager:
         )
         return memory
 
-    def add_memory_sync(
-        self,
-        user_id: str,
-        content: str,
-        level: int | None = None,
-        tags: list[str] | None = None,
-        category: str | None = None,
-        source: str = "auto",
-    ) -> Memory | None:
-        """同步版本 add_memory（仅规则评分，不调 LLM + 向量索引）"""
-        if level is None:
-            level, _ = self._scorer.score(content)
-        if level < 2:
-            logger.debug(f"Skipping low-importance memory: {content[:30]}...")
-            return None
-        if category is None:
-            category = Memory.classify(content)
-
-        memory = Memory(
-            id=f"mem_{uuid.uuid4().hex[:8]}",
-            content=content,
-            level=level,
-            category=category,
-            tags=tags or [],
-            source=source,
-        )
-
-        memories = self._storage.load(user_id)
-        conflicts = self._conflict_resolver.detect(memory, memories)
-        for conflict in conflicts:
-            conflict.superseded_by = memory.id
-            memory.related_memory_ids.append(conflict.id)
-
-        if level is not None:
-            memory.confidence = min(1.0, level / 5.0)
-        self._set_memory_confidence(memory, memories)
-
-        memories.append(memory)
-        if len(memories) > self._max_memories:
-            memories = self._cleanup_old_memories(memories)
-        self._storage.save(user_id, memories)
-
-        self._index_memory(user_id, memory)
-
-        logger.info(
-            f"Added memory [{memory.id}] level={level} cat={category}: "
-            f"{content[:30]}..."
-        )
-        return memory
-
-    def _set_memory_confidence(self, memory: Memory, existing: list[Memory]) -> None:
-        """根据记忆类型和已有信息设置置信度"""
-        # 个人信息类：有多个不一致来源时降低置信度
-        if memory.category == "personal":
-            for mem in existing:
-                if mem.is_superseded:
-                    continue
-                if mem.category != "personal":
-                    continue
-                # 相同关键字的个人信息 → 降低置信度（可能有冲突）
-                shared_words = set(memory.content) & set(mem.content)
-                if len(shared_words) >= 3:
-                    memory.confidence *= 0.8
-        # 情感类：默认较高置信度
-        elif memory.category == "emotion":
-            memory.confidence = max(memory.confidence, 0.7)
 
     def _index_memory(self, user_id: str, memory: Memory):
         """生成嵌入并写入向量库（同步，sentence-transformers 是同步库）"""
@@ -222,9 +190,34 @@ class MemoryManager:
     def _detect_conflict(
         self, new_memory: Memory, existing: list[Memory]
     ) -> Memory | None:
-        """保留的旧接口 —— 内部委托给 MemoryConflictResolver"""
-        conflicts = self._conflict_resolver.detect(new_memory, existing)
-        return conflicts[0] if conflicts else None
+        """检测新记忆与已有记忆的冲突"""
+        content = new_memory.content
+        antonym_pairs = [
+            ("喜欢", "讨厌"), ("爱", "恨"), ("开心", "难过"),
+            ("养", "不养"), ("有", "没有"), ("是", "不是"),
+            ("会", "不会"), ("想", "不想"), ("去", "不去"),
+        ]
+        for mem in existing:
+            if mem.is_superseded:
+                continue
+            if mem.category != new_memory.category:
+                continue
+            mem_keywords = set(TOKEN_RE.findall(mem.content))
+            new_keywords = set(TOKEN_RE.findall(content))
+            overlap = len(mem_keywords & new_keywords)
+            # Check antonym pairs before overlap gate — antonyms are content differences
+            for pos, neg in antonym_pairs:
+                if (pos in content and neg in mem.content) or \
+                   (neg in content and pos in mem.content):
+                    return mem
+            if overlap < 2:
+                continue
+            if new_memory.category == "personal":
+                if ("叫" in content and "叫" in mem.content) or \
+                   ("是" in content and "是" in mem.content):
+                    if content != mem.content:
+                        return mem
+        return None
 
     # ---- 查 ----
 
@@ -478,14 +471,67 @@ class MemoryManager:
     # ---- 内部 ----
 
     def _cleanup_old_memories(self, memories: list[Memory]) -> list[Memory]:
-        """清理旧记忆：已取代的优先清理，其余按重要度"""
-        superseded = [m for m in memories if m.is_superseded]
-        active = [m for m in memories if not m.is_superseded]
+        """清理旧记忆：已取代的优先清理，其余按重要度 + 遗忘评分"""
+        # 先更新遗忘评分
+        memories = [self._update_decay(m) for m in memories]
+
+        # 按遗忘评分自动归档
+        archived = [m for m in memories if m.forget_score >= 0.8 and m.level < 3]
+        active = [m for m in memories if not (m.forget_score >= 0.8 and m.level < 3)]
+
+        # 已取代的优先清理
+        superseded = [m for m in active if m.is_superseded]
+        candidates = [m for m in active if not m.is_superseded]
+
         target = self._max_memories
-        if len(active) <= target:
-            return active + superseded
-        active.sort(key=lambda m: (m.level, m.last_accessed), reverse=True)
-        kept = active[:target]
-        removed = len(active) - len(kept)
-        logger.info(f"Cleaned up {removed} old memories")
-        return kept
+        if len(candidates) <= target:
+            return candidates + superseded + archived
+
+        # 按综合评分排序：(level, 1-forget_score, last_accessed)
+        candidates.sort(
+            key=lambda m: (m.level, 1.0 - m.forget_score, m.last_accessed),
+            reverse=True,
+        )
+        kept = candidates[:target]
+        removed = len(candidates) - len(kept)
+        logger.info(f"Cleaned up {removed} old memories (archived {len(archived)})")
+        return kept + superseded + archived
+
+    def _update_decay(self, memory: Memory) -> Memory:
+        """更新记忆的遗忘评分
+
+        衰减规则:
+            - 基础衰减: 每过一天 +0.01
+            - 重要度保护: level 5 → ×0.2, level 1 → ×1.0
+            - 访问保护: access_count > 0 → 每 5 次访问降低 0.1
+            - 时间保护: 30 天内访问过 → 衰减减半
+        """
+        try:
+            now = datetime.now()
+            created = datetime.fromisoformat(memory.created_at)
+            days_old = (now - created).total_seconds() / 86400
+
+            # 基础衰减
+            base_decay = days_old * 0.01
+
+            # 重要度保护因子 (level 5 → 0.2, level 1 → 1.0)
+            importance_factor = 1.0 - (memory.level - 1) * 0.2
+
+            # 访问保护
+            access_protection = min(memory.access_count / 50, 0.5)
+
+            # 最近访问保护
+            try:
+                last_access = datetime.fromisoformat(memory.last_accessed)
+                days_since_access = (now - last_access).total_seconds() / 86400
+                recency_factor = 0.5 if days_since_access < 30 else 1.0
+            except (ValueError, TypeError):
+                recency_factor = 1.0
+
+            memory.forget_score = (
+                base_decay * importance_factor * recency_factor - access_protection
+            )
+            memory.forget_score = max(0.0, min(1.0, memory.forget_score))
+        except Exception:
+            pass
+        return memory
