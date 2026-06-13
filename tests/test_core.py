@@ -1012,7 +1012,7 @@ def test_pipeline_no_llm():
     """无 LLM 时 pipeline 返回占位消息"""
     import asyncio
     from core.chat.pipeline import ChatPipeline
-    pipeline = ChatPipeline(None, None, None, None, None, None, None, {})
+    pipeline = ChatPipeline(None, None, None, None, None, None, None, None, {})
     reply, level = asyncio.run(pipeline.process("test_user", "你好", "girlfriend_001"))
     assert level == 50
 
@@ -1027,6 +1027,7 @@ def test_pipeline_full_flow():
     from core.memory.vector_store import VectorStore
     from core.memory import MemoryManager, ChatHistoryStorage
     from core.persona import PersonaLoader
+    from core.personality import PersonalityEngine
     from core.emotion import LLMEmotionAnalyzer
     from core.relationship import RelationshipTracker
     from core.state import AIMoodManager
@@ -1039,13 +1040,14 @@ def test_pipeline_full_flow():
         vector_store = VectorStore(str(Path(tmpdir) / "vectors.db"))
         memory_mgr = MemoryManager(tmpdir, embedder=embedder, vector_store=vector_store)
         persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
+        personality_engine = PersonalityEngine(tmpdir)
         chat_history = ChatHistoryStorage(tmpdir)
         emotion = LLMEmotionAnalyzer()
         rel = RelationshipTracker(tmpdir)
         mood = AIMoodManager(tmpdir)
 
         pipeline = ChatPipeline(
-            llm, memory_mgr, persona_loader, chat_history,
+            llm, memory_mgr, persona_loader, personality_engine, chat_history,
             emotion, rel, mood, {},
         )
 
@@ -1076,6 +1078,7 @@ def test_pipeline_multi_message():
     from core.memory.vector_store import VectorStore
     from core.memory import MemoryManager, ChatHistoryStorage
     from core.persona import PersonaLoader
+    from core.personality import PersonalityEngine
     from core.emotion import LLMEmotionAnalyzer
     from core.relationship import RelationshipTracker
     from core.state import AIMoodManager
@@ -1086,9 +1089,11 @@ def test_pipeline_multi_message():
         embedder = SentenceTransformerEmbedder()
         vector_store = VectorStore(str(Path(tmpdir) / "multi_vectors.db"))
         memory_mgr = MemoryManager(tmpdir, embedder=embedder, vector_store=vector_store)
+        personality_engine = PersonalityEngine(tmpdir)
         pipeline = ChatPipeline(
             llm, memory_mgr,
             PersonaLoader(CONFIG_DIR / "personas.json"),
+            personality_engine,
             ChatHistoryStorage(tmpdir), LLMEmotionAnalyzer(),
             RelationshipTracker(tmpdir), AIMoodManager(tmpdir), {},
         )
@@ -1115,6 +1120,7 @@ def test_pipeline_tool_call():
     from core.memory.vector_store import VectorStore
     from core.memory import MemoryManager, ChatHistoryStorage
     from core.persona import PersonaLoader
+    from core.personality import PersonalityEngine
     from core.emotion import LLMEmotionAnalyzer
     from core.relationship import RelationshipTracker
     from core.state import AIMoodManager
@@ -1130,6 +1136,7 @@ def test_pipeline_tool_call():
         embedder = SentenceTransformerEmbedder()
         vector_store = VectorStore(str(Path(tmpdir) / "tool_vectors.db"))
         memory_mgr = MemoryManager(tmpdir, embedder=embedder, vector_store=vector_store)
+        personality_engine = PersonalityEngine(tmpdir)
 
         tool_registry = ToolRegistry()
         tool_registry.register(ClockTool())
@@ -1137,6 +1144,7 @@ def test_pipeline_tool_call():
         pipeline = ChatPipeline(
             llm, memory_mgr,
             PersonaLoader(CONFIG_DIR / "personas.json"),
+            personality_engine,
             ChatHistoryStorage(tmpdir), LLMEmotionAnalyzer(),
             RelationshipTracker(tmpdir), AIMoodManager(tmpdir), {},
             tool_registry=tool_registry,
@@ -1154,6 +1162,50 @@ def test_pipeline_tool_call():
         vector_store.close()
         del pipeline, tool_registry, memory_mgr, embedder, vector_store
         gc.collect()
+
+
+# ========== 记忆同步添加回归测试 ==========
+
+def test_add_memory_sync_persists():
+    """测试 add_memory_sync 同步保存记忆到 JSON 文件"""
+    import tempfile
+    from core.memory import MemoryManager
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        memory_mgr = MemoryManager(tmpdir)
+        content = "这是我手动添加的记忆"
+        result = memory_mgr.add_memory_sync("test_user", content, level=3)
+
+        assert result is not None
+        assert result.content == content
+        assert result.level == 3
+
+        loaded = memory_mgr._storage.load("test_user")
+        assert len(loaded) == 1
+        assert loaded[0].content == content
+        assert loaded[0].level == 3
+
+
+# ========== 冲突检测回归测试 ==========
+
+def test_conflict_no_false_positive():
+    """测试字符集冲突检测不会误报：不同话题但共享字符的句子不应触发冲突"""
+    from core.memory.manager import MemoryManager
+    existing = Memory(id="m1", content="我喜欢玩游戏", level=3, category="preference")
+    new_mem = Memory(id="m2", content="我喜欢看电影", level=3, category="preference")
+    mm = MemoryManager.__new__(MemoryManager)
+    result = mm._detect_conflict(new_mem, [existing])
+    assert result is None, "不同话题的句子不应触发冲突"
+
+
+def test_conflict_antonym_detected():
+    """测试冲突检测能检测到反义词对：喜欢 vs 讨厌"""
+    from core.memory.manager import MemoryManager
+    existing = Memory(id="m1", content="我讨厌猫", level=3, category="emotion")
+    new_mem = Memory(id="m2", content="我喜欢猫", level=3, category="emotion")
+    mm = MemoryManager.__new__(MemoryManager)
+    result = mm._detect_conflict(new_mem, [existing])
+    assert result is not None, "反义词对应触发冲突"
 
 
 # ========== 运行所有测试 ==========
