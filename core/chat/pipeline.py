@@ -162,6 +162,9 @@ class ChatPipeline:
         self._mood_engine = mood_manager
         self._personality_engine = personality_engine
         self._tool_registry = tool_registry
+        self._dialogue_thinker = dialogue_thinker
+        self._topic_tracker = topic_tracker
+        self._sticker_replier = None
         self._open_loop = open_loop
         self._identity = identity
         self._life_summary = life_summary
@@ -219,8 +222,8 @@ class ChatPipeline:
         if self._llm_emotion_analyzer._llm is None:
             self._llm_emotion_analyzer._llm = self._llm
 
-        # 会话开始时更新人格状态
-        self._personality_engine.update_on_session_start(persona_id)
+        # 会话开始时加载人格状态（含衰减）
+        self._personality_engine.get_state(persona_id)
 
         # 格式化多消息
         formatted_content, msg_count = format_multi_message(content)
@@ -266,12 +269,7 @@ class ChatPipeline:
             persona_id=persona_id,
         )
 
-        # 更新人格状态
-        personality_state = self._personality_engine.update_on_message(
-            persona_id=persona_id,
-            emotion=emotion.emotion.value,
-            relationship_level=rel_level,
-        )
+        # 人格状态已在 update_after_interaction 中更新（上面）
 
         # 话题追踪
         if not skip_user_message: self._topic_tracker.update(content)
@@ -368,36 +366,28 @@ class ChatPipeline:
         except Exception as e:
             logger.debug(f"Identity extraction failed: {e}")
 
-        # 获取人格状态指令
-        personality_instruction = personality_state.to_prompt_block()
+        # 话题追踪上下文
+        topic_context = ""
+        if self._topic_tracker:
+            topic_context = self._topic_tracker.get_topic_context()
 
         # 合并额外指令
-        extra_parts = [extra]
-        if thought_instruction:
-            extra_parts.append(thought_instruction)
-        if topic_context:
-            extra_parts.append(topic_context)
-        if personality_instruction:
-            extra_parts.append(personality_instruction)
-        if open_loop_context:
-            extra_parts.append(open_loop_context)
-        if identity_context:
-            extra_parts.append(identity_context)
-        if life_summary_context:
-            extra_parts.append(life_summary_context)
+        extra_parts.append(topic_context) if topic_context else None
+        extra_parts.append(open_loop_context) if open_loop_context else None
+        extra_parts.append(identity_context) if identity_context else None
+        extra_parts.append(life_summary_context) if life_summary_context else None
         if self._tool_registry:
             tool_block = self._tool_registry.get_prompt_block()
             if tool_block:
                 extra_parts.append(tool_block)
-        extra_combined = "\n\n".join(extra_parts)
+        extra_combined = "\n\n".join(filter(None, extra_parts))
 
         # 构建 system prompt
         system_prompt = PromptBuilder.build(
             persona,
             memory_context=memory_context + relevant_context,
-            extra_instructions=extra,
+            extra_instructions=extra_combined,
             relationship_level=rel_level,
-            behavior_profile=behavior_profile,
         )
         self._last_system_prompt = system_prompt
 
@@ -443,7 +433,7 @@ class ChatPipeline:
         self._chat_history.add_short_memory(user_id, content, reply)
 
         # 基础记忆存储
-        self._memory_mgr.add_memory(user_id, content)
+        self._memory_mgr.add_memory_sync(user_id, content)
 
         # 后台任务 — 记忆提取 + 总结
         self._run_background(self._extract_memory(user_id, content, reply))

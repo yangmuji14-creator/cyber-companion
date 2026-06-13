@@ -24,6 +24,7 @@ from loguru import logger
 load_dotenv()
 
 from core.config import ROOT, CONFIG_DIR, DATA_DIR, load_advanced
+from core.app import AppComponents, create_components
 
 # 日志
 logger.remove()

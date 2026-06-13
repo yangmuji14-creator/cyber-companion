@@ -18,6 +18,8 @@ from loguru import logger
 from core.chat.commands import Colors, CommandHandler
 from core.chat.pipeline import ChatPipeline
 from core.dialogue import DialogueThinker
+from core.dialogue.consistency import ConsistencyGuard
+from core.dialogue.topic_tracker import TopicTracker
 from core.emotion import MessageSegmenter
 from core.multimodal import StickerReplier
 
@@ -190,7 +192,7 @@ class ChatHandler:
         # v3.5 新组件
         dialogue_thinker = DialogueThinker(llm=llm) if llm else None
         sticker_replier = StickerReplier(use_ascii_art=False)
-        consistency_guard = ConsistencyGuard(persona_loader=persona_loader) if persona_loader else None
+        consistency_guard = ConsistencyGuard(llm=llm) if llm else None
         topic_tracker = TopicTracker() if llm else None
 
         self.pipeline = ChatPipeline(

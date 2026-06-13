@@ -1,64 +1,37 @@
 # 🎀 Cyber Girlfriend — 赛博女友
 
-纯终端（CMD）AI 伴侣聊天机器人。支持语义记忆、情感分析、丰富人设、动态亲密度、持续性情绪系统、工具调用。
+纯终端（CMD）AI 伴侣聊天机器人。支持语义记忆、情感分析、丰富人设、动态亲密度、持续性情绪系统、工具调用、多平台接入。
+
+> ⚠️ **推荐使用 Windows CMD（命令提示符）运行**
+> PowerShell 可能存在 Unicode 编码问题导致 emoji 显示异常。
+> macOS / Linux 终端无此限制。
 
 ## 快速开始
 
-```bash
-# 安装
+```cmd
+:: 安装依赖
 python install.py
 
-# 配置向导（模型选择 + 人设 + 参数）
+:: 配置向导（模型选择 + 人设 + 参数）
 python main.py setup
 
-# 开始聊天
+:: 开始聊天
 python main.py
 ```
 
-## 架构
+## 多平台接入
 
+支持同时接入多个聊天平台，所有平台共享同一个 AI 状态（记忆/情绪/人格）：
+
+```cmd
+:: 配置微信（扫码登录）
+python main.py wechat
+
+:: 启动（自动检测并启动已配置的平台）
+python main.py
 ```
-core/
-├── chat/               # 交互层
-│   ├── handler.py          聊天循环 + 输入线程 + spinner
-│   ├── pipeline.py         ChatPipeline 消息处理管线（含工具循环）
-│   └── commands.py         15 个斜杠命令
-├── llm/               # LLM 统一接口
-│   ├── base.py             抽象基类 + 指数退避重试
-│   ├── deepseek.py         DeepSeek 适配
-│   ├── openai_compatible.py  OpenAI 兼容适配
-│   └── registry.py         注册中心 + 全局单例
-├── memory/            # 记忆系统
-│   ├── storage.py          🆕 SQLite 持久化（替代 JSON）
-│   ├── manager.py          CRUD + LLM评分 + 冲突检测 + 向量检索
-│   ├── embedder.py         语义嵌入 (BGE-small-zh, 512维)
-│   ├── vector_store.py     SQLite 向量存储 + Top-K 语义搜索
-│   ├── scorer.py           关键词评分（降级用）
-│   ├── summarizer.py       LLM 记忆提取/总结
-│   ├── chat_history.py     对话历史 + 搜索
-│   └── stats.py            ASCII 仪表盘
-├── emotion/           # 情感系统
-│   ├── analyzer.py         8 种情感关键词检测
-│   ├── llm_analyzer.py     LLM + 关键词两级分析 + 情感轨迹
-│   ├── expression.py       消息分段 + emoji/颜文字增强 + 🆕 MoodExpressionEngine
-│   └── mood.py             🆕 持续性情绪引擎（2D valence-arousal, SQLite）
-├── personality/       # 🆕 人格引擎
-│   └── engine.py           5维人格模型（信任/依赖/开放/好感/醋意）
-├── tools/             # 🆕 工具调用系统
-│   ├── base.py             BaseTool 抽象 + ToolRegistry
-│   ├── time_tool.py        时间日期查询
-│   ├── calculator.py       安全计算器（AST 白名单）
-│   └── weather.py          城市天气预报
-├── dialogue/          # 🆕 对话质量模块
-│   ├── thinker.py          CoT 对话思考器（意图/语气分析）
-│   ├── consistency.py      角色一致性守卫
-│   └── topic_tracker.py    话题追踪
-├── persona/           # 人设系统（30+字段，PromptBuilder）
-├── relationship/      # 亲密度动态计算
-├── proactive.py       # AI 主动消息
-├── multimodal/        # 多模态（图片识别 + 颜文字回复）
-└── config.py          # 配置加载
-```
+
+**消息去抖合并**：无论从哪个平台发送消息，连续输入都会在 3 秒内自动合并后一起处理。
 
 ## 特性
 
@@ -106,8 +79,21 @@ core/
 
 ### 📋 斜杠命令
 ```
-/help /stats /memories /persona /debug /clear /export
-/undo /regen /search /mood /personality /tools /img /quit
+/help       — 显示帮助
+/stats      — 亲密度统计
+/memories   — 记忆管理
+/persona    — 人设信息
+/personality— 人格状态
+/mood       — 当前情绪状态
+/debug      — 查看 system prompt
+/clear      — 清空聊天历史
+/export     — 导出聊天记录
+/undo       — 撤销上一轮
+/regen      — 重新生成回复
+/search     — 搜索聊天历史
+/tools      — 查看可用工具
+/img        — 发送图片识别
+/quit       — 退出
 ```
 
 ## 数据存储
@@ -118,9 +104,15 @@ core/
 - `data/chat_history/` — 对话历史
 - `data/relationships.json` — 亲密度持久化
 
+## 配置说明
+- `.env` — API Key 配置（从 `.env.example` 复制）
+- `config/settings.json` — 高级参数（首次运行 `setup` 生成）
+- `config/personas.json` — 人设数据（通过 `setup` 配置）
+- 以上文件包含个人配置，不会提交到 git
+
 ## 测试
 ```bash
-pytest tests -v    # 76 tests all pass ✅
+pytest tests -v
 ```
 
 ## 技术栈
@@ -128,3 +120,6 @@ Python 3.11+ / asyncio / LiteLLM / sentence-transformers / SQLite / numpy
 
 ## 项目由来
 灵感来自 [My-Dream-Moments](https://github.com/iwyxdxl/My-Dream-Moments) 和 [ex-skill](https://github.com/therealXiaomanChu/ex-skill)。
+
+## 作者
+**yangmuji14**
