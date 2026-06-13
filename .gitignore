@@ -25,6 +25,10 @@ build/
 data/
 logs/
 
+# User config (personalized — use .example files as template)
+config/settings.json
+config/personas.json
+
 # OS
 .DS_Store
 Thumbs.db

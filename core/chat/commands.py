@@ -97,7 +97,10 @@ class CommandHandler:
             await self._cmd_memories(user_id, sub)
             return True
 
-        if cmd.startswith("/persona"):
+        if cmd in ("/persona", "/personality") or cmd.startswith("/persona ") or cmd.startswith("/personality "):
+            if cmd.startswith("/personality"):
+                self._cmd_personality(user_id)
+                return True
             parts = cmd.split(maxsplit=1)
             sub = parts[1].strip() if len(parts) > 1 else ""
             self._cmd_persona(user_id, sub)
@@ -321,7 +324,7 @@ class CommandHandler:
             print(f"\n{Colors.DIM}  未知操作：{action}，输入 /memories help 查看帮助{Colors.RESET}\n")
 
     def _cmd_persona(self, user_id: str, sub: str):
-        parts = sub.split(maxsplit=1)
+        parts = sub.split(maxsplit=1) if sub else []
 
         if sub == "list":
             all_p = self._h.persona_loader.list_all()
@@ -330,14 +333,14 @@ class CommandHandler:
                 return
             print(f"\n{Colors.YELLOW}🎀 人设列表：{Colors.RESET}")
             for p in all_p:
-                marker = f" {Colors.GREEN}← 当前{Colors.RESET}" if p.id == self._h.current_persona_id else ""
+                marker = f" {Colors.GREEN}<- 当前{Colors.RESET}" if p.id == self._h.current_persona_id else ""
                 mbti = f" [{p.mbti}]" if p.mbti else ""
                 traits = f" {'、'.join(p.personality[:3])}" if p.personality else ""
-                print(f"  {Colors.CYAN}{p.id}{Colors.RESET} — {p.name}（{p.age}岁{mbti}）{traits}{marker}")
+                print(f"  {Colors.CYAN}{p.id}{Colors.RESET} - {p.name}（{p.age}岁{mbti}）{traits}{marker}")
             print(f"\n  {Colors.DIM}切换：/persona switch <id>{Colors.RESET}\n")
             return
 
-        if parts[0] == "switch":
+        if parts and parts[0] == "switch":
             if len(parts) < 2 or not parts[1]:
                 print(f"\n{Colors.DIM}  用法：/persona switch <id>{Colors.RESET}\n")
                 return
