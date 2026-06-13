@@ -1,9 +1,15 @@
 """System Prompt 构建器
 
 基于丰富的角色属性，生成自然、详细的角色描述，让 AI 真正"成为"这个角色。
+支持 v1.2 RelationshipEvolution 行为画像集成。
 """
 
+from typing import TYPE_CHECKING
+
 from .models import Persona
+
+if TYPE_CHECKING:
+    from core.relationship.evolution import BehaviorProfile
 
 
 class PromptBuilder:
@@ -36,10 +42,14 @@ class PromptBuilder:
     }
 
     @staticmethod
-    def build(persona, memory_context="", extra_instructions="", relationship_level=None, mood_instruction=""):
+    def build(
+        persona,
+        memory_context="",
+        extra_instructions="",
+        relationship_level=None,
+        behavior_profile: "BehaviorProfile | None" = None,
+    ):
         parts = []
-        if mood_instruction:
-            parts.append(mood_instruction)
         identity = PromptBuilder._build_identity(persona)
         if identity:
             parts.append(identity)
@@ -61,6 +71,11 @@ class PromptBuilder:
         relationship = PromptBuilder._build_relationship(persona, relationship_level)
         if relationship:
             parts.append(relationship)
+        # v1.2：行为画像（由 RelationshipEvolution 动态生成）
+        if behavior_profile:
+            bp_section = PromptBuilder._build_behavior_profile(behavior_profile)
+            if bp_section:
+                parts.append(bp_section)
         topics = PromptBuilder._build_topics(persona)
         if topics:
             parts.append(topics)
@@ -209,6 +224,37 @@ class PromptBuilder:
         if not lines:
             return ""
         return "【话题偏好】\n" + "\n".join(lines)
+
+    @staticmethod
+    def _build_behavior_profile(bp: "BehaviorProfile") -> str:
+        """将 RelationshipEvolution 的行为画像转为 prompt 段落"""
+        lines = []
+
+        if bp.communication_style:
+            lines.append(f"沟通风格：{bp.communication_style}")
+        if bp.affection_level:
+            output = "亲密度变化：" + " → ".join(bp.affection_level)
+            lines.append(output)
+        if bp.emotional_trends:
+            trend_descs = []
+            for k, v in bp.emotional_trends.items():
+                trend_descs.append(f"{k}: {v}")
+            if trend_descs:
+                lines.append("情绪倾向：" + "、".join(trend_descs))
+        if bp.personality_shifts:
+            shift_strs = []
+            for trait, shift in bp.personality_shifts.items():
+                shift_strs.append(f"{trait} {'增加' if shift > 0 else '减弱'}({abs(shift):.1f})")
+            if shift_strs:
+                lines.append("性格变化：" + "、".join(shift_strs))
+        if bp.phase_label:
+            lines.append(f"当前关系阶段：{bp.phase_label}")
+        if bp.recent_behavior_summary:
+            lines.append(f"最近相处表现：{bp.recent_behavior_summary}")
+
+        if not lines:
+            return ""
+        return "【关系动态变化】\n" + "\n".join(lines)
 
     @staticmethod
     def _build_behavior_rules(p):
