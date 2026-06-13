@@ -143,7 +143,7 @@ def _install_deps():
 def main():
     print()
     print("=" * 50)
-    print("  🎀 赛博女友 - 环境安装")
+    print("  🎀 赛博伴侣 - 环境安装")
     print("=" * 50)
     print()
 

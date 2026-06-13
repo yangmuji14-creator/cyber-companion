@@ -79,7 +79,7 @@ PROVIDERS = {
 def _banner():
     print()
     print("=" * 50)
-    print("  🎀 赛博女友 - 基础设置向导")
+    print("  🎀 赛博伴侣 - 基础设置向导")
     print("=" * 50)
     print()
 

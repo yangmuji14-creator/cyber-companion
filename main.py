@@ -1,4 +1,4 @@
-"""Cyber Girlfriend — 赛博女友
+"""Cyber Girlfriend — 赛博伴侣
 
 集成情绪状态机、人格引擎、工具调用、向量记忆等完整功能。
 

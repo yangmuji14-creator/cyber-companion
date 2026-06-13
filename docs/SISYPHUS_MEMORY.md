@@ -2,7 +2,7 @@
 
 > Agent: Sisyphus (OhMyOpenCode)
 > 会话时间：2026-06-12 下午~傍晚
-> 项目：Cyber Girlfriend（赛博女友）
+> 项目：Cyber Girlfriend（赛博伴侣）
 > 工作量：v1.2 (8模块) + v1.3 (5模块) + 测试 (86新增) + 修复 (6项技术债)
 
 ---
