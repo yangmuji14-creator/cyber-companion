@@ -17,6 +17,7 @@ import json
 import re
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 
 from loguru import logger
 
@@ -26,6 +27,11 @@ from core.memory import MemorySummarizer
 from core.multimodal import StickerReplier
 from core.persona import PromptBuilder
 from core.relationship import RelationshipEvolution
+from core.open_loop import OpenLoopEngine
+from core.identity import IdentityStorage
+from core.summary import LifeSummaryEngine
+from core.relationship.events import RelationshipEventTracker
+from core.persona.drift_monitor import PersonaDriftMonitor
 
 
 # ========== 模块级工具函数（可独立测试）==========
@@ -170,6 +176,17 @@ class ChatPipeline:
         )
         self._consistency_guard = ConsistencyGuard()
 
+        # v1.3：身份层 / Open Loop / 人生摘要 / 关系事件 / 人格漂移
+        data_dir = memory_mgr.data_dir.parent if hasattr(memory_mgr, 'data_dir') else Path("data")
+        self._identity_storage = IdentityStorage(data_dir)
+        self._open_loop_engine = OpenLoopEngine(data_dir)
+        self._life_summary_engine = LifeSummaryEngine(data_dir)
+        self._relationship_events = RelationshipEventTracker(data_dir)
+        self._drift_monitor = PersonaDriftMonitor(persona_loader=persona_loader)
+        self._conversation_counter: dict[str, int] = {}
+        self._last_drift_check: dict[str, int] = {}
+        self._last_replies: dict[str, list[str]] = {}
+
     # ---- 主入口 ----
 
     async def process(
@@ -296,6 +313,56 @@ class ChatPipeline:
         if tools_prompt:
             extra_parts.append(tools_prompt)
 
+        # ---- v1.3：Open Loop 检测 + Identity 提取 ----
+        try:
+            self._open_loop_engine.detect_and_create(user_id, content)
+            self._open_loop_engine.check_and_update(user_id, content)
+            self._open_loop_engine.check_expired(user_id)
+        except Exception as e:
+            logger.debug(f"OpenLoop processing failed: {e}")
+
+        try:
+            self._identity_storage.extract_from_content(user_id, content)
+        except Exception as e:
+            logger.debug(f"Identity extraction failed: {e}")
+
+        # ---- v1.3：身份画像 & 人生摘要 & 关系里程碑注入 ----
+        try:
+            identity_profile = self._identity_storage.load(user_id)
+            if identity_profile:
+                extra_parts.append(identity_profile.to_prompt_section())
+        except Exception as e:
+            logger.debug(f"Identity prompt failed: {e}")
+
+        try:
+            latest_summary = self._life_summary_engine.get_latest(user_id)
+            if latest_summary:
+                extra_parts.append(latest_summary.to_prompt_section())
+        except Exception as e:
+            logger.debug(f"Life summary prompt failed: {e}")
+
+        try:
+            milestone_summary = self._relationship_events.get_milestone_summary(user_id)
+            if milestone_summary:
+                extra_parts.append(milestone_summary)
+        except Exception as e:
+            logger.debug(f"Milestone prompt failed: {e}")
+
+        # ---- v1.3：Open Loop 追问问 ----
+        try:
+            follow_ups = self._open_loop_engine.get_follow_ups(user_id)
+            if follow_ups:
+                follow_up_texts = []
+                for fu in follow_ups[:2]:
+                    follow_up_texts.append(self._open_loop_engine.generate_follow_up_message(fu))
+                if follow_up_texts:
+                    extra_parts.append(
+                        "【需要关注的事件】你可以自然地询问以下事情（选一个就好）：\n"
+                        + "\n".join(f"- {t}" for t in follow_up_texts[-2:])
+                    )
+        except Exception as e:
+            logger.debug(f"OpenLoop follow-up failed: {e}")
+
         extra = "\n\n".join(extra_parts)
 
         # ---- v1.2：行为画像（由 RelationshipEvolution 动态生成）----
@@ -359,15 +426,69 @@ class ChatPipeline:
         # 基础记忆存储
         self._memory_mgr.add_memory(user_id, content)
 
-        # 后台任务
+        # 后台任务 — 记忆提取 + 总结
         self._run_background(self._extract_memory(user_id, content, reply))
         threshold = self._config.get("summarize_threshold", 15)
         short_ms = self._chat_history.get_short_memories(user_id)
         if len(short_ms) >= threshold:
             self._run_background(self._summarize_memories(user_id, short_ms))
 
+        # ---- v1.3 后台任务 ----
+        self._run_background(self._v13_post_process(user_id, content, reply))
+
         logger.debug(f"[{persona.name}] → {user_id}: {reply[:80]}...")
         return reply, rel_level
+
+    # ---- v1.3 后台处理 ----
+
+    async def _v13_post_process(self, user_id: str, content: str, reply: str):
+        """v1.3 后台处理：关系事件/人生摘要/对话计数/漂移检测"""
+        try:
+            # 1. 关系事件
+            self._relationship_events.detect_and_record(user_id, content, reply)
+
+            # 2. 对话计数
+            self._conversation_counter[user_id] = self._conversation_counter.get(user_id, 0) + 1
+            conv_count = self._conversation_counter[user_id]
+
+            # 3. 收集回复用于漂移检测
+            if user_id not in self._last_replies:
+                self._last_replies[user_id] = []
+            self._last_replies[user_id].append(reply)
+            if len(self._last_replies[user_id]) > 50:
+                self._last_replies[user_id] = self._last_replies[user_id][-50:]
+
+            # 4. 人生摘要生成
+            try:
+                if self._life_summary_engine.should_generate(user_id, conv_count):
+                    all_memories = self._memory_mgr.get_memories(user_id, limit=50)
+                    memory_texts = [m.content for m in all_memories if m.content]
+                    self._life_summary_engine.generate_from_memories(
+                        user_id, conv_count, memory_texts
+                    )
+            except Exception as e:
+                logger.debug(f"LifeSummary generation failed: {e}")
+
+            # 5. 人格漂移检测
+            try:
+                last_check = self._last_drift_check.get(user_id, 0)
+                if self._drift_monitor.should_check(conv_count, last_check):
+                    persona_id = "girlfriend_001"
+                    recent = self._last_replies.get(user_id, [])
+                    report = self._drift_monitor.analyze(
+                        user_id, persona_id, conv_count, recent[-20:]
+                    )
+                    self._last_drift_check[user_id] = conv_count
+                    if not report.passed:
+                        logger.warning(
+                            f"Persona drift: score={report.consistency_score:.2%}, "
+                            f"suggestions={report.suggestions}"
+                        )
+            except Exception as e:
+                logger.debug(f"Persona drift check failed: {e}")
+
+        except Exception as e:
+            logger.debug(f"v1.3 post-process failed: {e}")
 
     # ---- LLM 调用（含工具循环）----
 
