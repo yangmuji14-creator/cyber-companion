@@ -39,4 +39,6 @@ logs/
 MagicMock/
 test_conversation.py
 test_exskill/
+
+# OpenCode evidence files
 .omo/evidence/
