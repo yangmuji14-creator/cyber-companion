@@ -13,7 +13,6 @@ python main.py setup
 
 # 开始聊天
 python main.py
-# 或双击 start.bat
 ```
 
 ## 架构

@@ -8,14 +8,14 @@
 """
 
 import json
-import os
 import random
-import tempfile
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 from loguru import logger
+
+from core.utils import atomic_write_json
 
 
 # ========== 情绪映射表 ==========
@@ -86,7 +86,7 @@ class AIMoodManager:
         instruction = mgr.get_style_instruction("girlfriend_001")
     """
 
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str | Path):
         self._data_dir = Path(data_dir)
         self._path = self._data_dir / "ai_mood.json"
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,10 +114,7 @@ class AIMoodManager:
     def _save(self):
         try:
             data = [s.to_dict() for s in self._states.values()]
-            fd, tmp = tempfile.mkstemp(dir=str(self._path.parent), suffix=".tmp")
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, str(self._path))
+            atomic_write_json(self._path, data)
         except Exception as e:
             logger.error(f"Failed to save mood data: {e}")
 

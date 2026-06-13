@@ -69,7 +69,7 @@ cyber-girlfriend/
 ├── main.py                     # 入口，1163 行，CLI + 16 个斜杠命令
 ├── setup.py                    # 三步安装向导
 ├── install.py                  # 环境安装（venv + 国内镜像）
-├── start.bat / start.sh        # 启动脚本
+├── start.sh                    # 启动脚本（Linux/macOS）
 ├── requirements.txt            # 依赖声明
 ├── .env / .env.example         # API 密钥配置
 │
@@ -445,7 +445,7 @@ python setup.py
 # 4. 启动聊天
 python main.py
 
-# 或 Windows 双击 start.bat
+# 或直接 python main.py
 ```
 
 ### 项目命令
