@@ -252,7 +252,7 @@ class ChatPipeline:
         self._chat_history.add_short_memory(user_id, content, reply)
 
         # 基础记忆存储（关键词评分）
-        self._memory_mgr.add_memory(user_id, content)
+        await self._memory_mgr.add_memory(user_id, content)
 
         # 后台任务
         self._run_background(self._extract_memory(user_id, content, reply))

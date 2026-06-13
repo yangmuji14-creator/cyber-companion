@@ -45,7 +45,7 @@ class MemoryManager:
     @property
     def data_dir(self) -> Path:
         """公开数据目录路径"""
-        return self._storage._data_dir.parent
+        return self._storage.data_dir
 
     # ---- 增 ----
 
