@@ -254,9 +254,11 @@ class WeChatAdapter(BaseAdapter):
         if not self._handler:
             return
 
+        loop = asyncio.get_running_loop()
+
         # 显示"正在输入"状态
         try:
-            msg.reply_typing()
+            await loop.run_in_executor(None, lambda: msg.reply_typing())
         except Exception:
             pass
 
@@ -279,13 +281,13 @@ class WeChatAdapter(BaseAdapter):
             reply = await self._handler(message)
             if reply:
                 # 使用 SDK 的 reply_text 方法，自动处理 context_token
-                msg.reply_text(reply)
+                await loop.run_in_executor(None, lambda: msg.reply_text(reply))
                 logger.info(f"WeChat reply to {msg.from_user}: {reply[:40]}...")
         except Exception as e:
             logger.error(f"WeChat handler error: {e}")
             # 发送错误提示
             try:
-                msg.reply_text("抱歉，处理消息时出错了，请稍后再试~")
+                await loop.run_in_executor(None, lambda: msg.reply_text("抱歉，处理消息时出错了，请稍后再试~"))
             except Exception:
                 pass
 
