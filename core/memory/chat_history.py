@@ -102,6 +102,7 @@ class ChatHistoryStorage:
         content: str,
         emotion: str | None = None,
         emotion_intensity: float | None = None,
+        emotion_understanding: str | None = None,
     ) -> None:
         """添加一条消息并持久化
 
@@ -111,6 +112,7 @@ class ChatHistoryStorage:
             content: 消息内容
             emotion: 情感类型（可选，如 "happy", "sad" 等）
             emotion_intensity: 情感强度 0.0-1.0（可选）
+            emotion_understanding: 情感理解文本（可选）
         """
         data = self.load(user_id)
         msg: dict[str, Any] = {
@@ -122,6 +124,8 @@ class ChatHistoryStorage:
             msg["emotion"] = emotion
         if emotion_intensity is not None:
             msg["emotion_intensity"] = round(emotion_intensity, 3)
+        if emotion_understanding is not None:
+            msg["emotion_understanding"] = emotion_understanding
         data["messages"].append(msg)
 
         # 裁剪到最大长度

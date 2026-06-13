@@ -164,9 +164,10 @@ class ChatHandler:
     """聊天会话管理器：输入、输出、状态、生命周期"""
 
     def __init__(self, registry, memory_mgr, persona_loader, personality_engine,
-                 chat_history, llm_emotion_analyzer, relationship_tracker,
+                 chat_history, llm_emotion_analyzer,
                  proactive, mood_manager, config: dict,
-                 tool_registry=None, open_loop=None, identity=None, life_summary=None):
+                 tool_registry=None, open_loop=None, identity=None, life_summary=None,
+                 relationship_tracker=None, affection_storage=None):
         self._registry = registry
         self.memory_mgr = memory_mgr
         self.persona_loader = persona_loader
@@ -182,6 +183,7 @@ class ChatHandler:
         self._open_loop = open_loop
         self._identity = identity
         self._life_summary = life_summary
+        self._affection_storage = affection_storage
 
         # 当前人设 ID
         self.current_persona_id = "girlfriend_001"
@@ -205,6 +207,7 @@ class ChatHandler:
             open_loop=open_loop,
             identity=identity,
             life_summary=life_summary,
+            affection_storage=affection_storage,
         )
         self.commands = CommandHandler(self)
 
@@ -282,10 +285,9 @@ class ChatHandler:
 
         # 会话统计
         stats = SessionStats()
-        stats.start_level = self.relationship_tracker.get_level(
-            user_id, base_level=persona.relationship_level,
-            persona_id=self.current_persona_id,
-        )
+        stats.start_level = int(self._affection_storage.get_level(
+            user_id, persona_id=self.current_persona_id,
+        )) if self._affection_storage else 50
         last_reply = [""]
 
         logger.info(f"模型: {self._registry.get().model_name}")
@@ -391,8 +393,7 @@ class ChatHandler:
             input_q.put(None)
 
         # 退出总结
-        stats.end_level = self.relationship_tracker.get_level(
-            user_id, base_level=persona.relationship_level,
-            persona_id=self.current_persona_id,
-        )
+        stats.end_level = int(self._affection_storage.get_level(
+            user_id, persona_id=self.current_persona_id,
+        )) if self._affection_storage else 50
         print(stats.summary(persona_name))

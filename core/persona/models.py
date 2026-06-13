@@ -71,10 +71,17 @@ class Persona:
 
     # === 旧字段保留（向后兼容） ===
     background: str = ""
-    speaking_style: str = ""
+    legacy_speaking_style: str = ""
     core_memories: list[str] = field(default_factory=list)
     relationship_level: int = 50
     system_prompt: str = ""
+
+    # === Ex-skill 五层人设结构 ===
+    hard_rules: list[str] = field(default_factory=list)             # L0: 不可违背的约束
+    identity_anchor: dict = field(default_factory=dict)              # L1: MBTI, 星座, 关系描述
+    speaking_style: dict = field(default_factory=dict)               # L2: catchphrases, filler_words, example_dialogues
+    emotional_patterns: dict = field(default_factory=dict)           # L3: 依恋类型, love_language, triggers
+    relationship_behavior: dict = field(default_factory=dict)        # L4: quarrel_pattern, boundaries
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -83,7 +90,7 @@ class Persona:
             "age": self.age,
             "personality": self.personality,
             "background": self.background,
-            "speaking_style": self.speaking_style,
+            "legacy_speaking_style": self.legacy_speaking_style,
             "core_memories": self.core_memories,
             "relationship_level": self.relationship_level,
             "system_prompt": self.system_prompt,
@@ -108,6 +115,11 @@ class Persona:
             "important_moments": self.important_moments, "pet_names": self.pet_names,
             "favorite_topics": self.favorite_topics, "avoided_topics": self.avoided_topics,
             "question_tendency": self.question_tendency,
+            "hard_rules": self.hard_rules,
+            "identity_anchor": self.identity_anchor,
+            "speaking_style": self.speaking_style,
+            "emotional_patterns": self.emotional_patterns,
+            "relationship_behavior": self.relationship_behavior,
         }
         for key, value in new_fields.items():
             if isinstance(value, list):
@@ -122,6 +134,15 @@ class Persona:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Persona":
+        # Handle migration: old format had speaking_style as string under key "speaking_style"
+        raw_speaking_style = data.get("speaking_style")
+        if isinstance(raw_speaking_style, str):
+            legacy_speaking_style = raw_speaking_style
+            speaking_style = {}
+        else:
+            legacy_speaking_style = data.get("legacy_speaking_style", "")
+            speaking_style = data.get("speaking_style", {})
+
         return cls(
             id=data["id"], name=data["name"], age=data.get("age", 20),
             gender=data.get("gender", "女"), birthday=data.get("birthday", ""),
@@ -152,8 +173,13 @@ class Persona:
             avoided_topics=data.get("avoided_topics", []),
             question_tendency=data.get("question_tendency", ""),
             background=data.get("background", ""),
-            speaking_style=data.get("speaking_style", ""),
+            legacy_speaking_style=legacy_speaking_style,
             core_memories=data.get("core_memories", []),
             relationship_level=max(0, min(100, data.get("relationship_level", 50))),
             system_prompt=data.get("system_prompt", ""),
+            hard_rules=data.get("hard_rules", []),
+            identity_anchor=data.get("identity_anchor", {}),
+            speaking_style=speaking_style,
+            emotional_patterns=data.get("emotional_patterns", {}),
+            relationship_behavior=data.get("relationship_behavior", {}),
         )

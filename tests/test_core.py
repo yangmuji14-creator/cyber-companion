@@ -581,7 +581,7 @@ def test_llm_emotion_analyzer_keyword_fallback():
     analyzer = LLMEmotionAnalyzer(llm=None)
     # 无 LLM 时应该用关键词分析
     import asyncio
-    result = asyncio.run(analyzer.analyze("我好开心呀"))
+    result, enriched = asyncio.run(analyzer.analyze("我好开心呀"))
     assert result.emotion == EmotionType.HAPPY
 
 

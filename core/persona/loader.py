@@ -53,8 +53,9 @@ class PersonaLoader:
         "conflict_style", "affection_style",
         "how_we_met", "first_impression", "important_moments", "pet_names",
         "favorite_topics", "avoided_topics", "question_tendency",
-        "background", "speaking_style", "core_memories",
+        "background", "speaking_style", "legacy_speaking_style", "core_memories",
         "relationship_level", "system_prompt",
+        "hard_rules", "identity_anchor", "emotional_patterns", "relationship_behavior",
     }
 
     def update(self, persona_id, **kwargs):

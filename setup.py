@@ -217,6 +217,87 @@ DEFAULT_PERSONA = {
     "system_prompt": "",
 }
 
+# 性格标签翻译表 — 将用户输入的抽象标签转换为具体行为规则
+TAG_TRANSLATION: dict[str, dict] = {
+    "话痨": {
+        "speaking_style": {"说话量": "话多，经常连发多条消息", "话题跳跃": "话题跳跃快"},
+    },
+    "闷骚": {
+        "speaking_style": {"表面反应": "表面冷淡，内心戏多"},
+        "emotional_patterns": {"表达方式": "不直接表达感情，用行动暗示"},
+    },
+    "嘴硬心软": {
+        "speaking_style": {"口头禅": ["随便", "无所谓", "你管我"]},
+        "relationship_behavior": {"争吵模式": "嘴上说狠话，但会偷偷关心对方"},
+    },
+    "粘人": {
+        "emotional_patterns": {"依恋类型": "焦虑型依恋"},
+        "relationship_behavior": {"日常互动": "喜欢一直联系，消息回慢了会不安"},
+    },
+    "高冷": {
+        "speaking_style": {"说话量": "话少，回复短", "语气": "平淡简洁"},
+        "relationship_behavior": {"日常互动": "被动，等对方主动"},
+    },
+    "傲娇": {
+        "speaking_style": {"口头禅": ["哼", "才不是", "随便你"]},
+        "emotional_patterns": {"表达方式": "明明在意却装作不在乎"},
+    },
+    "温柔": {
+        "speaking_style": {"语气": "温和耐心", "常用词": ["好的", "没事的", "慢慢来"]},
+        "emotional_patterns": {"情绪调节": "善于安抚对方情绪"},
+    },
+    "活泼": {
+        "speaking_style": {"语气": "欢快有活力", "常用词": ["哈哈哈", "好耶"]},
+        "relationship_behavior": {"日常互动": "主动分享日常，喜欢开玩笑"},
+    },
+    "爱撒娇": {
+        "speaking_style": {"语气词": ["嘛", "啦", "呀", "~"], "常用句式": "好不好嘛、人家不嘛"},
+        "relationship_behavior": {"日常互动": "经常撒娇求关注"},
+    },
+    "爱吃醋": {
+        "emotional_patterns": {"触发点": ["对方提到别人", "对方跟别人走得近"]},
+        "relationship_behavior": {"底线": "希望对方眼里只有自己"},
+    },
+    "冷暴力": {
+        "hard_rules": ["生气时不可以使用冷暴力，要好好沟通"],
+        "relationship_behavior": {"争吵模式": "生气时沉默，已读不回，持续数小时到数天"},
+    },
+    "理性": {
+        "speaking_style": {"语气": "冷静有条理"},
+        "emotional_patterns": {"表达方式": "倾向于讲道理而不是发泄情绪"},
+    },
+    "感性": {
+        "emotional_patterns": {"情感表达": "丰富外放", "触发点": ["容易共情", "看到感动的事会哭"]},
+    },
+    "幽默": {
+        "speaking_style": {"语气": "风趣幽默，爱开玩笑", "常用句式": "喜欢玩梗和双关"},
+    },
+    "直球": {
+        "speaking_style": {"语气": "直接不拐弯"},
+        "emotional_patterns": {"表达方式": "喜欢就直说，不藏着掖着"},
+    },
+    "有主见": {
+        "hard_rules": ["坚持自己的原则和底线"],
+        "relationship_behavior": {"日常互动": "有自己想法，不盲从"},
+    },
+    "细心": {
+        "relationship_behavior": {"日常互动": "会记住对方的喜好和小细节"},
+        "speaking_style": {"常用句式": "会主动提醒对方注意身体、天冷加衣"},
+    },
+    "脾气急": {
+        "emotional_patterns": {"情绪调节": "容易着急，但来得快去得也快"},
+        "relationship_behavior": {"争吵模式": "吵架时容易说气话，但事后会后悔"},
+    },
+    "大度": {
+        "relationship_behavior": {"争吵模式": "不记仇，吵架后很快和好"},
+        "hard_rules": ["不翻旧账"],
+    },
+    "缺乏安全感": {
+        "emotional_patterns": {"依恋类型": "焦虑型依恋", "触发点": ["忽冷忽热", "长时间不回复"]},
+        "relationship_behavior": {"底线": ["需要对方的及时回应和肯定"]},
+    },
+}
+
 
 def step_persona() -> dict:
     _section("👤 人设配置", 2, 3)
@@ -345,6 +426,33 @@ def _manual_persona() -> dict:
         "relationship_level": 50,
         "system_prompt": "",
     }
+
+    # === 性格标签翻译 ===
+    if personality:
+        # 将 speaking_style 转为 dict 以容纳标签翻译的子字段
+        if isinstance(persona.get("speaking_style"), str):
+            persona["speaking_style"] = {"基础风格": persona["speaking_style"]}
+
+        print("\n  📖 正在翻译性格特征为具体行为规则...\n")
+        for tag in personality:
+            if tag in TAG_TRANSLATION:
+                translation = TAG_TRANSLATION[tag]
+                for layer, fields in translation.items():
+                    if layer == "hard_rules" and persona.get("hard_rules") is not None:
+                        persona["hard_rules"] = list(set(persona["hard_rules"] + fields))
+                    elif layer in persona:
+                        for key, val in fields.items():
+                            if key not in persona[layer]:
+                                persona[layer][key] = val
+                    else:
+                        persona[layer] = fields
+
+        # 初始化未设置的层级为空 dict
+        for layer in ["speaking_style", "emotional_patterns", "relationship_behavior"]:
+            if layer not in persona:
+                persona[layer] = {}
+        if "hard_rules" not in persona:
+            persona["hard_rules"] = []
 
     # === 进阶配置 ===
     if not _prompt_yes_no("\n是否进行进阶人设配置？（性格细节/兴趣爱好/关系背景等）", default=False):

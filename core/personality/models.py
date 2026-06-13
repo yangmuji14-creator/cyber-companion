@@ -1,3 +1,7 @@
+# DEPRECATED — Do not import. Use core/personality/engine.py instead.
+# This module is kept for reference only and will be removed in v4.0.
+# See .omo/plans/好感系统LLM驱动升级.md for details.
+
 """PersonalityState — 人格状态数据模型
 
 五维人格状态：

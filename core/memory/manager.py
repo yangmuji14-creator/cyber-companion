@@ -155,7 +155,6 @@ class MemoryManager:
         # 设置置信度
         if level is not None:
             memory.confidence = min(1.0, level / 5.0)
-        self._set_memory_confidence(memory, memories)
 
         memories.append(memory)
 

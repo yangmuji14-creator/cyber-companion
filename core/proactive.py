@@ -18,7 +18,7 @@ from loguru import logger
 if TYPE_CHECKING:
     from core.persona.loader import PersonaLoader
     from core.memory.manager import MemoryManager
-    from core.relationship.tracker import RelationshipTracker
+    from core.affection.storage import UnifiedAffectionStorage
 
 
 class ProactiveMessenger:
@@ -31,14 +31,14 @@ class ProactiveMessenger:
         self,
         persona_loader: "PersonaLoader",
         memory_mgr: "MemoryManager",
-        relationship_tracker: "RelationshipTracker",
+        affection_storage: "UnifiedAffectionStorage",
         config: dict | None = None,
         chat_history=None,
         mood_engine=None,
     ):
         self._persona_loader = persona_loader
         self._memory_mgr = memory_mgr
-        self._relationship_tracker = relationship_tracker
+        self._affection_storage = affection_storage
         self._chat_history = chat_history
         self._mood_engine = mood_engine
 
@@ -98,11 +98,9 @@ class ProactiveMessenger:
         if not persona:
             return None
 
-        level = self._relationship_tracker.get_level(
-            user_id,
-            base_level=persona.relationship_level,
-            persona_id=persona_id,
-        )
+        level = int(self._affection_storage.get_level(
+            user_id, persona_id=persona_id,
+        ))
         if level < self.min_relationship_level:
             return None
 
@@ -122,12 +120,12 @@ class ProactiveMessenger:
                 return self._generate_evening_message(persona, level)
 
         # 长时间未联系：上次交互超过 N 天
-        stats = self._relationship_tracker.get_stats(user_id, persona_id=persona_id)
-        days_known = stats.get("days_known", 0)
-        msg_count = stats.get("message_count", 0)
+        stats = self._affection_storage.get_stats(user_id, persona_id=persona_id)
+        days_known = stats.days_known
+        msg_count = stats.message_count
         if msg_count > 0 and days_known > self.missing_days:
             if not self._already_fired("missing"):
-                last = self._relationship_tracker.get_last_interaction(user_id, persona_id)
+                last = self._affection_storage.get_last_interaction(user_id, persona_id)
                 if last:
                     try:
                         last_dt = datetime.fromisoformat(last)

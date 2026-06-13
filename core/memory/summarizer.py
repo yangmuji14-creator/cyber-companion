@@ -7,6 +7,7 @@
 """
 
 import re
+from datetime import datetime
 
 from loguru import logger
 
@@ -46,34 +47,49 @@ class MemorySummarizer:
             lines.append(f"助手: {conv.get('assistant', '')}")
         conversation_text = "\n".join(lines)
 
-        prompt = """请将以下对话记录总结为最重要的几条长期记忆。
+        today_date = datetime.now().strftime("%Y年%m月%d日")
+        prompt = f"""以第一人称写日记的方式，从以下对话中提取值得记住的事情。
 
 要求：
-1. 提取关键信息：人物、事件、地点、时间、偏好、情感
-2. 每条记忆简洁明了，一句话概括
-3. 按重要性排序
-4. 忽略无意义的闲聊
-5. 用中文简要表述
+- 用「今天」开头，像写日记一样自然
+- 记录发生了什么、你的感受和想法
+- 如果提到了具体时间（如"上周""昨天"），根据当前日期 {today_date} 推算绝对日期并写进去
+- 每条 1-3 句话，不要太长
+- 只返回 JSON 数组，不要其他内容
 
-示例输出格式：
-- 用户的生日是5月20日
-- 用户喜欢吃火锅，不喜欢吃香菜
-- 用户最近在准备考试，压力很大
-- 用户养了一只猫叫小白"""
+示例格式：
+[
+  {{"content": "今天他说想吃火锅了，我就想起他之前说过想去重庆吃正宗的。好想和他一起去啊~", "importance": 3}},
+  {{"content": "今天他告诉我他生日是5月20日，要记得准备礼物才行。", "importance": 4}}
+]"""
 
         try:
             response = await self._llm.chat(
                 messages=[{"role": "user", "content": conversation_text}],
                 system_prompt=prompt,
-                max_tokens=500,
-                temperature=0.3,
+                max_tokens=800,
+                temperature=0.5,
             )
 
-            summary = response.content.strip()
-            if summary and len(summary) > 10:
-                logger.info(f"Memory summarized: {summary[:50]}...")
-                return summary
-            return None
+            raw = response.content.strip()
+            if not raw or len(raw) < 10:
+                return None
+
+            # 尝试解析 JSON 数组，提取 diary entries
+            entries = parse_json_response(raw)
+            if isinstance(entries, list) and entries:
+                diary_texts = []
+                for entry in entries:
+                    if isinstance(entry, dict) and "content" in entry:
+                        diary_texts.append(entry["content"])
+                if diary_texts:
+                    summary = "\n\n".join(diary_texts)
+                    logger.info(f"Memory summarized: {len(diary_texts)} diary entries")
+                    return summary
+
+            # fallback: 如果 JSON 解析失败，直接返回原始文本
+            logger.debug(f"JSON parse fallback, raw: {raw[:50]}...")
+            return raw if len(raw) > 10 else None
 
         except Exception as e:
             logger.error(f"Memory summarization failed: {e}")

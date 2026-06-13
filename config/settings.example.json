@@ -1,5 +1,13 @@
 {
   "default_model": "deepseek",
+  "models": {
+    "deepseek": {
+      "provider": "deepseek",
+      "model_name": "deepseek-chat",
+      "max_tokens": 4096,
+      "temperature": 0.8
+    }
+  },
   "advanced": {
     "segment_max_length": 50,
     "debounce_seconds": 3,

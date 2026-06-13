@@ -172,14 +172,14 @@ class CommandHandler:
             print(f"\n{Colors.YELLOW}{format_dashboard(stats)}{Colors.RESET}\n")
             return
 
-        rel_stats = self._h.relationship_tracker.get_stats(
+        rel_stats = self._h._affection_storage.get_stats(
             user_id, persona_id=self._h.current_persona_id
         )
-        days = rel_stats.get("days_known", 0)
-        level = rel_stats.get("level", 50)
-        msgs = rel_stats.get("message_count", 0)
-        pos = rel_stats.get("positive_count", 0)
-        neg = rel_stats.get("negative_count", 0)
+        days = rel_stats.days_known
+        level = int(rel_stats.level)
+        msgs = rel_stats.message_count
+        pos = rel_stats.positive_count
+        neg = rel_stats.negative_count
 
         relation = (
             "💕 恋人" if level >= 80 else
@@ -192,7 +192,17 @@ class CommandHandler:
         print(f"\n{Colors.YELLOW}💕 亲密度统计{Colors.RESET}")
         print(f"  等级：{relation}（{level}/100）")
         print(f"  消息：{msgs} 条（👍 {pos} / 👎 {neg}）")
-        print(f"  认识：{days:.0f} 天")
+        print(f"  认识：{days} 天")
+
+        # 最近情感理解（从最近用户消息中提取）
+        msgs_list = self._h.chat_history.get_messages(user_id)
+        for m in reversed(msgs_list):
+            if m["role"] == "user" and "emotion_understanding" in m:
+                snippet = m["emotion_understanding"]
+                if snippet:
+                    print(f"  最近情感：{snippet}")
+                break
+
         print(f"\n  {Colors.DIM}仪表盘：/stats dashboard{Colors.RESET}")
         print()
 
@@ -354,9 +364,9 @@ class CommandHandler:
                 return
             self._h.current_persona_id = target_id
             print(f"\n{Colors.GREEN}✅ 已切换到 {target.name}（{target.id}）{Colors.RESET}")
-            level = self._h.relationship_tracker.get_level(
-                user_id, base_level=target.relationship_level, persona_id=target_id
-            )
+            level = int(self._h._affection_storage.get_level(
+                user_id, persona_id=target_id
+            ))
             print(f"  {Colors.DIM}💕 与 {target.name} 的亲密度：{level}/100{Colors.RESET}\n")
             return
 

@@ -56,6 +56,10 @@ class SentenceTransformerEmbedder(BaseEmbedder):
         return self._ready
 
     @property
+    def dim(self) -> int:
+        return self._dim
+
+    @property
     def dimension(self) -> int:
         return self._dim
 

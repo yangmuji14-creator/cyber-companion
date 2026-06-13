@@ -12,7 +12,8 @@ loguru>=0.7.0
 numpy>=1.24.0
 
 # Vector Memory (optional — app falls back to keyword search if unavailable)
-sentence-transformers>=3.0.0
+sentence-transformers>=3.0.0,<5.0.0
+transformers>=4.30.0,<5.0.0
 
 # WeChat Adapter
 weixin-ilink>=0.3.5

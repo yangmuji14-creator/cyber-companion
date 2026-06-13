@@ -17,9 +17,10 @@ from core.memory.vector_store import VectorStore
 from core.persona import PersonaLoader
 from core.personality import PersonalityEngine
 from core.emotion import LLMEmotionAnalyzer
-from core.relationship import RelationshipTracker
 from core.proactive import ProactiveMessenger
 from core.emotion.mood import MoodEngine
+from core.affection.storage import UnifiedAffectionStorage
+from core.affection.migration import migrate_from_legacy
 from core.chat import ChatHandler
 
 
@@ -32,12 +33,12 @@ class AppComponents:
     personality_engine: PersonalityEngine
     chat_history: ChatHistoryStorage
     llm_emotion_analyzer: LLMEmotionAnalyzer
-    relationship_tracker: RelationshipTracker
     mood_manager: MoodEngine
     proactive: ProactiveMessenger
     open_loop: OpenLoopEngine
     identity: IdentityLayer
     life_summary: LifeSummaryEngine
+    unified_storage: UnifiedAffectionStorage
     handler: ChatHandler
     advanced_config: dict
 
@@ -67,7 +68,6 @@ def create_components(data_dir: str | Path | None = None) -> AppComponents:
     persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
     personality_engine = PersonalityEngine(str(root / "data"))
     llm_emotion_analyzer = LLMEmotionAnalyzer()
-    relationship_tracker = RelationshipTracker(str(root / "data"))
     chat_history = ChatHistoryStorage(
         str(root / "data"), max_messages=config["max_messages"]
     )
@@ -78,8 +78,21 @@ def create_components(data_dir: str | Path | None = None) -> AppComponents:
     identity = IdentityLayer(str(root / "data"))
     life_summary = LifeSummaryEngine(str(root / "data"))
 
+    # v3.0 UnifiedAffectionStorage（SQLite 亲密度存储）
+    unified_storage = UnifiedAffectionStorage(str(root / "data"))
+
+    # 从旧版 JSON 迁移数据（如存在）
+    json_path = root / "data" / "relationships.json"
+    if json_path.exists():
+        try:
+            migrated = migrate_from_legacy(unified_storage, json_path)
+            if migrated:
+                logger.info("旧版亲密度数据已迁移到统一存储")
+        except Exception as e:
+            logger.warning(f"亲密度数据迁移失败（将跳过）: {e}")
+
     proactive = ProactiveMessenger(
-        persona_loader, memory_mgr, relationship_tracker,
+        persona_loader, memory_mgr, unified_storage,
         mood_engine=mood_manager,
         config=config,
     )
@@ -91,13 +104,13 @@ def create_components(data_dir: str | Path | None = None) -> AppComponents:
         personality_engine=personality_engine,
         chat_history=chat_history,
         llm_emotion_analyzer=llm_emotion_analyzer,
-        relationship_tracker=relationship_tracker,
         proactive=proactive,
         mood_manager=mood_manager,
         config=config,
         open_loop=open_loop,
         identity=identity,
         life_summary=life_summary,
+        affection_storage=unified_storage,
     )
 
     return AppComponents(
@@ -107,12 +120,12 @@ def create_components(data_dir: str | Path | None = None) -> AppComponents:
         personality_engine=personality_engine,
         chat_history=chat_history,
         llm_emotion_analyzer=llm_emotion_analyzer,
-        relationship_tracker=relationship_tracker,
         mood_manager=mood_manager,
         proactive=proactive,
         open_loop=open_loop,
         identity=identity,
         life_summary=life_summary,
+        unified_storage=unified_storage,
         handler=handler,
         advanced_config=config,
     )
@@ -150,7 +163,7 @@ class DebounceState:
             pass
 
     async def flush(self) -> None:
-        """立即处理队列中所有消息"""
+        """立即处理队列中所有消息，并按空行分段发送"""
         if not self.queue:
             return
         combined = "\n".join(self.queue)
@@ -160,10 +173,45 @@ class DebounceState:
             reply, _ = await self.pipeline.process(
                 self.user_id, combined, "girlfriend_001"
             )
-            # 通过适配器发送回复
+            # 分段发送：按标点符号分组（自动控制总段数不超过6段）
             adapter = self.manager.get(self.platform)
             if adapter:
-                await adapter.send(self.user_id, reply)
+                # 第一步：按句子分割（保留标点）
+                import re
+                raw = re.split(r'(。|！|？|，|\n|\.|\!|\?|,)', reply)
+                sentences = []
+                i = 0
+                while i < len(raw):
+                    if i + 1 < len(raw):
+                        delim = raw[i + 1]
+                        # 逗号只做分割用，不拼回去；句末标点保留
+                        if delim in ("，", ","):
+                            sentence = raw[i].strip()
+                        else:
+                            sentence = (raw[i] + delim).strip()
+                        i += 2
+                    else:
+                        sentence = raw[i].strip()
+                        i += 1
+                    if sentence:
+                        sentences.append(sentence)
+                
+                # 第二步：自动分组，确保不超过6段
+                group_size = max(1, (len(sentences) + 5) // 6)
+                segments = []
+                for i in range(0, len(sentences), group_size):
+                    segment = "".join(sentences[i:i+group_size])
+                    if segment.strip():
+                        segments.append(segment.strip())
+                
+                # 第三步：兜底——如果没分出来，整条发
+                if not segments:
+                    segments = [reply]
+                
+                for i, seg in enumerate(segments):
+                    await adapter.send(self.user_id, seg)
+                    if i < len(segments) - 1:
+                        await asyncio.sleep(0.8)
         except Exception as e:
             logger.error(f"Debounce flush error ({self.platform}/{self.user_id}): {e}")
 
@@ -253,10 +301,9 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
 
     # 会话统计
     stats = SessionStats()
-    stats.start_level = app.relationship_tracker.get_level(
-        user_id, base_level=getattr(persona, 'relationship_level', 50),
-        persona_id="girlfriend_001",
-    )
+    stats.start_level = int(app.unified_storage.get_level(
+        user_id, persona_id="girlfriend_001",
+    ))
     last_reply = [""]
 
     # CLI 斜杠命令处理器（本地处理，不走 pipeline）
@@ -396,10 +443,9 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
         await manager.stop_all()
 
         # 退出总结
-        stats.end_level = app.relationship_tracker.get_level(
-            user_id, base_level=getattr(persona, 'relationship_level', 50),
-            persona_id="girlfriend_001",
-        )
+        stats.end_level = int(app.unified_storage.get_level(
+            user_id, persona_id="girlfriend_001",
+        ))
         print(stats.summary(persona_name))
         logger.info("所有适配器已停止")
 

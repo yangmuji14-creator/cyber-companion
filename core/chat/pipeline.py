@@ -31,6 +31,7 @@ from core.identity import IdentityStorage
 from core.summary import LifeSummaryEngine
 from core.relationship.events import RelationshipEventTracker
 from core.persona.drift_monitor import PersonaDriftMonitor
+from core.affection.storage import UnifiedAffectionStorage
 
 
 # ========== 模块级工具函数（可独立测试）==========
@@ -151,7 +152,8 @@ class ChatPipeline:
                  chat_history, llm_emotion_analyzer, relationship_tracker,
                  mood_manager, config: dict, dialogue_thinker=None,
                  consistency_guard=None, topic_tracker=None, tool_registry=None,
-                 open_loop=None, identity=None, life_summary=None):
+                 open_loop=None, identity=None, life_summary=None,
+                 affection_storage: UnifiedAffectionStorage | None = None):
         self._llm = llm
         self._memory_mgr = memory_mgr
         self._persona_loader = persona_loader
@@ -159,6 +161,7 @@ class ChatPipeline:
         self._chat_history = chat_history
         self._llm_emotion_analyzer = llm_emotion_analyzer
         self._relationship_tracker = relationship_tracker
+        self._affection_storage = affection_storage
         self._mood_engine = mood_manager
         self._personality_engine = personality_engine
         self._tool_registry = tool_registry
@@ -209,14 +212,37 @@ class ChatPipeline:
             skip_user_message: 跳过用户消息存储（用于 /regen）
 
         Returns:
-            (reply_text, relationship_level)
+            (reply_text, affection_level)
         """
+        # ---- 空消息 / 空白消息跳过 ----
+        if not content or not content.strip():
+            current_level = int(self._affection_storage.get_level(user_id, persona_id)) if self._affection_storage else 50
+            return "", current_level
+
         if not self._llm:
             return "我还没配置好模型呢，等等哦~", 50
 
         persona = self._persona_loader.get(persona_id)
         if not persona:
             return "我找不到我的人设了 (´;ω`)", 50
+
+        # ---- 命令跳过 enrichment ----
+        if content.startswith("/"):
+            formatted_content, msg_count = format_multi_message(content)
+            if not skip_user_message:
+                self._chat_history.add_message(user_id, "user", formatted_content)
+            messages = self._chat_history.get_messages(user_id)
+            time_context = get_time_context()
+            memory_context = self._memory_mgr.get_context_prompt(user_id, limit=8, query=content)
+            current_level = int(self._affection_storage.get_level(user_id, persona_id)) if self._affection_storage else 50
+            system_prompt = PromptBuilder.build(
+                persona,
+                memory_context=memory_context,
+                extra_instructions=f"时间：{time_context}",
+                relationship_level=current_level,
+            )
+            reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
+            return reply, current_level
 
         # 首次使用初始化 LLM 情感分析器
         if self._llm_emotion_analyzer._llm is None:
@@ -228,18 +254,40 @@ class ChatPipeline:
         # 格式化多消息
         formatted_content, msg_count = format_multi_message(content)
 
-        # 情感分析（必须在 add_message 之前）
-        emotion = await self._llm_emotion_analyzer.analyze(content)
+        # ---- [NEW] 亲密度衰减（在 enrichment 之前） ----
+        if self._affection_storage:
+            self._affection_storage.apply_decay(user_id, persona_id)
+
+        # ---- [MODIFIED] 情感分析（现在是 (EmotionResult, dict) 元组） ----
+        emotion, enriched = await self._llm_emotion_analyzer.analyze(content)
 
         # ---- Mood 更新 ----
         if self._mood_engine:
             self._mood_engine.update_from_emotion(user_id, emotion)
 
-        # ---- 人格更新 ----
+        # ---- [REPLACED] 人格更新（LLM 驱动，替代旧的硬编码规则） ----
         if self._personality_engine:
-            self._personality_engine.update_after_interaction(
-                user_id, emotion_type=emotion.emotion.value,
+            self._personality_engine.update_from_llm(
+                user_id,
+                affection_impact=enriched.get("affection_impact"),
+                personality_shift=enriched.get("personality_shift"),
             )
+
+        # ---- [REPLACED] 亲密度更新（使用 UnifiedAffectionStorage 替代旧的 RelationshipTracker） ----
+        affection_impact = enriched.get("affection_impact", {})
+        if self._affection_storage:
+            rel_level = int(self._affection_storage.update(
+                user_id,
+                direction=affection_impact.get("direction", "neutral"),
+                level=affection_impact.get("level", "low"),
+                persona_id=persona_id,
+            ))
+        else:
+            rel_level = self._relationship_tracker.update(
+                user_id, emotion=emotion.emotion.value,
+                base_level=persona.relationship_level,
+                persona_id=persona_id,
+            ) if self._relationship_tracker else 50
 
         # ---- 对话思考（v3.5）— 在 prompt 构建前分析用户意图 ----
         self._last_thought = None
@@ -258,18 +306,10 @@ class ChatPipeline:
                 user_id, "user", formatted_content,
                 emotion=emotion.emotion.value,
                 emotion_intensity=emotion.intensity,
+                emotion_understanding=enriched.get("emotion_understanding"),
             )
 
         messages = self._chat_history.get_messages(user_id)
-
-        # 更新亲密度
-        rel_level = self._relationship_tracker.update(
-            user_id, emotion=emotion.emotion.value,
-            base_level=persona.relationship_level,
-            persona_id=persona_id,
-        )
-
-        # 人格状态已在 update_after_interaction 中更新（上面）
 
         # 话题追踪
         if not skip_user_message: self._topic_tracker.update(content)

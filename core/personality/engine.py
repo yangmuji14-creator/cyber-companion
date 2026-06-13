@@ -23,6 +23,9 @@ from typing import Any
 
 from loguru import logger
 
+from core.affection.constants import MAX_DIMENSION, MIN_DIMENSION
+from core.affection.mapper import AffectionMapper
+
 
 @dataclass
 class PersonalityState:
@@ -106,6 +109,7 @@ class PersonalityEngine:
         self._db_path = self._data_dir / "personality.db"
         self._local = threading.local()
         self._cache: dict[str, PersonalityState] = {}
+        self._lock = threading.Lock()
         self._init_db()
 
     @property
@@ -159,6 +163,46 @@ class PersonalityEngine:
         self._apply_decay(state)
         return state
 
+    def update_from_llm(
+        self,
+        user_id: str,
+        affection_impact: dict | None = None,
+        personality_shift: dict | None = None,
+        persona_id: str = "default",
+    ) -> None:
+        """Update personality based on LLM's enriched analysis.
+
+        The LLM provides fine-grained affection_impact (direction, level, reason)
+        and personality_shift (dimension → up/down/no_change), replacing the
+        previous hardcoded emotion_type rules.
+
+        Args:
+            user_id: User identifier
+            affection_impact: Dict with direction, level, reason from LLM
+            personality_shift: Dict with dimension → "up"/"down"/"no_change"
+            persona_id: Persona identifier (for future use with multi-persona)
+        """
+        with self._lock:
+            state = self.get_state(user_id)
+
+            # Apply personality shifts from LLM
+            if personality_shift:
+                shifts = AffectionMapper.map_personality_shift(personality_shift)
+                for dimension, delta in shifts.items():
+                    current = getattr(state, dimension, None)
+                    if current is not None:
+                        new_val = max(
+                            MIN_DIMENSION,
+                            min(MAX_DIMENSION, current + delta),
+                        )
+                        setattr(state, dimension, new_val)
+
+            # Update interaction metadata
+            state.total_interactions = getattr(state, "total_interactions", 0) + 1
+            state.last_interaction = datetime.now().isoformat()
+
+            self._save(user_id, state)
+
     def update_after_interaction(
         self,
         user_id: str,
@@ -166,49 +210,46 @@ class PersonalityEngine:
         duration_minutes: int = 1,
         profile: str | None = None,
     ) -> PersonalityState:
-        """根据一次互动更新人格状态
+        """[DEPRECATED] Use :meth:`update_from_llm` instead.
 
-        Args:
-            user_id: 用户 ID
-            emotion_type: 本次互动检测到的情感类型
-            duration_minutes: 互动时长（分钟）
-            profile: 人格模板（首次使用）
+        For backward compatibility during transition period.
+        Extracts basic affection direction from emotion_type and delegates
+        to :meth:`update_from_llm`.
 
-        Returns:
-            更新后的人格状态
+        .. note::
+            ``duration_minutes`` and ``profile`` parameters are kept for
+            backward compatibility but are no longer applied in the new
+            LLM-driven pipeline. ``profile`` is still used for state
+            initialization via :meth:`get_state`.
         """
-        state = self.get_state(user_id, profile=profile)
+        # Map emotion_type to basic affection_impact direction
+        direction_map = {
+            "happy": "slight_positive",
+            "love": "positive",
+            "excited": "positive",
+            "sad": "slight_negative",
+            "angry": "negative",
+            "anxious": "slight_negative",
+            "lonely": "neutral",
+            "neutral": "neutral",
+        }
+        direction = direction_map.get(emotion_type, "neutral")
+        affection_impact = {
+            "direction": direction,
+            "level": "low",
+            "reason": "legacy_emotion_map",
+        }
 
-        # 更新统计
-        state.total_interactions += 1
-        state.total_duration_minutes += duration_minutes
-
-        # 情感分类更新
-        positive = {"happy", "excited", "love"}
-        negative = {"sad", "angry", "anxious", "lonely"}
-        if emotion_type in positive:
-            state.positive_count += 1
-            state.trust = min(1.0, state.trust + 0.01)
-            state.openness = min(1.0, state.openness + 0.005)
-            state.affection = min(1.0, state.affection + 0.01)
-            state.jealousy = max(0.0, state.jealousy - 0.003)
-        elif emotion_type in negative:
-            state.negative_count += 1
-            state.trust = max(0.0, state.trust - 0.015)
-            state.dependence = min(1.0, state.dependence + 0.01)
-            state.jealousy = min(1.0, state.jealousy + 0.01)
-            state.openness = max(0.0, state.openness - 0.005)
+        # Default personality_shift from emotion type
+        if emotion_type in ("happy", "love", "excited"):
+            personality_shift = {"trust": "up", "dependence": "up"}
+        elif emotion_type in ("sad", "angry"):
+            personality_shift = {"trust": "down", "dependence": "up"}
         else:
-            state.neutral_count += 1
-            # 中性互动缓慢增加信任
-            state.trust = min(1.0, state.trust + 0.003)
+            personality_shift = {}
 
-        # 互动次数积累效应
-        state.dependence = min(1.0, state.dependence + 0.0005)
-
-        state.last_interaction = datetime.now().isoformat()
-        self._save(user_id, state)
-        return state
+        self.update_from_llm(user_id, affection_impact, personality_shift)
+        return self.get_state(user_id, profile)
 
     def get_personality_context(self, user_id: str) -> str:
         """生成人格描述，用于 prompt 构建
@@ -243,21 +284,22 @@ class PersonalityEngine:
 
     def reset(self, user_id: str, profile: str | None = None) -> None:
         """重置人格状态"""
-        if profile:
-            template = self.BASE_PROFILES.get(profile)
-            if template:
-                state = PersonalityState(
-                    trust=template.trust, dependence=template.dependence,
-                    openness=template.openness, affection=template.affection,
-                    jealousy=template.jealousy,
-                )
+        with self._lock:
+            if profile:
+                template = self.BASE_PROFILES.get(profile)
+                if template:
+                    state = PersonalityState(
+                        trust=template.trust, dependence=template.dependence,
+                        openness=template.openness, affection=template.affection,
+                        jealousy=template.jealousy,
+                    )
+                else:
+                    state = PersonalityState()
             else:
                 state = PersonalityState()
-        else:
-            state = PersonalityState()
-        self._cache[user_id] = state
-        self._save(user_id, state)
-        logger.info(f"Personality reset for user {user_id}")
+            self._cache[user_id] = state
+            self._save(user_id, state)
+            logger.info(f"Personality reset for user {user_id}")
 
     # ---- 内部 ----
 

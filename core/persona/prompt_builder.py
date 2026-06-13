@@ -4,12 +4,7 @@
 支持 v1.2 RelationshipEvolution 行为画像集成。
 """
 
-from typing import TYPE_CHECKING
-
 from .models import Persona
-
-if TYPE_CHECKING:
-    from core.relationship.evolution import BehaviorProfile
 
 
 class PromptBuilder:
@@ -47,7 +42,6 @@ class PromptBuilder:
         memory_context="",
         extra_instructions="",
         relationship_level=None,
-        behavior_profile: "BehaviorProfile | None" = None,
     ):
         parts = []
         identity = PromptBuilder._build_identity(persona)
@@ -71,11 +65,6 @@ class PromptBuilder:
         relationship = PromptBuilder._build_relationship(persona, relationship_level)
         if relationship:
             parts.append(relationship)
-        # v1.2：行为画像（由 RelationshipEvolution 动态生成）
-        if behavior_profile:
-            bp_section = PromptBuilder._build_behavior_profile(behavior_profile)
-            if bp_section:
-                parts.append(bp_section)
         topics = PromptBuilder._build_topics(persona)
         if topics:
             parts.append(topics)
@@ -89,6 +78,45 @@ class PromptBuilder:
         parts.append(PromptBuilder._build_behavior_rules(persona))
         if extra_instructions:
             parts.append(extra_instructions)
+
+        # L0: 硬规则（最高优先级，放在最顶部）
+        if persona.hard_rules:
+            rules_text = "\n".join(f"- {r}" for r in persona.hard_rules)
+            parts.insert(0, f"【不可违背的原则】\n{rules_text}")
+
+        # L2: 说话风格
+        if persona.speaking_style:
+            style_parts = []
+            for key, val in persona.speaking_style.items():
+                if isinstance(val, list):
+                    style_parts.append(f"{key}: {'、'.join(val)}")
+                elif val:
+                    style_parts.append(f"{key}: {val}")
+            if style_parts:
+                parts.append("【说话风格】\n" + "\n".join(style_parts))
+
+        # L3: 情感模式
+        if persona.emotional_patterns:
+            emo_parts = []
+            for key, val in persona.emotional_patterns.items():
+                if isinstance(val, list):
+                    emo_parts.append(f"{key}: {'、'.join(val)}")
+                elif val:
+                    emo_parts.append(f"{key}: {val}")
+            if emo_parts:
+                parts.append("【情感模式】\n" + "\n".join(emo_parts))
+
+        # L4: 关系行为
+        if persona.relationship_behavior:
+            rel_parts = []
+            for key, val in persona.relationship_behavior.items():
+                if isinstance(val, list):
+                    rel_parts.append(f"{key}: {'、'.join(val)}")
+                elif val:
+                    rel_parts.append(f"{key}: {val}")
+            if rel_parts:
+                parts.append("【关系行为】\n" + "\n".join(rel_parts))
+
         return "\n\n".join(parts)
 
     @staticmethod
@@ -150,8 +178,8 @@ class PromptBuilder:
     @staticmethod
     def _build_speech(p):
         lines = []
-        if p.speaking_style:
-            lines.append(f"总体风格：{p.speaking_style}")
+        if p.legacy_speaking_style:
+            lines.append(f"总体风格：{p.legacy_speaking_style}")
         if p.catchphrases:
             lines.append(f"口头禅：{'、'.join(p.catchphrases)}")
         if p.filler_words:
@@ -226,43 +254,13 @@ class PromptBuilder:
         return "【话题偏好】\n" + "\n".join(lines)
 
     @staticmethod
-    def _build_behavior_profile(bp: "BehaviorProfile") -> str:
-        """将 RelationshipEvolution 的行为画像转为 prompt 段落"""
-        lines = []
-
-        if bp.communication_style:
-            lines.append(f"沟通风格：{bp.communication_style}")
-        if bp.affection_level:
-            output = "亲密度变化：" + " → ".join(bp.affection_level)
-            lines.append(output)
-        if bp.emotional_trends:
-            trend_descs = []
-            for k, v in bp.emotional_trends.items():
-                trend_descs.append(f"{k}: {v}")
-            if trend_descs:
-                lines.append("情绪倾向：" + "、".join(trend_descs))
-        if bp.personality_shifts:
-            shift_strs = []
-            for trait, shift in bp.personality_shifts.items():
-                shift_strs.append(f"{trait} {'增加' if shift > 0 else '减弱'}({abs(shift):.1f})")
-            if shift_strs:
-                lines.append("性格变化：" + "、".join(shift_strs))
-        if bp.phase_label:
-            lines.append(f"当前关系阶段：{bp.phase_label}")
-        if bp.recent_behavior_summary:
-            lines.append(f"最近相处表现：{bp.recent_behavior_summary}")
-
-        if not lines:
-            return ""
-        return "【关系动态变化】\n" + "\n".join(lines)
-
-    @staticmethod
     def _build_behavior_rules(p):
         rules = [
             "保持人设一致性，不要跳出角色",
             "回复自然口语化，像真人聊天，不要像机器人",
-            "回复控制在 1-3 句话，不要写小作文",
+            "如果有多段话想说，每段用空行隔开。每段 1-3 句即可，不要写太长",
             "根据你的情绪反应模式来回应，不要千篇一律",
+            "多条消息分段规则：如果你需要分几段来说，请在段落之间加一个空行。收到消息后，每个段落会作为独立的一条消息发送，就像真人聊天一样自然",
         ]
         if p.catchphrases:
             rules.append("自然地使用你的口头禅")
