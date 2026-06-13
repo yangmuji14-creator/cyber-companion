@@ -13,8 +13,10 @@ from pathlib import Path
 from loguru import logger
 
 from core.chat.pipeline import get_llm_error_message
+from core.emotion.mood import MOOD_EMOJI_MAP, MoodType
 from core.memory.stats import ChatStats, format_dashboard
 from core.memory.storage import MemoryStorage
+from core.multimodal import ImageHandler
 
 
 # ========== 命令表 ==========
@@ -30,15 +32,29 @@ COMMANDS = {
     "/undo": "撤销上一轮对话（删除最后一条用户消息和 AI 回复）",
     "/regen": "让 AI 重新生成上一条回复",
     "/search": "搜索聊天历史（/search <关键词>）",
-    "/mood": "查看当前情绪状态",
+    "/mood": "查看当前情绪状态（含 Mood 引擎数据）",
+    "/personality": "查看当前人格状态",
+    "/tools": "查看可用工具列表",
+    "/img": "发送图片，AI 识别并回复内容",
     "/quit": "退出聊天",
 }
 
-# 情绪 emoji 映射
-EMOTION_ICONS = {
-    "happy": "😊", "sad": "😢", "angry": "😠", "neutral": "😐",
-    "excited": "🤩", "lonely": "🥺", "anxious": "😰", "love": "😍",
+# 情绪 emoji 映射 — 统一使用 MoodEngine 的 MOOD_EMOJI_MAP
+_EMOTION_TO_MOOD_NAME = {
+    "happy": "happy", "sad": "sad", "angry": "angry",
+    "neutral": "neutral", "excited": "excited", "lonely": "lonely",
+    "anxious": "anxious", "love": "love",
 }
+
+
+def _get_mood_emoji(emotion_name: str) -> str:
+    """获取情绪对应的 emoji，使用 MoodEngine 的统一映射"""
+    try:
+        mood_name = _EMOTION_TO_MOOD_NAME.get(emotion_name, "neutral")
+        mt = MoodType(mood_name)
+        return MOOD_EMOJI_MAP.get(mt, "😐")
+    except (ValueError, AttributeError):
+        return "😐"
 
 
 # ========== ANSI 颜色 ==========
@@ -116,6 +132,18 @@ class CommandHandler:
 
         if cmd == "/mood":
             self._cmd_mood(user_id)
+            return True
+
+        if cmd == "/personality":
+            self._cmd_personality(user_id)
+            return True
+
+        if cmd == "/tools":
+            self._cmd_tools()
+            return True
+
+        if cmd.startswith("/img"):
+            await self._cmd_img(user_id, cmd)
             return True
 
         if cmd == "/quit":
@@ -463,23 +491,132 @@ class CommandHandler:
     def _cmd_mood(self, user_id: str):
         msgs = self._h.chat_history.get_messages(user_id)
         user_msgs = [m for m in msgs if m["role"] == "user" and "emotion" in m]
-        if not user_msgs:
-            print(f"\n{Colors.DIM}  还没有足够的情绪数据{Colors.RESET}\n")
-            return
-        emotions = Counter(m["emotion"] for m in user_msgs)
         total = len(user_msgs)
-        latest = user_msgs[-1]
-        latest_emoji = EMOTION_ICONS.get(latest["emotion"], "❓")
-        latest_intensity = latest.get("emotion_intensity", 0)
 
         print(f"\n{Colors.YELLOW}🎭 情绪状态{Colors.RESET}")
-        print(f"  当前：{latest_emoji} {latest['emotion']}（强度 {latest_intensity:.0%}）")
-        print(f"  {Colors.DIM}基于最近 {total} 条消息{Colors.RESET}\n")
-        print(f"  {Colors.CYAN}情绪分布：{Colors.RESET}")
-        for emotion, count in emotions.most_common():
-            icon = EMOTION_ICONS.get(emotion, "❓")
-            pct = count / total * 100
-            bar_len = int(pct / 5)
-            bar = "█" * bar_len + "░" * (20 - bar_len)
-            print(f"  {icon} {emotion:8s} {bar} {count}次 ({pct:.0f}%)")
+
+        # Mood 引擎数据（新增）
+        mood_engine = getattr(self._h, '_mood_engine', None)
+        if mood_engine:
+            mood = mood_engine.get_mood(user_id)
+            mood_emoji = mood_engine.get_mood_emoji(user_id)
+            mood_ctx = mood_engine.get_mood_context(user_id)
+            bar_len = 10
+            filled = round(mood.energy * bar_len)
+            energy_bar = "█" * filled + "░" * (bar_len - filled)
+            print(f"  {mood_emoji} Mood：{mood.mood.value}（强度 {mood.intensity:.0%}）")
+            print(f"  ⚡ 精力：{energy_bar} {mood.energy:.0%}")
+            print(f"  📊 效价 {mood.valence:+.2f} / 唤醒 {mood.arousal:.2f}")
+            print(f"  {Colors.DIM}{mood_ctx}{Colors.RESET}\n")
+        else:
+            print(f"  {Colors.DIM}Mood 引擎未启用{Colors.RESET}\n")
+
+        if user_msgs:
+            emotions = Counter(m["emotion"] for m in user_msgs)
+            latest = user_msgs[-1]
+            latest_emoji = _get_mood_emoji(latest["emotion"])
+            latest_intensity = latest.get("emotion_intensity", 0)
+            print(f"  最近消息情绪：{latest_emoji} {latest['emotion']}（强度 {latest_intensity:.0%}）")
+            print(f"  {Colors.DIM}基于最近 {total} 条消息{Colors.RESET}\n")
+            print(f"  {Colors.CYAN}情绪分布：{Colors.RESET}")
+            for emotion, count in emotions.most_common():
+                icon = _get_mood_emoji(emotion)
+                pct = count / total * 100
+                bar_len = int(pct / 5)
+                bar = "█" * bar_len + "░" * (20 - bar_len)
+                print(f"  {icon} {emotion:8s} {bar} {count}次 ({pct:.0f}%)")
         print()
+
+    def _cmd_personality(self, user_id: str):
+        pe = getattr(self._h, '_personality_engine', None)
+        if not pe:
+            print(f"\n{Colors.DIM}  人格引擎未启用{Colors.RESET}\n")
+            return
+        state = pe.get_state(user_id)
+        traits = [
+            ("信任度", state.trust, "❤️"),
+            ("依赖度", state.dependence, "🤗"),
+            ("开放度", state.openness, "💬"),
+            ("好感度", state.affection, "💕"),
+            ("醋意值", state.jealousy, "😤"),
+        ]
+        print(f"\n{Colors.YELLOW}🧠 人格状态{Colors.RESET}")
+        for label, value, emoji in traits:
+            bar_len = int(value * 10)
+            bar = "█" * bar_len + "░" * (10 - bar_len)
+            print(f"  {emoji} {label}：{bar} {value:.0%}")
+        print(f"\n  {Colors.CYAN}交互统计：{Colors.RESET}")
+        print(f"  总互动：{state.total_interactions} 次")
+        print(f"  正面：👍 {state.positive_count} / 负面：👎 {state.negative_count}")
+        print()
+
+    def _cmd_tools(self):
+        tr = getattr(self._h, '_tool_registry', None)
+        if not tr or not tr.available:
+            print(f"\n{Colors.DIM}  没有可用工具{Colors.RESET}\n")
+            return
+        print(f"\n{Colors.YELLOW}🛠️ 可用工具{Colors.RESET}")
+        for tool in tr.list_tools():
+            params = tool.parameters
+            props = params.get("properties", {})
+            param_str = ", ".join(props.keys()) if props else "无参数"
+            print(f"  {Colors.CYAN}{tool.name}{Colors.RESET} — {tool.description}")
+            print(f"    参数：{param_str}")
+        print()
+
+    async def _cmd_img(self, user_id: str, cmd: str):
+        """处理 /img 命令：发送图片给 AI 识别"""
+        # 保证 ChatHandler 上有 ImageHandler
+        img_handler = ImageHandler()
+        image_path, user_text = img_handler.parse_img_command(cmd)
+        if not image_path:
+            print(f"\n{Colors.YELLOW}📷 发送图片：{Colors.RESET}")
+            print(f"  {Colors.CYAN}/img <图片路径> [文字说明]{Colors.RESET}")
+            print(f"  {Colors.DIM}示例：/img C:\\photo.jpg 看看这个{Colors.RESET}")
+            print(f"  {Colors.DIM}支持 jpg/png/gif/webp/bmp，最大 10MB{Colors.RESET}\n")
+            return
+
+        # 加载图片
+        loaded = img_handler.load_image(image_path)
+        if not loaded:
+            print(f"\n{Colors.DIM}  图片加载失败：{image_path}{Colors.RESET}\n")
+            return
+
+        b64_data, mime_type = loaded
+        print(f"\n{Colors.YELLOW}📷 正在识别图片...{Colors.RESET}")
+
+        # 构建 vision 消息
+        vision_messages = img_handler.build_vision_messages(b64_data, mime_type, user_text)
+        vision_prompt = img_handler.get_vision_prompt()
+
+        # 通过 LLM 识别
+        llm = getattr(self._h, '_registry', None)
+        if llm and llm.available_models:
+            model = llm.get()
+            try:
+                # 使用标准 chat（非流式）返回图片描述
+                response = await model.chat(
+                    messages=vision_messages,
+                    system_prompt=vision_prompt,
+                )
+                reply = response.content
+                # 情感增强
+                mood_for_img = None
+                if self._h._mood_engine:
+                    mood_for_img = self._h._mood_engine.get_mood(user_id)
+                from core.emotion import EmotionEnhancer
+                reply = EmotionEnhancer.enhance_reply(reply, mood_state=mood_for_img)
+                # 保存到聊天历史
+                self._h.chat_history.add_message(
+                    user_id, "user",
+                    f"[图片] {user_text}" if user_text else "[图片]",
+                )
+                self._h.chat_history.add_message(user_id, "assistant", reply)
+                persona = self._h.persona_loader.get(self._h.current_persona_id)
+                p_name = persona.name if persona else "AI"
+                print(f"\n{Colors.MAGENTA}{p_name}:{Colors.RESET} {reply}\n")
+            except Exception as e:
+                logger.error(f"图片识别失败: {e}")
+                print(f"\n{Colors.DIM}  图片识别失败，模型不支持 vision 功能{Colors.RESET}\n")
+        else:
+            print(f"\n{Colors.DIM}  没有可用的模型{Colors.RESET}\n")
