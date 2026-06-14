@@ -42,3 +42,6 @@ test_exskill/
 
 # OpenCode evidence files
 .omo/evidence/
+
+# OpenCode config and skills
+/.opencode/
