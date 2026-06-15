@@ -216,6 +216,7 @@ class ChatPipeline:
         """
         # ---- 空消息 / 空白消息跳过 ----
         if not content or not content.strip():
+            print(f"\033[2m  💬 请输入消息\033[0m")
             current_level = int(self._affection_storage.get_level(user_id, persona_id)) if self._affection_storage else 50
             return "", current_level
 

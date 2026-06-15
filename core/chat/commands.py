@@ -405,7 +405,28 @@ class CommandHandler:
             print(f"{Colors.DIM}{'─' * 50}{Colors.RESET}")
             print(f"  {Colors.DIM}共 {len(prompt)} 字符{Colors.RESET}\n")
         else:
-            print(f"\n{Colors.DIM}  还没有发送过消息，没有 system prompt 可查看{Colors.RESET}\n")
+            print(f"\n{Colors.YELLOW}🔧 人设配置（尚未生成完整 System Prompt）：{Colors.RESET}")
+            print(f"{Colors.DIM}{'─' * 50}{Colors.RESET}")
+            persona = self._h.persona_loader.get(self._h.current_persona_id)
+            if persona:
+                print(f"  {Colors.DIM}ID：{persona.id}{Colors.RESET}")
+                print(f"  {Colors.DIM}名字：{persona.name}{Colors.RESET}")
+                print(f"  {Colors.DIM}年龄：{persona.age}{Colors.RESET}")
+                print(f"  {Colors.DIM}性别：{persona.gender}{Colors.RESET}")
+                if persona.personality:
+                    print(f"  {Colors.DIM}性格：{', '.join(persona.personality)}{Colors.RESET}")
+                if persona.mbti:
+                    print(f"  {Colors.DIM}MBTI：{persona.mbti}{Colors.RESET}")
+                if persona.background:
+                    print(f"  {Colors.DIM}背景：{persona.background}{Colors.RESET}")
+                if persona.system_prompt:
+                    print(f"  {Colors.DIM}自定义 System Prompt：{Colors.RESET}")
+                    for line in persona.system_prompt.split("\n"):
+                        print(f"    {line}")
+                print(f"{Colors.DIM}{'─' * 50}{Colors.RESET}")
+                print(f"  {Colors.DIM}提示：发送消息后可用 /debug 查看完整 System Prompt{Colors.RESET}\n")
+            else:
+                print(f"  {Colors.DIM}人设未加载（current_persona_id={self._h.current_persona_id}）{Colors.RESET}\n")
 
     async def _cmd_export(self, user_id: str, fmt: str):
         msgs = self._h.chat_history.get_messages(user_id)

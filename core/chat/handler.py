@@ -10,6 +10,7 @@
 
 import asyncio
 import queue
+import sys
 import threading
 from datetime import datetime
 
@@ -32,6 +33,8 @@ _SPINNER_TEXT = " 正在思考..."
 
 async def _spinner_task(stop_event: asyncio.Event, _persona_name: str):
     """后台 spinner 协程，每 0.12s 刷新一帧"""
+    if not sys.stdout.isatty():
+        return  # 非终端模式不显示 spinner
     frame = 0
     while not stop_event.is_set():
         icon = _SPINNER_FRAMES[frame % len(_SPINNER_FRAMES)]
