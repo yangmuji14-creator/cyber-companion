@@ -106,6 +106,38 @@ python main.py
 /quit       — 退出
 ```
 
+## 项目结构
+
+```
+cyber-girlfriend/
+├── core/                    # 核心模块
+│   ├── app.py               # 应用装配 + ComponentBuilder
+│   ├── config.py            # 配置加载
+│   ├── summary.py           # 人生摘要引擎
+│   ├── open_loop.py         # 未完成事件追踪
+│   ├── identity.py          # 用户身份画像
+│   ├── social/              # 社交系统（affection + relationship）
+│   ├── chat/                # 聊天管线（handler/pipeline/commands）
+│   ├── emotion/             # 情绪系统（MoodEngine + AIMoodManager）
+│   ├── memory/              # 记忆系统（向量+关键词+SQLite）
+│   ├── persona/             # 人设引擎（loader/builder/drift）
+│   ├── personality/         # 人格系统（五维模型）
+│   ├── llm/                 # LLM 抽象层（DeepSeek等）
+│   ├── proactive.py         # 主动消息
+│   ├── dialogue/            # 对话思考 + 一致性检查
+│   ├── multimodal/          # 图片/表情处理
+│   ├── tools/               # 工具调用（计算/天气）
+│   └── utils.py             # 通用工具
+├── adapters/                # 平台适配器（CLI/微信/API）
+├── plugins/                 # 插件系统
+├── tests/                   # 测试（含 social/ chat/ memory/ 子目录）
+│   ├── social/              # 社交系统测试
+│   ├── chat/                # 聊天系统测试
+│   └── memory/              # 记忆系统测试
+├── auto_test.py             # 全链路自动化测试脚本
+└── config/                  # 用户配置（不进 git）
+```
+
 ## 数据存储
 - `data/memories.db` — SQLite 记忆库
 - `data/vectors.db` — SQLite 向量库
@@ -122,7 +154,11 @@ python main.py
 
 ## 测试
 ```bash
+# 运行所有测试
 pytest tests -v
+
+# 全链路回归测试（4轮自动）
+python auto_test.py
 ```
 
 ## 技术栈

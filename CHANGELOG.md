@@ -1,5 +1,21 @@
 # Changelog
 
+## v3.2.0 — 2026-06-18（代码结构重构）
+
+### 🏗️ 架构优化
+
+- **包扁平化** — core/summary/, core/open_loop/, core/identity/ 从单文件包展平为直接文件
+- **模块分组** — affection + relationship 合并为 core/social/ 子包
+- **清理死代码** — 删除未使用的 core/state/，AIMoodManager 移至 core/emotion/
+- **修复 memory 导出** — 移除 OpenLoopEngine/IdentityLayer/LifeSummaryEngine 从 core.memory 的错误导出
+- **app.py 解耦** — 引入 ComponentBuilder 按领域分组组件创建
+- **测试分目录** — tests/ 下按模块分 social/ chat/ memory/ 子目录
+- **修复 3 处 None 安全** — pipeline.py 中 _topic_tracker/_dialogue_thinker 判空保护
+
+### ✅ 验证
+- 4 轮全链路回归测试通过，0 回归 Bug
+- 好感/记忆/命令/情绪分析/边缘情况全部正常
+
 ## v3.1.0 — 2026-06-14（情感系统增强）
 
 ### ✨ 新功能
