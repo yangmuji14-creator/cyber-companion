@@ -9,13 +9,13 @@ import sys
 import os
 import json
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import pytest
 
 from core.emotion.llm_analyzer import LLMEmotionAnalyzer
 from core.emotion.analyzer import EmotionType, EmotionResult
-from core.affection.constants import AffectionDirection, AffectionLevel
+from core.social.affection.constants import AffectionDirection, AffectionLevel
 
 
 # ═══════════════════════════════════════════════════════════════

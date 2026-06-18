@@ -11,16 +11,16 @@ import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import pytest
-from core.affection.schema import (
+from core.social.affection.schema import (
     AffectionRecord,
     AffectionStats,
     CREATE_TABLE_SQL,
     AffectionStorage,
 )
-from core.affection.constants import (
+from core.social.affection.constants import (
     AffectionDirection,
     AffectionLevel,
     DIRECTION_LEVEL_MAP,
@@ -30,7 +30,7 @@ from core.affection.constants import (
 )
 
 # UnifiedAffectionStorage 将在 Task 9 实现
-from core.affection.schema import UnifiedAffectionStorage
+from core.social.affection.schema import UnifiedAffectionStorage
 
 
 class TestAffectionStorage:

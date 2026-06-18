@@ -40,16 +40,16 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from core.affection.schema import CREATE_TABLE_SQL, AffectionRecord
+from core.social.affection.schema import CREATE_TABLE_SQL, AffectionRecord
 
 # ──────────────────────────────────────────────────────
-# Task 12 将在 core/affection/sqlite_storage.py 中提供
+# Task 12 将在 core/social/affection/sqlite_storage.py 中提供
 # SQLiteAffectionStorage 类。
 # 在此之前，此导入会抛出 ModuleNotFoundError → RED。
 # ──────────────────────────────────────────────────────
-from core.affection.sqlite_storage import SQLiteAffectionStorage
+from core.social.affection.sqlite_storage import SQLiteAffectionStorage
 
 
 # ══════════════════════════════════════════════════════

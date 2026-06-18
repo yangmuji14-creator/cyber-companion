@@ -262,7 +262,7 @@ def test_open_loop_check_expired():
 def test_open_loop_generate_follow_up():
     """generate_follow_up_message 生成非空追问"""
     from core.open_loop import OpenLoop
-    from core.open_loop.engine import OpenLoopEngine
+    from core.open_loop import OpenLoopEngine
     loop = OpenLoop(id="ol_1", user_id="test", title="明天考试", category="exam")
     # 创建最小 engine 实例（不需要 storage）
     engine = OpenLoopEngine.__new__(OpenLoopEngine)
@@ -327,7 +327,7 @@ def test_life_summary_should_generate_periodic():
 
 def test_rel_event_create():
     """RelationshipEvent 创建"""
-    from core.relationship.events import RelationshipEvent
+    from core.social.relationship.events import RelationshipEvent
     e = RelationshipEvent(
         id="re_1", user_id="test", event_type="first_chat", title="第一次聊天",
     )
@@ -336,7 +336,7 @@ def test_rel_event_create():
 
 def test_rel_event_storage():
     """RelationshipEventStorage 保存和加载"""
-    from core.relationship.events import RelationshipEvent, RelationshipEventStorage
+    from core.social.relationship.events import RelationshipEvent, RelationshipEventStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = RelationshipEventStorage(tmp)
         storage.save(RelationshipEvent(
@@ -349,7 +349,7 @@ def test_rel_event_storage():
 
 def test_rel_event_tracker_detect():
     """RelationshipEventTracker 检测安慰事件"""
-    from core.relationship.events import RelationshipEventTracker
+    from core.social.relationship.events import RelationshipEventTracker
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         tracker = RelationshipEventTracker(tmp)
         events = tracker.detect_and_record("test", "我好难过啊", "别难过，我在呢")
@@ -359,7 +359,7 @@ def test_rel_event_tracker_detect():
 
 def test_rel_event_milestone_summary():
     """get_milestone_summary 生成非空摘要"""
-    from core.relationship.events import RelationshipEventTracker, RelationshipEvent
+    from core.social.relationship.events import RelationshipEventTracker, RelationshipEvent
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         tracker = RelationshipEventTracker(tmp)
         tracker._storage.save(RelationshipEvent(

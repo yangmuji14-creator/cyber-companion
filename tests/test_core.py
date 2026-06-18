@@ -247,7 +247,7 @@ def test_memory_touch():
 
 def test_relationship_basic():
     """测试关系追踪器基础功能"""
-    from core.relationship import RelationshipTracker
+    from core.social.relationship import RelationshipTracker
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tracker = RelationshipTracker(tmpdir)
@@ -265,7 +265,7 @@ def test_relationship_basic():
 
 def test_relationship_positive_emotion():
     """测试正面情感提升亲密度"""
-    from core.relationship import RelationshipTracker
+    from core.social.relationship import RelationshipTracker
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tracker = RelationshipTracker(tmpdir)
@@ -284,7 +284,7 @@ def test_relationship_positive_emotion():
 
 def test_relationship_negative_emotion():
     """测试负面情感降低亲密度"""
-    from core.relationship import RelationshipTracker
+    from core.social.relationship import RelationshipTracker
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tracker = RelationshipTracker(tmpdir)
@@ -304,7 +304,7 @@ def test_relationship_negative_emotion():
 
 def test_relationship_persistence():
     """测试亲密度持久化"""
-    from core.relationship import RelationshipTracker
+    from core.social.relationship import RelationshipTracker
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # 第一次创建并更新
@@ -320,7 +320,7 @@ def test_relationship_persistence():
 
 def test_relationship_clamp():
     """测试亲密度范围限制"""
-    from core.relationship import RelationshipTracker
+    from core.social.relationship import RelationshipTracker
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tracker = RelationshipTracker(tmpdir)
@@ -334,7 +334,7 @@ def test_relationship_clamp():
 
 def test_relationship_stats():
     """测试亲密度统计信息"""
-    from core.relationship import RelationshipTracker
+    from core.social.relationship import RelationshipTracker
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tracker = RelationshipTracker(tmpdir)
@@ -823,7 +823,7 @@ def test_chat_history_data_dir_property():
 
 def test_mood_compute_daily():
     """测试每天生成不同的 mood"""
-    from core.state import AIMoodManager
+    from core.emotion.ai_mood import AIMoodManager
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -838,7 +838,7 @@ def test_mood_compute_daily():
 
 def test_mood_persistence():
     """测试 mood 跨 session 持久化"""
-    from core.state import AIMoodManager
+    from core.emotion.ai_mood import AIMoodManager
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -854,7 +854,7 @@ def test_mood_persistence():
 
 def test_mood_relationship_affects():
     """测试亲密度影响 mood 倾向"""
-    from core.state import AIMoodManager
+    from core.emotion.ai_mood import AIMoodManager
     import tempfile
     from collections import Counter
 
@@ -872,7 +872,7 @@ def test_mood_relationship_affects():
 
 def test_mood_style_instruction():
     """测试生成风格指令"""
-    from core.state import AIMoodManager
+    from core.emotion.ai_mood import AIMoodManager
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -884,7 +884,7 @@ def test_mood_style_instruction():
 
 def test_mood_display_summary():
     """测试摘要字符串包含 mood 信息"""
-    from core.state import AIMoodManager
+    from core.emotion.ai_mood import AIMoodManager
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1029,8 +1029,8 @@ def test_pipeline_full_flow():
     from core.persona import PersonaLoader
     from core.personality import PersonalityEngine
     from core.emotion import LLMEmotionAnalyzer
-    from core.relationship import RelationshipTracker
-    from core.state import AIMoodManager
+    from core.social.relationship import RelationshipTracker
+    from core.emotion.ai_mood import AIMoodManager
     from core.config import CONFIG_DIR
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1080,8 +1080,8 @@ def test_pipeline_multi_message():
     from core.persona import PersonaLoader
     from core.personality import PersonalityEngine
     from core.emotion import LLMEmotionAnalyzer
-    from core.relationship import RelationshipTracker
-    from core.state import AIMoodManager
+    from core.social.relationship import RelationshipTracker
+    from core.emotion.ai_mood import AIMoodManager
     from core.config import CONFIG_DIR
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1122,8 +1122,8 @@ def test_pipeline_tool_call():
     from core.persona import PersonaLoader
     from core.personality import PersonalityEngine
     from core.emotion import LLMEmotionAnalyzer
-    from core.relationship import RelationshipTracker
-    from core.state import AIMoodManager
+    from core.social.relationship import RelationshipTracker
+    from core.emotion.ai_mood import AIMoodManager
     from core.config import CONFIG_DIR
 
     with tempfile.TemporaryDirectory() as tmpdir:

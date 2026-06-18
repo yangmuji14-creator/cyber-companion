@@ -14,7 +14,7 @@ from core.memory.models import Memory, MemoryCategory
 from core.memory.conflict_resolver import MemoryConflictResolver
 from core.memory.decay import MemoryDecaySystem
 from core.memory.storage import MemoryStorage
-from core.relationship.evolution import RelationshipEvolution
+from core.social.relationship.evolution import RelationshipEvolution
 from core.dialogue.persona_checker import PersonaConsistencyChecker
 from core.emotion.mood import MoodState, MoodType, MOOD_DURATION_HOURS
 

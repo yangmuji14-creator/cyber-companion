@@ -3,11 +3,11 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import pytest
 
-from core.affection.constants import (
+from core.social.affection.constants import (
     AffectionDirection,
     AffectionLevel,
     DIRECTION_LEVEL_MAP,
@@ -161,12 +161,12 @@ class TestAffectionMapperEdgeCases:
     def _require_mapper(self):
         """尝试导入 AffectionMapper，若不存在则标记为预期失败（RED）"""
         try:
-            from core.affection.mapper import AffectionMapper  # noqa: F811
+            from core.social.affection.mapper import AffectionMapper  # noqa: F811
             return AffectionMapper
         except ImportError:
             pytest.fail(
                 "AffectionMapper not yet implemented — this test is expected to be RED. "
-                "Implement the mapper class in core/affection/mapper.py (Task 10) to make it pass."
+                "Implement the mapper class in core/social/affection/mapper.py (Task 10) to make it pass."
             )
 
     def test_unknown_direction_defaults_to_neutral(self):

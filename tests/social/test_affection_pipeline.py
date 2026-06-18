@@ -14,14 +14,14 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, AsyncMock
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import pytest
 
 from core.chat.pipeline import ChatPipeline
 from core.emotion import EmotionResult, EmotionType
 from core.emotion.mood import MoodState, MoodType
-from core.affection.constants import BASE_BONUS, AffectionDirection, AffectionLevel
+from core.social.affection.constants import BASE_BONUS, AffectionDirection, AffectionLevel
 from core.persona.models import Persona
 
 
