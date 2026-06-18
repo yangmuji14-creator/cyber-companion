@@ -1,5 +1,30 @@
 # Changelog
 
+## v3.3.0 — 2026-06-18（🧠 内心独白大脑系统）
+
+### 🧠 大脑模块（全新）
+
+AI 伴侣现在拥有**自主内心思考**能力，在回复用户前先进行完整的内心独白编织：
+
+- **StateCollector** — 从 14 个子系统（情绪/人格/亲密度/身份/人生总结/主动行为/时间环境等）收集当前状态，所有子系统可选，缺失静默降级
+- **ThoughtOrganizer** — 将 BrainInput 多维状态转换为多条 `MonologueThought` 内心思绪碎片（feeling/memory/intention/observation/concern）
+- **MonologueWeaver** — 将碎片融合为第一人称连贯内心独白叙事，支持多段结构，配以 LLM 驱动的叙事衔接
+- **MemoryTrigger** — 三种主动回忆触发：关键词匹配、用户负面情绪触发、随机自发回忆（10%概率），让 AI 仿佛真的"想起"了往事
+- **CharacterBreakDetector** — 检测回复是否偏离角色设定（性格/亲密方式/人设），自动报警提示
+- **BrainCoordinator** — 统一编排[收集→触发→组织→编织→检查]完整流程，pipeline 中单次调用即可
+
+### 🔧 集成与命令
+
+- **pipeline 集成** — 在对话处理流程中自动触发大脑模块，输出注入 system prompt
+- **`/stats` 增强** — 输出中附带大脑叙事统计（来源、片段数）
+- **配置开关** — `brain_enabled` / `brain_max_tokens` / `brain_debug` / `checker_enabled`
+
+### 🧪 测试
+
+- `tests/test_brain.py` — 644 行单元测试（含集成测试）
+- `tests/test_brain_edge.py` — 925 行边缘情况测试（41 个极端场景）
+- `core/brain/self_test.py` — 509 行内置自测套件，可独立运行验证
+
 ## v3.2.0 — 2026-06-18（代码结构重构）
 
 ### 🏗️ 架构优化

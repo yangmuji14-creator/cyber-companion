@@ -1,6 +1,6 @@
-# 🎀 Cyber Girlfriend — 赛博伴侣
+# 🎀 赛博伴侣 — Cyber Companion
 
-纯终端（CMD）AI 伴侣聊天机器人。支持语义记忆、情感分析、丰富人设、动态亲密度、持续性情绪系统、工具调用、多平台接入。
+纯终端（CMD）AI 伴侣聊天机器人。支持语义记忆、情感分析、丰富人设、动态亲密度、持续性情绪系统、**内心独白大脑**、工具调用、多平台接入。
 
 > ⚠️ **推荐使用 Windows CMD（命令提示符）运行**
 > PowerShell 可能存在 Unicode 编码问题导致 emoji 显示异常。
@@ -59,6 +59,17 @@ python main.py
 - CoT 对话思考器辅助意图理解
 - 颜文字/表情包自动适配 AI 情绪
 
+### 🧠 内心独白大脑系统（v3.3）
+
+AI 在回复前自主进行「内心思考」，保持人设一致性：
+
+- **14 维度状态收集** — 收集情绪、人格、亲密度、身份、人生总结等子系统状态
+- **念头组织** — 将多维状态编织为结构化的内心思绪碎片
+- **独白编织** — 将碎片融合为第一人称连贯内心独白
+- **三种主动回忆** — 关键词触发、情绪触发、自发回忆，让 AI 主动"想起"过往
+- **人设断裂检测** — 自动检测回复是否偏离角色设定
+- **可插拔设计** — 所有子系统均为可选依赖，缺失时静默降级
+
 ### 💕 亲密度系统
 - **LLM 情感理解** — AI 自主理解对话中的情感温度，自然调整亲密度变化
 - **多维情感方向** — 支持 7 种情感方向（强烈正向→强烈负向），3 级强度映射
@@ -90,12 +101,13 @@ python main.py
 ### 📋 斜杠命令
 ```
 /help       — 显示帮助
-/stats      — 亲密度统计
+/stats      — 亲密度统计（含大脑叙事）
 /memories   — 记忆管理
 /persona    — 人设信息
 /personality— 人格状态
 /mood       — 当前情绪状态
 /debug      — 查看 system prompt
+/brain      — 内心独白统计
 /clear      — 清空聊天历史
 /export     — 导出聊天记录
 /undo       — 撤销上一轮
@@ -109,13 +121,21 @@ python main.py
 ## 项目结构
 
 ```
-cyber-girlfriend/
+cyber-companion/
 ├── core/                    # 核心模块
 │   ├── app.py               # 应用装配 + ComponentBuilder
 │   ├── config.py            # 配置加载
 │   ├── summary.py           # 人生摘要引擎
 │   ├── open_loop.py         # 未完成事件追踪
 │   ├── identity.py          # 用户身份画像
+│   ├── brain/               # 🧠 内心独白大脑系统
+│   │   ├── collector.py     #   14 维度状态收集
+│   │   ├── organizer.py     #   念头碎片组织
+│   │   ├── weaver.py        #   内心独白编织
+│   │   ├── triggers.py      #   主动记忆触发
+│   │   ├── checker.py       #   人设一致性检测
+│   │   ├── coordinator.py   #   大脑协调器
+│   │   └── self_test.py     #   自测套件
 │   ├── social/              # 社交系统（affection + relationship）
 │   ├── chat/                # 聊天管线（handler/pipeline/commands）
 │   ├── emotion/             # 情绪系统（MoodEngine + AIMoodManager）
@@ -130,7 +150,7 @@ cyber-girlfriend/
 │   └── utils.py             # 通用工具
 ├── adapters/                # 平台适配器（CLI/微信/API）
 ├── plugins/                 # 插件系统
-├── tests/                   # 测试（含 social/ chat/ memory/ 子目录）
+├── tests/                   # 测试（分模块子目录）
 │   ├── social/              # 社交系统测试
 │   ├── chat/                # 聊天系统测试
 │   └── memory/              # 记忆系统测试
@@ -159,6 +179,9 @@ pytest tests -v
 
 # 全链路回归测试（4轮自动）
 python auto_test.py
+
+# 大脑模块自测（无需外部依赖）
+python -c "from core.brain.self_test import run_self_test; asyncio.run(run_self_test())"
 ```
 
 ## 技术栈
