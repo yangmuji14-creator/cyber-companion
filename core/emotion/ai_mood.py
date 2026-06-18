@@ -1,4 +1,4 @@
-"""AI Mood — 让 AI 每天有不同的心情和状态
+"""AI Mood (moved from core/state/) — 让 AI 每天有不同的心情和状态
 
 核心逻辑：
   - 每个 persona 每天计算一次 mood（情绪 + 精力 + 主题）

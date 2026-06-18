@@ -1,4 +1,4 @@
-"""Open Loop Engine — 开放循环事件追踪
+"""Open Loop Engine (flattened from core/open_loop/ package)
 
 核心能力：
 1. 自动识别用户提到的未来事件（考试、面试、旅行等）

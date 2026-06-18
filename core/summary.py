@@ -1,4 +1,4 @@
-"""人生摘要引擎
+"""人生摘要引擎 (flattened from core/summary/ package)
 
 每 50~100 轮对话自动生成：
 - 近期状态
