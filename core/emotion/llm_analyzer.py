@@ -18,8 +18,8 @@ from loguru import logger
 from core.utils import parse_json_response
 from .analyzer import EmotionAnalyzer, EmotionType, EmotionResult
 from ..llm.base import BaseLLM
-from ..affection.mapper import AffectionMapper
-from ..affection.constants import AffectionDirection, AffectionLevel
+from ..social.affection.mapper import AffectionMapper
+from ..social.affection.constants import AffectionDirection, AffectionLevel
 
 
 # ── 丰富输出解析 ────────────────────────────────────────────

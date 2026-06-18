@@ -11,7 +11,10 @@ from loguru import logger
 
 from core.config import ROOT, CONFIG_DIR, load_advanced
 from core.llm import init_registry, LLMRegistry
-from core.memory import MemoryManager, ChatHistoryStorage, OpenLoopEngine, IdentityLayer, LifeSummaryEngine
+from core.memory import MemoryManager, ChatHistoryStorage
+from core.memory.open_loop import OpenLoopEngine
+from core.memory.identity import IdentityLayer
+from core.memory.life_summary import LifeSummaryEngine
 from core.memory.embedder import SentenceTransformerEmbedder
 from core.memory.vector_store import VectorStore
 from core.persona import PersonaLoader
@@ -19,8 +22,8 @@ from core.personality import PersonalityEngine
 from core.emotion import LLMEmotionAnalyzer
 from core.proactive import ProactiveMessenger
 from core.emotion.mood import MoodEngine
-from core.affection.storage import UnifiedAffectionStorage
-from core.affection.migration import migrate_from_legacy
+from core.social.affection.storage import UnifiedAffectionStorage
+from core.social.affection.migration import migrate_from_legacy
 from core.chat import ChatHandler
 
 
@@ -43,8 +46,100 @@ class AppComponents:
     advanced_config: dict
 
 
+class ComponentBuilder:
+    """组件构建器 — 按领域分组创建逻辑"""
+
+    def __init__(self, root: Path, config: dict):
+        self.root = root
+        self.config = config
+        self._data_dir = str(root / "data")
+
+    # ---- 存储层 ----
+
+    def build_memory(self) -> tuple[MemoryManager, ChatHistoryStorage]:
+        """创建记忆系统组件"""
+        embedder = SentenceTransformerEmbedder()
+        vector_store = VectorStore(str(self.root / "data" / "vectors.db"))
+        memory_mgr = MemoryManager(
+            self._data_dir, embedder=embedder, vector_store=vector_store,
+        )
+        chat_history = ChatHistoryStorage(
+            self._data_dir, max_messages=self.config["max_messages"],
+        )
+        return memory_mgr, chat_history
+
+    def build_unified_storage(self) -> UnifiedAffectionStorage:
+        """创建亲密度统一存储，并迁移旧版数据"""
+        storage = UnifiedAffectionStorage(self._data_dir)
+        json_path = self.root / "data" / "relationships.json"
+        if json_path.exists():
+            try:
+                migrated = migrate_from_legacy(storage, json_path)
+                if migrated:
+                    logger.info("旧版亲密度数据已迁移到统一存储")
+            except Exception as e:
+                logger.warning(f"亲密度数据迁移失败（将跳过）: {e}")
+        return storage
+
+    # ---- 行为层 ----
+
+    def build_persona(self) -> PersonaLoader:
+        return PersonaLoader(CONFIG_DIR / "personas.json")
+
+    def build_personality(self) -> PersonalityEngine:
+        return PersonalityEngine(self._data_dir)
+
+    def build_emotion(self) -> tuple[LLMEmotionAnalyzer, MoodEngine]:
+        return LLMEmotionAnalyzer(), MoodEngine(self._data_dir)
+
+    def build_loop_components(self) -> tuple[OpenLoopEngine, IdentityLayer, LifeSummaryEngine]:
+        return (
+            OpenLoopEngine(self._data_dir),
+            IdentityLayer(self._data_dir),
+            LifeSummaryEngine(self._data_dir),
+        )
+
+    def build_proactive(self, persona_loader, memory_mgr, unified_storage, mood_manager) -> ProactiveMessenger:
+        return ProactiveMessenger(
+            persona_loader, memory_mgr, unified_storage,
+            mood_engine=mood_manager,
+            config=self.config,
+        )
+
+    # ---- 组装 ----
+
+    def build_all(self) -> AppComponents:
+        """创建所有组件并组装"""
+        registry = init_registry(CONFIG_DIR / "settings.json")
+        memory_mgr, chat_history = self.build_memory()
+        persona_loader = self.build_persona()
+        personality_engine = self.build_personality()
+        llm_emotion_analyzer, mood_manager = self.build_emotion()
+        open_loop, identity, life_summary = self.build_loop_components()
+        unified_storage = self.build_unified_storage()
+        proactive = self.build_proactive(persona_loader, memory_mgr, unified_storage, mood_manager)
+
+        handler = ChatHandler(
+            registry=registry, memory_mgr=memory_mgr,
+            persona_loader=persona_loader, personality_engine=personality_engine,
+            chat_history=chat_history, llm_emotion_analyzer=llm_emotion_analyzer,
+            proactive=proactive, mood_manager=mood_manager, config=self.config,
+            open_loop=open_loop, identity=identity, life_summary=life_summary,
+            affection_storage=unified_storage,
+        )
+
+        return AppComponents(
+            registry=registry, memory_mgr=memory_mgr, persona_loader=persona_loader,
+            personality_engine=personality_engine, chat_history=chat_history,
+            llm_emotion_analyzer=llm_emotion_analyzer, mood_manager=mood_manager,
+            proactive=proactive, open_loop=open_loop, identity=identity,
+            life_summary=life_summary, unified_storage=unified_storage,
+            handler=handler, advanced_config=self.config,
+        )
+
+
 def create_components(data_dir: str | Path | None = None) -> AppComponents:
-    """创建并组装所有核心组件
+    """创建并组装所有核心组件（便捷函数）
 
     Args:
         data_dir: 数据存储目录，默认 ROOT/data
@@ -54,81 +149,7 @@ def create_components(data_dir: str | Path | None = None) -> AppComponents:
     """
     root = ROOT if data_dir is None else Path(data_dir)
     config = load_advanced()
-
-    registry = init_registry(CONFIG_DIR / "settings.json")
-
-    embedder = SentenceTransformerEmbedder()
-    vector_store = VectorStore(str(root / "data" / "vectors.db"))
-
-    memory_mgr = MemoryManager(
-        str(root / "data"),
-        embedder=embedder,
-        vector_store=vector_store,
-    )
-    persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
-    personality_engine = PersonalityEngine(str(root / "data"))
-    llm_emotion_analyzer = LLMEmotionAnalyzer()
-    chat_history = ChatHistoryStorage(
-        str(root / "data"), max_messages=config["max_messages"]
-    )
-    mood_manager = MoodEngine(str(root / "data"))
-
-    # v1.2/v1.3 新增组件
-    open_loop = OpenLoopEngine(str(root / "data"))
-    identity = IdentityLayer(str(root / "data"))
-    life_summary = LifeSummaryEngine(str(root / "data"))
-
-    # v3.0 UnifiedAffectionStorage（SQLite 亲密度存储）
-    unified_storage = UnifiedAffectionStorage(str(root / "data"))
-
-    # 从旧版 JSON 迁移数据（如存在）
-    json_path = root / "data" / "relationships.json"
-    if json_path.exists():
-        try:
-            migrated = migrate_from_legacy(unified_storage, json_path)
-            if migrated:
-                logger.info("旧版亲密度数据已迁移到统一存储")
-        except Exception as e:
-            logger.warning(f"亲密度数据迁移失败（将跳过）: {e}")
-
-    proactive = ProactiveMessenger(
-        persona_loader, memory_mgr, unified_storage,
-        mood_engine=mood_manager,
-        config=config,
-    )
-
-    handler = ChatHandler(
-        registry=registry,
-        memory_mgr=memory_mgr,
-        persona_loader=persona_loader,
-        personality_engine=personality_engine,
-        chat_history=chat_history,
-        llm_emotion_analyzer=llm_emotion_analyzer,
-        proactive=proactive,
-        mood_manager=mood_manager,
-        config=config,
-        open_loop=open_loop,
-        identity=identity,
-        life_summary=life_summary,
-        affection_storage=unified_storage,
-    )
-
-    return AppComponents(
-        registry=registry,
-        memory_mgr=memory_mgr,
-        persona_loader=persona_loader,
-        personality_engine=personality_engine,
-        chat_history=chat_history,
-        llm_emotion_analyzer=llm_emotion_analyzer,
-        mood_manager=mood_manager,
-        proactive=proactive,
-        open_loop=open_loop,
-        identity=identity,
-        life_summary=life_summary,
-        unified_storage=unified_storage,
-        handler=handler,
-        advanced_config=config,
-    )
+    return ComponentBuilder(root, config).build_all()
 
 
 class DebounceState:

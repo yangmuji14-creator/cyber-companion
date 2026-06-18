@@ -23,8 +23,8 @@ from typing import Any
 
 from loguru import logger
 
-from core.affection.constants import MAX_DIMENSION, MIN_DIMENSION
-from core.affection.mapper import AffectionMapper
+from core.social.affection.constants import MAX_DIMENSION, MIN_DIMENSION
+from core.social.affection.mapper import AffectionMapper
 
 
 @dataclass

@@ -18,7 +18,7 @@ from typing import Any
 
 from loguru import logger
 
-from core.affection.schema import CREATE_TABLE_SQL
+from core.social.affection.schema import CREATE_TABLE_SQL
 
 
 class SQLiteAffectionStorage:

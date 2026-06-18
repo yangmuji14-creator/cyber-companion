@@ -12,7 +12,7 @@
   - 备份已存在时覆盖并记录警告
 
 用法（app.py）：
-    from core.affection.migration import migrate_from_legacy
+    from core.social.affection.migration import migrate_from_legacy
     json_path = Path(data_dir) / "relationships.json"
     if json_path.exists():
         migrated = migrate_from_legacy(unified_storage, json_path)
@@ -30,7 +30,7 @@ from typing import Any
 
 from loguru import logger
 
-from core.affection.storage import UnifiedAffectionStorage
+from core.social.affection.storage import UnifiedAffectionStorage
 
 
 def migrate_from_legacy(

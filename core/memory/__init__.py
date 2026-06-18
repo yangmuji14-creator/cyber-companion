@@ -6,9 +6,9 @@ from .summarizer import MemorySummarizer
 from .chat_history import ChatHistoryStorage
 from .embedder import BaseEmbedder, SentenceTransformerEmbedder
 from .vector_store import VectorStore
-from .open_loop import OpenLoopEngine
-from .identity import IdentityLayer
-from .life_summary import LifeSummaryEngine
+# NOTE: OpenLoopEngine, IdentityLayer, LifeSummaryEngine live in
+# this package physically but are NOT memory concepts.
+# Import them from their actual paths when needed.
 
 __all__ = [
     "Memory",
@@ -22,7 +22,4 @@ __all__ = [
     "BaseEmbedder",
     "SentenceTransformerEmbedder",
     "VectorStore",
-    "OpenLoopEngine",
-    "IdentityLayer",
-    "LifeSummaryEngine",
 ]

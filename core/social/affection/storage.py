@@ -17,12 +17,12 @@ from typing import Any, Union
 
 from loguru import logger
 
-from core.affection.schema import (
+from core.social.affection.schema import (
     AffectionRecord,
     AffectionStats,
     CREATE_TABLE_SQL,
 )
-from core.affection.constants import (
+from core.social.affection.constants import (
     AffectionDirection,
     AffectionLevel,
     DIRECTION_LEVEL_MAP,
@@ -30,7 +30,7 @@ from core.affection.constants import (
     MIN_AFFECTION,
     MAX_AFFECTION,
 )
-from core.affection.mapper import AffectionMapper
+from core.social.affection.mapper import AffectionMapper
 
 
 class UnifiedAffectionStorage:

@@ -18,7 +18,7 @@ from loguru import logger
 if TYPE_CHECKING:
     from core.persona.loader import PersonaLoader
     from core.memory.manager import MemoryManager
-    from core.affection.storage import UnifiedAffectionStorage
+    from core.social.affection.storage import UnifiedAffectionStorage
 
 
 class ProactiveMessenger:

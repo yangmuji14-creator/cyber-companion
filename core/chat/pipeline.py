@@ -25,13 +25,13 @@ from core.dialogue import DialogueThinker, PersonaConsistencyChecker, Consistenc
 from core.memory import MemorySummarizer
 from core.multimodal import StickerReplier
 from core.persona import PromptBuilder
-from core.relationship import RelationshipEvolution
+from core.social.relationship import RelationshipEvolution
 from core.open_loop import OpenLoopEngine
 from core.identity import IdentityStorage
 from core.summary import LifeSummaryEngine
-from core.relationship.events import RelationshipEventTracker
+from core.social.relationship.events import RelationshipEventTracker
 from core.persona.drift_monitor import PersonaDriftMonitor
-from core.affection.storage import UnifiedAffectionStorage
+from core.social.affection.storage import UnifiedAffectionStorage
 
 
 # ========== 模块级工具函数（可独立测试）==========
@@ -313,7 +313,8 @@ class ChatPipeline:
         messages = self._chat_history.get_messages(user_id)
 
         # 话题追踪
-        if not skip_user_message: self._topic_tracker.update(content)
+        if not skip_user_message and self._topic_tracker:
+            self._topic_tracker.update(content)
 
         # v1.3 Open Loop: 检测未完成事件
         if self._open_loop and not skip_user_message:
@@ -324,9 +325,12 @@ class ChatPipeline:
             self._identity.extract_from_message(user_id, content)
 
         # 对话思考
-        thought = await self._dialogue_thinker.think(
-            content, recent_messages=messages[-6:] if messages else None
-        )
+        if self._dialogue_thinker:
+            thought = await self._dialogue_thinker.think(
+                content, recent_messages=messages[-6:] if messages else None
+            )
+        else:
+            thought = self._last_thought
 
         # 构建上下文
         time_context = get_time_context()

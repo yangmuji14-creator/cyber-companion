@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.affection.constants import (
+from core.social.affection.constants import (
     AffectionDirection,
     AffectionLevel,
     BASE_BONUS,
