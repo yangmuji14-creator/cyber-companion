@@ -4,6 +4,7 @@
 编织为连贯的内心独白，保持人设一致性。
 """
 
+from .collector import StateCollector
 from .models import BrainConfig, BrainInput, BrainOutput, MonologueThought
 
 __all__ = [
@@ -11,4 +12,5 @@ __all__ = [
     "BrainInput",
     "BrainOutput",
     "MonologueThought",
+    "StateCollector",
 ]
