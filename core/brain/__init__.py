@@ -6,6 +6,7 @@
 
 from .checker import CharacterBreakDetector, CharacterBreakResult
 from .collector import StateCollector
+from .coordinator import BrainCoordinator
 from .models import BrainConfig, BrainDisabledError, BrainInput, BrainOutput, MonologueThought
 from .organizer import ThoughtOrganizer
 from .triggers import MemoryTrigger
@@ -33,6 +34,7 @@ def create_brain(config: dict) -> BrainConfig | None:
 
 __all__ = [
     "BrainConfig",
+    "BrainCoordinator",
     "BrainDisabledError",
     "BrainInput",
     "BrainOutput",

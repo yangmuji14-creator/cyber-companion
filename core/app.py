@@ -25,6 +25,7 @@ from core.emotion.mood import MoodEngine
 from core.social.affection.storage import UnifiedAffectionStorage
 from core.social.affection.migration import migrate_from_legacy
 from core.chat import ChatHandler
+from core.brain import BrainCoordinator, BrainConfig
 
 
 @dataclass
@@ -44,6 +45,7 @@ class AppComponents:
     unified_storage: UnifiedAffectionStorage
     handler: ChatHandler
     advanced_config: dict
+    brain: BrainCoordinator | None = None
 
 
 class ComponentBuilder:
@@ -106,6 +108,72 @@ class ComponentBuilder:
             config=self.config,
         )
 
+    # ---- 大脑模块 ----
+
+    def build_brain(self, memory_mgr=None, persona_loader=None, mood_manager=None,
+                    open_loop=None, identity=None, life_summary=None,
+                    personality_engine=None, affection_storage=None,
+                    chat_history=None) -> BrainCoordinator | None:
+        """创建大脑模块（如果配置启用）
+
+        将所有已初始化的子系统注入 BrainCoordinator，
+        构建统一的内心独白生成入口。
+
+        Args:
+            memory_mgr: 记忆管理器
+            persona_loader: 人设加载器
+            mood_manager: 情绪管理器
+            open_loop: 开放式循环引擎
+            identity: 身份层
+            life_summary: 人生总结引擎
+            personality_engine: 人格引擎
+            affection_storage: 亲密度存储
+            chat_history: 聊天历史存储
+
+        Returns:
+            brain_enabled=True 时返回 BrainCoordinator，否则返回 None
+        """
+        if not self.config.get("brain_enabled", True):
+            logger.info("Brain module is disabled via config")
+            return None
+
+        brain_config = BrainConfig(
+            enabled=True,
+            max_tokens=self.config.get("brain_max_tokens", 1000),
+            debug=self.config.get("brain_debug", False),
+            checker_enabled=self.config.get("checker_enabled", True),
+        )
+
+        # 从 persona_loader 获取人设名
+        persona_name = "小雨"
+        if persona_loader:
+            try:
+                persona = persona_loader.get("girlfriend_001")
+                if persona and hasattr(persona, "name"):
+                    persona_name = persona.name
+            except Exception:
+                pass
+
+        coordinator = BrainCoordinator(
+            config=brain_config,
+            mood_engine=mood_manager,
+            open_loop_engine=open_loop,
+            chat_history=chat_history,
+            personality_engine=personality_engine,
+            affection_storage=affection_storage,
+            identity=identity,
+            life_summary=life_summary,
+            persona_loader=persona_loader,
+            memory_mgr=memory_mgr,
+            persona_name=persona_name,
+        )
+
+        logger.info(
+            f"Brain module initialized: max_tokens={brain_config.max_tokens}, "
+            f"debug={brain_config.debug}"
+        )
+        return coordinator
+
     # ---- 组装 ----
 
     def build_all(self) -> AppComponents:
@@ -128,13 +196,26 @@ class ComponentBuilder:
             affection_storage=unified_storage,
         )
 
+        # 大脑模块
+        brain = self.build_brain(
+            memory_mgr=memory_mgr,
+            persona_loader=persona_loader,
+            mood_manager=mood_manager,
+            open_loop=open_loop,
+            identity=identity,
+            life_summary=life_summary,
+            personality_engine=personality_engine,
+            affection_storage=unified_storage,
+            chat_history=chat_history,
+        )
+
         return AppComponents(
             registry=registry, memory_mgr=memory_mgr, persona_loader=persona_loader,
             personality_engine=personality_engine, chat_history=chat_history,
             llm_emotion_analyzer=llm_emotion_analyzer, mood_manager=mood_manager,
             proactive=proactive, open_loop=open_loop, identity=identity,
             life_summary=life_summary, unified_storage=unified_storage,
-            handler=handler, advanced_config=self.config,
+            handler=handler, advanced_config=self.config, brain=brain,
         )
 
 
