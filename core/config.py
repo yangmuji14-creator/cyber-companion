@@ -25,6 +25,9 @@ def load_advanced() -> dict:
         "proactive_evening": True,
         "proactive_missing_days": 2,
         "proactive_min_level": 20,
+        "brain_enabled": True,
+        "brain_max_tokens": 1000,
+        "brain_debug": False,
     }
     if path.exists():
         try:

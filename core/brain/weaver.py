@@ -153,9 +153,12 @@ class MonologueWeaver:
                 if transition:
                     fragments.append(transition)
 
-            # 每个 thought 独立标注
+            # 每个 thought 独立标注 [source]，并确保句尾标点
             for t in groups[cat]:
-                fragments.append(f"[{t.source}]{t.content}")
+                content = t.content
+                if content and content[-1] not in _SENTENCE_END:
+                    content += "。"
+                fragments.append(f"[{t.source}]{content}")
 
             prev_cat = cat
 

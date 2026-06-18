@@ -93,6 +93,11 @@ class BrainOutput:
     metadata: dict[str, Any] = field(default_factory=dict)  # debug info: token_count, sources_used, etc.
 
 
+class BrainDisabledError(Exception):
+    """Raised when brain is disabled via config."""
+    pass
+
+
 @dataclass
 class BrainConfig:
     """大脑模块配置"""

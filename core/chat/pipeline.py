@@ -32,6 +32,7 @@ from core.summary import LifeSummaryEngine
 from core.social.relationship.events import RelationshipEventTracker
 from core.persona.drift_monitor import PersonaDriftMonitor
 from core.social.affection.storage import UnifiedAffectionStorage
+from core.brain import StateCollector, ThoughtOrganizer, MonologueWeaver
 
 
 # ========== 模块级工具函数（可独立测试）==========
@@ -329,6 +330,7 @@ class ChatPipeline:
             thought = await self._dialogue_thinker.think(
                 content, recent_messages=messages[-6:] if messages else None
             )
+            self._dialogue_thinker._last_thought = thought
         else:
             thought = self._last_thought
 
@@ -362,27 +364,60 @@ class ChatPipeline:
                     f"- {m}" for m in relevant_memories
                 )
 
-        # extra_instructions：包含 mood 风格/思考/人格/工具上下文
+        # ---- Brain: 内心独白（v3.5.1）----
+        brain_enabled = self._config.get("brain_enabled", True)
+        brain_monologue = None
+        if brain_enabled:
+            try:
+                collector = StateCollector(
+                    mood_engine=self._mood_engine,
+                    dialogue_thinker=self._dialogue_thinker,
+                    open_loop_engine=self._open_loop,
+                    topic_tracker=self._topic_tracker,
+                    chat_history=self._chat_history,
+                    personality_engine=self._personality_engine,
+                    affection_storage=self._affection_storage,
+                    identity=self._identity,
+                    life_summary=self._life_summary,
+                    persona_loader=self._persona_loader,
+                    drift_monitor=self._drift_monitor,
+                )
+                brain_input = await collector.collect(user_id, persona_id)
+                organizer = ThoughtOrganizer()
+                thoughts = organizer.organize(brain_input)
+                weaver = MonologueWeaver()
+                brain_monologue = weaver.weave(thoughts)
+            except Exception as e:
+                logger.warning(f"Brain integration failed: {e}, falling back to flat mode")
+                brain_monologue = None
+
+        _brain_active = brain_enabled and bool(brain_monologue)
+
+        # extra_instructions（v3.5.1: Brain 激活时替换冗余子系统输出）
         extra_parts = [f"时间：{time_context}\n用户当前情绪：{emotion.emotion.value}（强度 {emotion.intensity}）"]
 
-        # ---- Mood 表达风格指令（v3.5）----
-        if self._mood_engine:
-            mood_state = self._mood_engine.get_mood(user_id)
-            style_instructions = MoodExpressionEngine.get_style_instructions(mood_state)
-            extra_parts.append(style_instructions)
-            energy_bar = MoodExpressionEngine.get_energy_bar(mood_state.energy)
-            extra_parts.append(f"你的精力：{energy_bar}")
+        # ---- Brain 内心独白（v3.5.1）----
+        if _brain_active:
+            extra_parts.insert(0, brain_monologue)
+        else:
+            # ---- Mood 表达风格指令（v3.5）----
+            if self._mood_engine:
+                mood_state = self._mood_engine.get_mood(user_id)
+                style_instructions = MoodExpressionEngine.get_style_instructions(mood_state)
+                extra_parts.append(style_instructions)
+                energy_bar = MoodExpressionEngine.get_energy_bar(mood_state.energy)
+                extra_parts.append(f"你的精力：{energy_bar}")
 
-        # ---- 对话思考结果注入（v3.5）----
-        if self._last_thought and self._dialogue_thinker:
-            thought_instruction = DialogueThinker.format_thought_as_instruction(self._last_thought)
-            if thought_instruction:
-                extra_parts.append(thought_instruction)
+            # ---- 对话思考结果注入（v3.5）----
+            if self._last_thought and self._dialogue_thinker:
+                thought_instruction = DialogueThinker.format_thought_as_instruction(self._last_thought)
+                if thought_instruction:
+                    extra_parts.append(thought_instruction)
 
-        # ---- 人格上下文 ----
-        if self._personality_engine:
-            personality_context = self._personality_engine.get_personality_context(user_id)
-            extra_parts.append(personality_context)
+            # ---- 人格上下文 ----
+            if self._personality_engine:
+                personality_context = self._personality_engine.get_personality_context(user_id)
+                extra_parts.append(personality_context)
 
         # 多消息提示
         if msg_count > 1:
@@ -416,15 +451,21 @@ class ChatPipeline:
         if self._topic_tracker:
             topic_context = self._topic_tracker.get_topic_context()
 
-        # 合并额外指令
-        extra_parts.append(topic_context) if topic_context else None
-        extra_parts.append(open_loop_context) if open_loop_context else None
-        extra_parts.append(identity_context) if identity_context else None
-        extra_parts.append(life_summary_context) if life_summary_context else None
+        # 合并额外指令（Brain 激活时跳过冗余子系统输出）
+        if not _brain_active:
+            extra_parts.append(topic_context) if topic_context else None
+            extra_parts.append(open_loop_context) if open_loop_context else None
+            extra_parts.append(identity_context) if identity_context else None
+            extra_parts.append(life_summary_context) if life_summary_context else None
         if self._tool_registry:
             tool_block = self._tool_registry.get_prompt_block()
             if tool_block:
                 extra_parts.append(tool_block)
+
+        # ---- [Brain] 内心独白已由上方（第367行）预先处理 ----
+        # 冗余子系统输出（mood/人格/思考/话题/OpenLoop/身份/人生总结）
+        # 已在 _brain_active=True 时跳过，此处不再重复。
+
         extra_combined = "\n\n".join(filter(None, extra_parts))
 
         # 构建 system prompt
