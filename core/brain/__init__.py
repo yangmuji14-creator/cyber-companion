@@ -6,6 +6,7 @@
 
 from .collector import StateCollector
 from .models import BrainConfig, BrainInput, BrainOutput, MonologueThought
+from .organizer import ThoughtOrganizer
 
 __all__ = [
     "BrainConfig",
@@ -13,4 +14,5 @@ __all__ = [
     "BrainOutput",
     "MonologueThought",
     "StateCollector",
+    "ThoughtOrganizer",
 ]
