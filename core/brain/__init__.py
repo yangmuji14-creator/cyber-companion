@@ -8,6 +8,7 @@ from .checker import CharacterBreakDetector, CharacterBreakResult
 from .collector import StateCollector
 from .models import BrainConfig, BrainDisabledError, BrainInput, BrainOutput, MonologueThought
 from .organizer import ThoughtOrganizer
+from .triggers import MemoryTrigger
 from .weaver import MonologueWeaver
 
 
@@ -37,6 +38,7 @@ __all__ = [
     "BrainOutput",
     "CharacterBreakDetector",
     "CharacterBreakResult",
+    "MemoryTrigger",
     "MonologueThought",
     "MonologueWeaver",
     "StateCollector",
