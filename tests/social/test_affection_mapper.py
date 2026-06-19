@@ -105,32 +105,35 @@ class TestAffectionMapperPersonality:
     """测试人格维度偏移映射（每次亲密度变化时的微调量）"""
 
     def test_personality_shift_up(self):
-        """'up' 方向产生正确的四维人格偏移"""
+        """'up' 方向产生正确的五维人格偏移（含 affection）"""
         expected = {
             "trust": 0.02,
             "dependence": 0.02,
             "openness": 0.01,
             "jealousy": -0.01,
+            "affection": 0.02,
         }
         assert PERSONALITY_SHIFT_MAP["up"] == expected
 
     def test_personality_shift_down(self):
-        """'down' 方向产生正确的四维人格偏移"""
+        """'down' 方向产生正确的五维人格偏移（含 affection）"""
         expected = {
             "trust": -0.02,
             "dependence": -0.02,
             "openness": -0.01,
             "jealousy": 0.01,
+            "affection": -0.02,
         }
         assert PERSONALITY_SHIFT_MAP["down"] == expected
 
     def test_personality_shift_no_change(self):
-        """'no_change' 方向四维人格偏移全为 0.0"""
+        """'no_change' 方向五维人格偏移全为 0.0（含 affection）"""
         expected = {
             "trust": 0.0,
             "dependence": 0.0,
             "openness": 0.0,
             "jealousy": 0.0,
+            "affection": 0.0,
         }
         assert PERSONALITY_SHIFT_MAP["no_change"] == expected
 
@@ -146,9 +149,9 @@ class TestAffectionMapperPersonality:
         """BASE_BONUS = 0.02 始终作为映射结果的基础奖励"""
         assert BASE_BONUS == 0.02
 
-    def test_all_personality_shifts_have_all_four_dimensions(self):
-        """每个人格偏移条目均包含 trust / dependence / openness / jealousy"""
-        required = {"trust", "dependence", "openness", "jealousy"}
+    def test_all_personality_shifts_have_all_five_dimensions(self):
+        """每个人格偏移条目均包含 trust / dependence / openness / jealousy / affection"""
+        required = {"trust", "dependence", "openness", "jealousy", "affection"}
         for key, shift in PERSONALITY_SHIFT_MAP.items():
             assert set(shift.keys()) == required, f"'{key}' missing one or more personality dimensions"
 

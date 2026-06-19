@@ -1030,21 +1030,27 @@ def test_pipeline_full_flow():
     from core.personality import PersonalityEngine
     from core.emotion import LLMEmotionAnalyzer
     from core.social.relationship import RelationshipTracker
-    from core.emotion.ai_mood import AIMoodManager
-    from core.config import CONFIG_DIR
+    from core.emotion.mood import MoodEngine
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         llm = MockLLM("我挺好的呀，今天心情不错~")
 
         embedder = SentenceTransformerEmbedder()
         vector_store = VectorStore(str(Path(tmpdir) / "vectors.db"))
         memory_mgr = MemoryManager(tmpdir, embedder=embedder, vector_store=vector_store)
-        persona_loader = PersonaLoader(CONFIG_DIR / "personas.json")
+        # 创建测试用人设文件
+        test_persona_path = Path(tmpdir) / "personas.json"
+        test_persona_path.write_text(
+            '{"personas":[{"id":"girlfriend_001","name":"小可爱","age":20,'
+            '"hobbies":[{"name":"看书"}],"personality":["温柔"],"speaking_style":"软萌"}]}',
+            encoding="utf-8",
+        )
+        persona_loader = PersonaLoader(test_persona_path)
         personality_engine = PersonalityEngine(tmpdir)
         chat_history = ChatHistoryStorage(tmpdir)
         emotion = LLMEmotionAnalyzer()
         rel = RelationshipTracker(tmpdir)
-        mood = AIMoodManager(tmpdir)
+        mood = MoodEngine(tmpdir)
 
         pipeline = ChatPipeline(
             llm, memory_mgr, persona_loader, personality_engine, chat_history,
@@ -1081,21 +1087,27 @@ def test_pipeline_multi_message():
     from core.personality import PersonalityEngine
     from core.emotion import LLMEmotionAnalyzer
     from core.social.relationship import RelationshipTracker
-    from core.emotion.ai_mood import AIMoodManager
-    from core.config import CONFIG_DIR
+    from core.emotion.mood import MoodEngine
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         llm = MockLLM("嗯嗯，我都看到了~")
         embedder = SentenceTransformerEmbedder()
         vector_store = VectorStore(str(Path(tmpdir) / "multi_vectors.db"))
         memory_mgr = MemoryManager(tmpdir, embedder=embedder, vector_store=vector_store)
         personality_engine = PersonalityEngine(tmpdir)
+        # 创建测试用人设文件
+        test_persona_path = Path(tmpdir) / "personas.json"
+        test_persona_path.write_text(
+            '{"personas":[{"id":"girlfriend_001","name":"小可爱","age":20,'
+            '"hobbies":[{"name":"看书"}],"personality":["温柔"],"speaking_style":"软萌"}]}',
+            encoding="utf-8",
+        )
         pipeline = ChatPipeline(
             llm, memory_mgr,
-            PersonaLoader(CONFIG_DIR / "personas.json"),
+            PersonaLoader(test_persona_path),
             personality_engine,
             ChatHistoryStorage(tmpdir), LLMEmotionAnalyzer(),
-            RelationshipTracker(tmpdir), AIMoodManager(tmpdir), {},
+            RelationshipTracker(tmpdir), MoodEngine(tmpdir), {},
         )
         reply, level = asyncio.run(
             pipeline.process("test_user", "今天天气真好\n我们一起出去玩吧\n好不好嘛", "girlfriend_001")
@@ -1123,10 +1135,9 @@ def test_pipeline_tool_call():
     from core.personality import PersonalityEngine
     from core.emotion import LLMEmotionAnalyzer
     from core.social.relationship import RelationshipTracker
-    from core.emotion.ai_mood import AIMoodManager
-    from core.config import CONFIG_DIR
+    from core.emotion.mood import MoodEngine
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         # 第一轮回复包含工具调用，第二轮为最终回复
         llm = SeqMockLLM([
             "我来看看现在几点了 /call clock",
@@ -1141,12 +1152,20 @@ def test_pipeline_tool_call():
         tool_registry = ToolRegistry()
         tool_registry.register(ClockTool())
 
+        # 创建测试用人设文件
+        test_persona_path = Path(tmpdir) / "personas.json"
+        test_persona_path.write_text(
+            '{"personas":[{"id":"girlfriend_001","name":"小可爱","age":20,'
+            '"hobbies":[{"name":"看书"}],"personality":["温柔"],"speaking_style":"软萌"}]}',
+            encoding="utf-8",
+        )
+
         pipeline = ChatPipeline(
             llm, memory_mgr,
-            PersonaLoader(CONFIG_DIR / "personas.json"),
+            PersonaLoader(test_persona_path),
             personality_engine,
             ChatHistoryStorage(tmpdir), LLMEmotionAnalyzer(),
-            RelationshipTracker(tmpdir), AIMoodManager(tmpdir), {},
+            RelationshipTracker(tmpdir), MoodEngine(tmpdir), {},
             tool_registry=tool_registry,
         )
 
@@ -1171,7 +1190,7 @@ def test_add_memory_sync_persists():
     import tempfile
     from core.memory import MemoryManager
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         memory_mgr = MemoryManager(tmpdir)
         content = "这是我手动添加的记忆"
         result = memory_mgr.add_memory_sync("test_user", content, level=3)

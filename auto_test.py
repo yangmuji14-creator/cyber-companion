@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 # 切到项目目录
-PROJECT_DIR = Path(r"C:\Users\Administrator\Desktop\cyber-girlfriend")
+PROJECT_DIR = Path(__file__).parent.resolve()
 os.chdir(str(PROJECT_DIR))
 sys.path.insert(0, str(PROJECT_DIR))
 

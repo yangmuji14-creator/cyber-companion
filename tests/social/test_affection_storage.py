@@ -87,14 +87,24 @@ class TestAffectionStorage:
     # ── 边界值 ───────────────────────────────────────────────
 
     def test_clamp_max(self, storage):
-        """Start at 50, add strong_positive/high repeatedly, expect clamped to 100
+        """Start at 50, add strong_positive/high repeatedly, verify diminishing returns
 
-        50 + 10 × (15.0 + 0.02) = 200.2 → clamped to MAX_AFFECTION (100)
+        The storage applies diminishing returns as level approaches 100,
+        so after 10 iterations the level approaches but does not reach 100.
+        With enough iterations the 0.02 floor multiplier ensures it eventually
+        reaches exactly 100 (SQL-level clamp).
         """
         for _ in range(10):
             storage.update("user1", AffectionDirection.STRONG_POSITIVE, AffectionLevel.HIGH)
         level = storage.get_level("user1")
-        assert level == MAX_AFFECTION
+        # Diminishing returns: level should be close to 100 but not exceed it
+        assert 90 <= level < 100, f"Expected ~98.6 after 10 iterations, got {level}"
+
+        # With enough iterations, the floor multiplier ensures it reaches 100
+        for _ in range(20):
+            storage.update("user1", AffectionDirection.STRONG_POSITIVE, AffectionLevel.HIGH)
+        level = storage.get_level("user1")
+        assert level == MAX_AFFECTION, f"Expected clamp to {MAX_AFFECTION}, got {level}"
 
     def test_clamp_min(self, storage):
         """Start at 50, add strong_negative/high repeatedly, expect clamped to 0
