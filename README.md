@@ -202,3 +202,8 @@ Python 3.11+ / asyncio / LiteLLM / sentence-transformers / SQLite / numpy
 
 ## 作者
 **yangmuji14**
+
+---
+
+> 🌟 如果这个项目对你有帮助，欢迎点个 Star 支持一下~  
+> 你的支持是持续改进的动力！
