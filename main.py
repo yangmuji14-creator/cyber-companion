@@ -123,7 +123,10 @@ def main():
         print("=" * 40)
         print("\n  命令: python main.py setup")
         print("\n  按回车键退出...")
-        input()
+        try:
+            input()
+        except (EOFError, OSError):
+            pass
         return
 
     logger.info("Cyber Girlfriend 启动中...")

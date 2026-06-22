@@ -98,7 +98,10 @@ def _section(title: str, step: int, total: int):
 
 def _prompt(msg: str, default: str = "") -> str:
     hint = f" [{default}]" if default else ""
-    val = input(f"  {msg}{hint}: ").strip()
+    try:
+        val = input(f"  {msg}{hint}: ").strip()
+    except (EOFError, OSError):
+        return default
     return val if val else default
 
 
@@ -106,6 +109,8 @@ def _prompt_int(msg: str, default: int, desc: str = "") -> int:
     hint = f"（{desc}）" if desc else ""
     while True:
         val = _prompt(f"{msg}{hint}", str(default))
+        if not val or val == str(default):
+            return default
         try:
             return int(val)
         except ValueError:
@@ -114,7 +119,10 @@ def _prompt_int(msg: str, default: int, desc: str = "") -> int:
 
 def _prompt_yes_no(msg: str, default: bool = True) -> bool:
     hint = "Y/n" if default else "y/N"
-    val = _prompt(f"{msg} ({hint})", "")
+    try:
+        val = _prompt(f"{msg} ({hint})", "")
+    except (EOFError, OSError):
+        return default
     if not val:
         return default
     return val.lower() in ("y", "yes", "是")
@@ -504,7 +512,7 @@ def run_setup():
     env["SELECTED_MODEL"] = model_id
     _save_env(env)
 
-    # settings.json
+    # settings.json — 保存模型注册 + 高级参数
     path = CONFIG_DIR / "settings.json"
     if path.exists():
         settings = json.loads(path.read_text(encoding="utf-8"))
@@ -513,6 +521,17 @@ def run_setup():
     settings["default_model"] = provider
     settings["model_id"] = model_id
     settings.pop("webui", None)
+
+    # 注册 model 到 settings.json（LLMRegistry 需要）
+    provider_type = "deepseek" if provider == "deepseek" else "openai"
+    settings.setdefault("models", {})
+    settings["models"][provider] = {
+        "provider": provider_type,
+        "model_name": model_id,
+        "base_url": info.get("base_url", ""),
+        "max_tokens": 4096,
+        "temperature": 0.8,
+    }
 
     adv = settings.get("advanced", {})
     for key in ["segment_max_length", "debounce_seconds", "summarize_threshold",

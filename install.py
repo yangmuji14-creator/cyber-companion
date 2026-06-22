@@ -60,13 +60,16 @@ def _check_python():
 def _create_venv():
     if VENV_DIR.exists():
         print(f"  📁 虚拟环境已存在: {VENV_DIR}")
-        ans = input("  是否重建？(y/N): ").strip().lower()
+        try:
+            ans = input("  是否重建？(y/N): ").strip().lower()
+        except (EOFError, OSError):
+            ans = "n"
         if ans != "y":
             print("  跳过创建，使用现有环境")
             return
+        import shutil
         shutil.rmtree(VENV_DIR)
         print("  🗑️  已删除旧环境")
-
     print("  🔧 创建虚拟环境...")
     subprocess.run(
         [sys.executable, "-m", "venv", str(VENV_DIR)],
@@ -169,7 +172,10 @@ def _print_error_hint(text: str):
 
 def _install_optional(pip_base: list[str], name: str, pkg: str):
     """安装单个可选依赖"""
-    ans = input(f"  是否安装 {name}？(y/N): ").strip().lower()
+    try:
+        ans = input(f"  是否安装 {name}？(y/N): ").strip().lower()
+    except (EOFError, OSError):
+        ans = "n"
     if ans != "y":
         return
     print(f"  → 安装 {pkg}...")
@@ -274,10 +280,23 @@ def main():
 
 def _prompt_yes_no(msg: str, default: bool = True) -> bool:
     hint = "Y/n" if default else "y/N"
-    val = input(f"  {msg} ({hint}): ").strip().lower()
+    try:
+        val = input(f"  {msg} ({hint}): ").strip().lower()
+    except (EOFError, OSError):
+        return default
     if not val:
         return default
     return val in ("y", "yes", "是")
+
+
+def _prompt(msg: str, default: str = "") -> str:
+    """带默认值和 EOF 安全的输入"""
+    hint = f" [{default}]" if default else ""
+    try:
+        val = input(f"  {msg}{hint}: ").strip()
+    except (EOFError, OSError):
+        return default
+    return val if val else default
 
 
 if __name__ == "__main__":
