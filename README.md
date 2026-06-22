@@ -45,6 +45,8 @@ python main.py
 | Kimi | moonshot-v1-8k | 长上下文 |
 | 智谱 | glm-4-flash | 免费额度 |
 
+> **v3.3.1+** 配置向导会实时从厂商 API 拉取可用模型列表，不再使用硬编码默认模型。
+
 ### 🧠 语义记忆（v2.0）
 关键词记忆 → 向量嵌入（BAAI/bge-small-zh-v1.5）
 - 搜"宠物"能想起"喜欢猫"
@@ -92,7 +94,8 @@ AI 在回复前自主进行「内心思考」，保持人设一致性：
 
 ### 📦 ex-skill 人设导入
 - 支持导入 ex-skill 格式的外部人设数据（`persona.md` / `memory.md`）
-- 命令行使用：`python import_exskill.py <目录> [--dry-run] [--force]`
+- 命令行使用：`python main.py import-skill <目录或文件> [--dry-run] [--force]`
+- 也支持直接运行：`python import_exskill.py <目录> [--dry-run] [--force]`
 - LLM 自动转换记忆格式和人设结构
 
 ### 🎀 30+ 字段人设
@@ -125,6 +128,7 @@ cyber-companion/
 ├── core/                    # 核心模块
 │   ├── app.py               # 应用装配 + ComponentBuilder
 │   ├── config.py            # 配置加载
+│   ├── provider_models.py   # 📡 厂商模型列表 API（v3.3.1）
 │   ├── summary.py           # 人生摘要引擎
 │   ├── open_loop.py         # 未完成事件追踪
 │   ├── identity.py          # 用户身份画像
@@ -155,6 +159,9 @@ cyber-companion/
 │   ├── chat/                # 聊天系统测试
 │   └── memory/              # 记忆系统测试
 ├── auto_test.py             # 全链路自动化测试脚本
+├── setup_wizard.py          # ⚙️ 配置向导（v3.3.1，原名 setup.py）
+├── install.py               # 📦 环境安装脚本（支持 uv / pip）
+├── pyproject.toml           # 项目元数据（v3.3.1）
 └── config/                  # 用户配置（不进 git）
 ```
 
@@ -174,14 +181,17 @@ cyber-companion/
 
 ## 测试
 ```bash
+# 安装开发依赖
+pip install -r requirements-dev.txt
+
 # 运行所有测试
 pytest tests -v
 
-# 全链路回归测试（4轮自动）
+# 全链路回归测试（4轮自动，需要 DEEPSEEK_API_KEY）
 python auto_test.py
 
-# 大脑模块自测（无需外部依赖）
-python -c "from core.brain.self_test import run_self_test; asyncio.run(run_self_test())"
+# 大脑模块自测（无需外部依赖，无需 API Key）
+python -m core.brain.self_test
 ```
 
 ## 技术栈

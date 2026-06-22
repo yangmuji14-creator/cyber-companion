@@ -1,5 +1,38 @@
 # Changelog
 
+## v3.3.1 — 2026-06-22（🛠️ 项目加固 + 全功能用户测试）
+
+### ✨ 新功能
+
+- **模型列表实时拉取** — 配置向导 Step 1 输入 API Key 后，自动从厂商 API 拉取可用模型列表供用户选择（支持 DeepSeek / OpenAI / Gemini / 通义千问 / Kimi / 智谱）
+- **启动依赖检查** — `main.py` 启动前自动检测关键依赖是否安装，缺失时给出友好提示
+- **`import-skill` 命令** — 新增 `python main.py import-skill <路径>` 独立导入 ex-skill 人设
+- **`install.py --dev` 标志** — 安装开发依赖（pytest 等）
+- **uv 自动检测** — `install.py` 自动检测系统是否安装 uv，使用 uv 安装（64 包 23s）或回退 pip
+
+### 🔧 改进
+
+- **setup.py → setup_wizard.py** — 重命名避免与 pip 打包脚本混淆
+- **TAG_TRANSLATION 抽离** — 性格标签翻译表从代码移至 `config/persona_tags.json`
+- **`pyproject.toml`** — 新增项目元数据 + pytest 配置
+- **`requirements-dev.txt`** — 分离开发依赖
+- **`requirements.txt` 补全** — 加入 `sentence-transformers`（可选）
+- **`import_exskill.py`** — 添加 `run_import()` 函数供 main.py 调用
+
+### 🐛 修复
+
+- **settings.json 缺少 `models` 段** → LLMRegistry 找不到模型，"没有可用的模型"
+- **`_prompt_int` 空值不返回默认** → 死循环消耗后续 stdin 输入
+- **`input()` 无 EOF 保护** — 修复 `install.py`、`setup_wizard.py`、`main.py` 中所有 `input()` 调用在非交互模式下的 EOFError
+- **`install.py` 非交互崩溃** — 所有交互提示添加 try/except EOFError
+- **`main.py` 无 `.env` 路径崩溃** — 友好提示不再 traceback
+- **`auto_test.py` 硬编码路径** → 动态 `Path(__file__).parent`
+
+### 🧪 测试
+
+- 332/332 单元测试通过（+ 31/31 大脑自测）
+- 全功能用户视角测试（7 阶段 30+ 项）覆盖：环境安装 → 配置向导 → 启动聊天 → 15 个斜杠命令 → 边界异常 → 其他入口
+
 ## v3.3.0 — 2026-06-18（🧠 内心独白大脑系统）
 
 ### 🧠 大脑模块（全新）
