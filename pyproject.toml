@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "cyber-companion"
+version = "3.3.0"
+description = "🎀 赛博伴侣 — 纯终端 AI 伴侣聊天机器人"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "yangmuji14"},
+]
+keywords = ["ai", "chatbot", "companion", "llm"]
+
+dependencies = [
+    "python-dotenv>=1.1.0",
+    "pydantic>=2.10.0",
+    "litellm>=1.65.0",
+    "loguru>=0.7.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+vector = ["sentence-transformers>=3.0.0,<5.0.0"]
+wechat = ["weixin-ilink>=0.3.5"]
+dev = ["pytest>=9.0.0", "pytest-asyncio>=1.4.0", "pytest-mock>=3.15.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

@@ -1,19 +1,21 @@
-# Core
+# ===========================================================
+# 赛博伴侣 — 依赖清单
+# 安装：pip install -r requirements.txt
+# 或用：python install.py（自动创建虚拟环境 + 国内镜像）
+# ===========================================================
+
+# ── 核心依赖（必须） ──
 python-dotenv>=1.1.0
 pydantic>=2.10.0
-
-# LLM
 litellm>=1.65.0
-
-# Utilities
 loguru>=0.7.0
-
-# Numeric (vector computation)
 numpy>=1.24.0
 
-# Vector Memory (optional — app falls back to keyword search if unavailable)
+# ── 向量记忆（可选 — 缺失时自动降级为关键词搜索） ──
 sentence-transformers>=3.0.0,<5.0.0
-transformers>=4.30.0,<5.0.0
 
-# WeChat Adapter
-weixin-ilink>=0.3.5
+# ── 微信适配器（可选 — 仅使用微信时需要） ──
+# weixin-ilink>=0.3.5
+
+# ── 开发依赖（测试用，普通用户可忽略） ──
+# 安装方式：pip install -r requirements-dev.txt

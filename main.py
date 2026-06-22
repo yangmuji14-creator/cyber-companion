@@ -6,10 +6,13 @@
     python main.py 启动
     
 或者用命令行：
-    python main.py setup   — 首次运行，配置模型
-    python main.py         — 启动聊天（自动检测微信配置）
-    python main.py wechat  — 首次配置微信
+    python main.py setup     — 首次运行，配置模型+人设
+    python main.py           — 启动聊天（自动检测微信配置）
+    python main.py wechat    — 首次配置微信
+    python main.py import-skill <路径>  — 导入 ex-skill 人设文件
 """
+
+from __future__ import annotations
 
 import asyncio
 import sys
@@ -33,6 +36,45 @@ logger.add("logs/app.log", rotation="10 MB", retention="7 days", level="DEBUG")
 
 ADVANCED = load_advanced()
 
+
+# ========== 依赖检查 ==========
+
+DEPENDENCIES = [
+    ("dotenv", "python-dotenv"),
+    ("loguru", "loguru"),
+    ("pydantic", "pydantic"),
+    ("litellm", "litellm"),
+    ("numpy", "numpy"),
+]
+
+
+def _check_dependencies() -> bool:
+    """启动前检查关键依赖是否已安装，缺失则给出友好提示"""
+    missing = []
+    for mod_name, pkg_name in DEPENDENCIES:
+        try:
+            __import__(mod_name)
+        except ImportError:
+            missing.append(pkg_name)
+
+    if missing:
+        print()
+        print("=" * 50)
+        print("  ❌ 缺少依赖包")
+        print("=" * 50)
+        print()
+        print(f"  请先安装依赖：")
+        print()
+        print(f"    python install.py")
+        print()
+        if len(missing) <= 3:
+            print(f"  缺失：{'、'.join(missing)}")
+        print()
+        input("  按回车键退出...")
+        return False
+    return True
+
+
 # ========== 微信配置检测 ==========
 
 def _has_wechat_config() -> bool:
@@ -49,13 +91,17 @@ def main():
     parser = argparse.ArgumentParser(description="Cyber Girlfriend")
     parser.add_argument(
         "command", nargs="?", default="run",
-        choices=["setup", "run", "wechat"],
-        help="setup=首次配置, run=启动聊天（默认）, wechat=配置微信",
+        choices=["setup", "run", "wechat", "import-skill"],
+        help="setup=配置向导, run=启动（默认）, wechat=配置微信, import-skill=导入人设",
+    )
+    parser.add_argument(
+        "path", nargs="?",
+        help="import-skill 时的文件路径",
     )
     args = parser.parse_args()
 
     if args.command == "setup":
-        from setup import run_setup
+        from setup_wizard import run_setup
         run_setup()
         return
 
@@ -63,10 +109,18 @@ def main():
         _setup_wechat()
         return
 
+    if args.command == "import-skill":
+        _import_skill_cli(args.path)
+        return
+
+    # ── run（默认） ──
+    if not _check_dependencies():
+        return
+
     if not (ROOT / ".env").exists():
-        print("\n" + "="*40)
+        print("\n" + "=" * 40)
         print("  首次使用，请先运行设置向导")
-        print("="*40)
+        print("=" * 40)
         print("\n  命令: python main.py setup")
         print("\n  按回车键退出...")
         input()
@@ -96,11 +150,13 @@ def main():
             logger.info("拜拜~")
 
 
+# ========== 微信配置 ==========
+
 def _setup_wechat():
     """配置微信"""
-    print("\n" + "="*40)
+    print("\n" + "=" * 40)
     print("  微信配置向导")
-    print("="*40)
+    print("=" * 40)
     print("\n  1. 确保你已安装微信 ClawBot 插件")
     print("  2. 准备好微信手机客户端")
     print("\n  按回车键开始扫码登录...")
@@ -114,9 +170,9 @@ def _setup_wechat():
         adapter = WeChatAdapter()
         asyncio.run(adapter.start())
 
-        print("\n" + "="*40)
+        print("\n" + "=" * 40)
         print("  微信配置完成！")
-        print("="*40)
+        print("=" * 40)
         print("\n  以后运行 'python main.py' 会自动启动微信")
         print("\n  按回车键退出...")
         input()
@@ -124,6 +180,14 @@ def _setup_wechat():
         print(f"\n  配置失败: {e}")
         print("\n  按回车键退出...")
         input()
+
+
+# ========== 导入 ex-skill 人设 ==========
+
+def _import_skill_cli(path_arg: str | None):
+    """独立的 ex-skill 人设导入命令（需要 LLM 已配置）"""
+    from import_exskill import run_import
+    run_import(path_arg)
 
 
 if __name__ == "__main__":

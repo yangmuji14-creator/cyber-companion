@@ -348,6 +348,14 @@ async def main() -> None:
     print()
 
 
+def run_import(path_arg: str | None = None):
+    """CLI 入口：供 main.py import-skill 命令调用"""
+    import asyncio
+    if path_arg:
+        sys.argv = [sys.argv[0], path_arg]
+    asyncio.run(main())
+
+
 if __name__ == "__main__":
     import asyncio
 
