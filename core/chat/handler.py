@@ -170,7 +170,8 @@ class ChatHandler:
                  chat_history, llm_emotion_analyzer,
                  proactive, mood_manager, config: dict,
                  tool_registry=None, open_loop=None, identity=None, life_summary=None,
-                 relationship_tracker=None, affection_storage=None):
+                 relationship_tracker=None, affection_storage=None,
+                 brain=None):
         self._registry = registry
         self.memory_mgr = memory_mgr
         self.persona_loader = persona_loader
@@ -187,6 +188,7 @@ class ChatHandler:
         self._identity = identity
         self._life_summary = life_summary
         self._affection_storage = affection_storage
+        self._brain = brain
 
         # 当前人设 ID
         self.current_persona_id = "girlfriend_001"
@@ -211,6 +213,7 @@ class ChatHandler:
             identity=identity,
             life_summary=life_summary,
             affection_storage=affection_storage,
+            brain=brain,
         )
         self.commands = CommandHandler(self)
 

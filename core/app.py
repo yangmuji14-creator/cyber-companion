@@ -187,16 +187,7 @@ class ComponentBuilder:
         unified_storage = self.build_unified_storage()
         proactive = self.build_proactive(persona_loader, memory_mgr, unified_storage, mood_manager)
 
-        handler = ChatHandler(
-            registry=registry, memory_mgr=memory_mgr,
-            persona_loader=persona_loader, personality_engine=personality_engine,
-            chat_history=chat_history, llm_emotion_analyzer=llm_emotion_analyzer,
-            proactive=proactive, mood_manager=mood_manager, config=self.config,
-            open_loop=open_loop, identity=identity, life_summary=life_summary,
-            affection_storage=unified_storage,
-        )
-
-        # 大脑模块
+        # 大脑模块（必须在 ChatHandler 之前初始化，因为 handler 需要 brain）
         brain = self.build_brain(
             memory_mgr=memory_mgr,
             persona_loader=persona_loader,
@@ -207,6 +198,15 @@ class ComponentBuilder:
             personality_engine=personality_engine,
             affection_storage=unified_storage,
             chat_history=chat_history,
+        )
+
+        handler = ChatHandler(
+            registry=registry, memory_mgr=memory_mgr,
+            persona_loader=persona_loader, personality_engine=personality_engine,
+            chat_history=chat_history, llm_emotion_analyzer=llm_emotion_analyzer,
+            proactive=proactive, mood_manager=mood_manager, config=self.config,
+            open_loop=open_loop, identity=identity, life_summary=life_summary,
+            affection_storage=unified_storage, brain=brain,
         )
 
         return AppComponents(

@@ -26,13 +26,11 @@ from core.memory import MemorySummarizer
 from core.multimodal import StickerReplier
 from core.persona import PromptBuilder
 from core.social.relationship import RelationshipEvolution
-from core.open_loop import OpenLoopEngine
-from core.identity import IdentityStorage
 from core.summary import LifeSummaryEngine
 from core.social.relationship.events import RelationshipEventTracker
 from core.persona.drift_monitor import PersonaDriftMonitor
 from core.social.affection.storage import UnifiedAffectionStorage
-from core.brain import StateCollector, ThoughtOrganizer, MonologueWeaver
+from core.brain import BrainCoordinator
 
 
 # ========== 模块级工具函数（可独立测试）==========
@@ -154,7 +152,8 @@ class ChatPipeline:
                  mood_manager, config: dict, dialogue_thinker=None,
                  consistency_guard=None, topic_tracker=None, tool_registry=None,
                  open_loop=None, identity=None, life_summary=None,
-                 affection_storage: UnifiedAffectionStorage | None = None):
+                 affection_storage: UnifiedAffectionStorage | None = None,
+                 brain: BrainCoordinator | None = None):
         self._llm = llm
         self._memory_mgr = memory_mgr
         self._persona_loader = persona_loader
@@ -172,6 +171,7 @@ class ChatPipeline:
         self._open_loop = open_loop
         self._identity = identity
         self._life_summary = life_summary
+        self._brain = brain
         self._config = config
 
         # 运行时状态
@@ -187,8 +187,6 @@ class ChatPipeline:
 
         # v1.3：身份层 / Open Loop / 人生摘要 / 关系事件 / 人格漂移
         data_dir = memory_mgr.data_dir.parent if hasattr(memory_mgr, 'data_dir') else Path("data")
-        self._identity_storage = IdentityStorage(data_dir)
-        self._open_loop_engine = OpenLoopEngine(data_dir)
         self._life_summary_engine = LifeSummaryEngine(data_dir)
         self._relationship_events = RelationshipEventTracker(data_dir)
         self._drift_monitor = PersonaDriftMonitor(persona_loader=persona_loader)
@@ -367,28 +365,12 @@ class ChatPipeline:
         # ---- Brain: 内心独白（v3.5.1）----
         brain_enabled = self._config.get("brain_enabled", True)
         brain_monologue = None
-        if brain_enabled:
+        if brain_enabled and self._brain:
             try:
-                collector = StateCollector(
-                    mood_engine=self._mood_engine,
-                    dialogue_thinker=self._dialogue_thinker,
-                    open_loop_engine=self._open_loop,
-                    topic_tracker=self._topic_tracker,
-                    chat_history=self._chat_history,
-                    personality_engine=self._personality_engine,
-                    affection_storage=self._affection_storage,
-                    identity=self._identity,
-                    life_summary=self._life_summary,
-                    persona_loader=self._persona_loader,
-                    drift_monitor=self._drift_monitor,
-                )
-                brain_input = await collector.collect(user_id, persona_id)
-                organizer = ThoughtOrganizer()
-                thoughts = organizer.organize(brain_input)
-                weaver = MonologueWeaver()
-                brain_monologue = weaver.weave(thoughts)
+                brain_output = await self._brain.run(user_id, persona_id, user_message=content)
+                brain_monologue = brain_output.monologue
             except Exception as e:
-                logger.warning(f"Brain integration failed: {e}, falling back to flat mode")
+                logger.warning(f"BrainCoordinator failed: {e}, falling back to flat mode")
                 brain_monologue = None
 
         _brain_active = brain_enabled and bool(brain_monologue)
@@ -432,19 +414,6 @@ class ChatPipeline:
         tools_prompt = _build_tools_prompt(self._tool_registry)
         if tools_prompt:
             extra_parts.append(tools_prompt)
-
-        # ---- v1.3：Open Loop 检测 + Identity 提取 ----
-        try:
-            self._open_loop_engine.detect_and_create(user_id, content)
-            self._open_loop_engine.check_and_update(user_id, content)
-            self._open_loop_engine.check_expired(user_id)
-        except Exception as e:
-            logger.debug(f"OpenLoop processing failed: {e}")
-
-        try:
-            self._identity_storage.extract_from_content(user_id, content)
-        except Exception as e:
-            logger.debug(f"Identity extraction failed: {e}")
 
         # 话题追踪上下文
         topic_context = ""
