@@ -40,6 +40,26 @@ MagicMock/
 test_conversation.py
 test_exskill/
 
+# OpenCode config and skills
+/.opencode/
+
+# Hermes Agent workspace files
+/.hermes/
+
+# AI agent instructions
+/CLAUDE.md
+docs/agents/
+
+# Process/temp documents
+docs/FRAMEWORK_REPORT.md
+docs/PROJECT_STATUS_REPORT.md
+docs/RETROSPECTIVE.md
+docs/SISYPHUS_MEMORY.md
+
+# User config (not example files)
+config/accounts.json
+config/platforms.json
+
 # OpenCode evidence files
 .omo/evidence/
 
