@@ -28,6 +28,7 @@ def load_advanced() -> dict:
         "brain_enabled": True,
         "brain_max_tokens": 1000,
         "brain_debug": False,
+        "checker_enabled": True,
     }
     if path.exists():
         try:
