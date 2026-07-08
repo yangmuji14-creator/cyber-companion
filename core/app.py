@@ -292,13 +292,38 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
 
     # 设置消息处理回调（给 WeChat 等外部平台使用）
     async def _handle_message(message):
-        """外部平台消息处理：加入去抖队列"""
+        """外部平台消息处理"""
         if message.platform == "cli":
-            # CLI 不走这里，走下面的主循环
             return ""
-        # WeChat 等平台：加入去抖队列，不立即回复
+
+        # 图片消息：直接走 Vision Pipeline，不走去抖
+        if message.metadata.get("is_image"):
+            image_path = message.metadata.get("image_path", "")
+            if image_path and app.vision_manager:
+                try:
+                    vision_result = await app.vision_manager.process(
+                        image_path, "请描述这张图片的内容"
+                    )
+                    if app.vision_manager.main_is_multimodal:
+                        # 多模态模型直接回复
+                        return vision_result
+                    else:
+                        # 降级模式：视觉描述 + 发给主模型
+                        enhanced = app.vision_manager.build_enhanced_message(
+                            vision_result, ""
+                        )
+                        reply, _ = await pipeline.process(
+                            message.user_id, enhanced, DEFAULT_PERSONA_ID,
+                        )
+                        return reply
+                except Exception as e:
+                    logger.error(f"Vision processing failed: {e}")
+                    return "图片识别失败，请稍后再试~"
+            return "收到图片，但视觉识别未配置~"
+
+        # 普通消息：加入去抖队列
         await debounce.add_message(message.platform, message.user_id, message.content)
-        return ""  # 返回空，让适配器不立即回复
+        return ""
 
     manager.set_message_handler(_handle_message)
 

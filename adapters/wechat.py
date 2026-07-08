@@ -216,7 +216,18 @@ class WeChatAdapter(BaseAdapter):
             future.add_done_callback(_on_done)
 
         self._bot.on_text(_handle_text)
-        self._bot.on_image(lambda m: logger.debug(f"WeChat image from {m.from_user}"))
+
+        def _handle_image(msg) -> None:
+            """处理图片消息：下载 → 视觉识别 → 回复"""
+            future = asyncio.run_coroutine_threadsafe(
+                self._on_image_message(msg), loop
+            )
+            def _on_done(f):
+                try: f.result()
+                except Exception as e: logger.error(f"WeChat image handler: {e}")
+            future.add_done_callback(_on_done)
+
+        self._bot.on_image(_handle_image)
 
         # 在独立守护线程中运行 bot.run()（不能用 run_in_executor，
         # 因为 bot.run() 内部使用 signal 模块，只能在主线程中设置信号）
@@ -245,6 +256,80 @@ class WeChatAdapter(BaseAdapter):
             except Exception:
                 pass
             bot_thread.join(timeout=5)
+
+    async def _on_image_message(self, msg) -> None:
+        """处理微信图片消息：下载 → 视觉识别 → 回复"""
+        user_id = f"wechat_{msg.from_user}"
+        logger.info(f"WeChat image from {msg.from_user}")
+
+        # 1. 下载图片到本地
+        image_dir = Path(__file__).resolve().parent.parent / "data" / "wechat_images"
+        image_dir.mkdir(parents=True, exist_ok=True)
+        image_path = str(image_dir / f"{msg.from_user}_{msg.message_id}.jpg")
+
+        try:
+            loop = asyncio.get_running_loop()
+            # weixin-ilink: 尝试 msg.save() 或 msg.download()
+            if hasattr(msg, "save"):
+                await loop.run_in_executor(None, lambda: msg.save(image_path))
+            elif hasattr(msg, "download"):
+                await loop.run_in_executor(None, lambda: msg.download(image_path))
+            elif hasattr(msg, "get_image"):
+                img_data = await loop.run_in_executor(None, msg.get_image)
+                with open(image_path, "wb") as f:
+                    f.write(img_data)
+            else:
+                logger.warning(f"WeChat image: no save/download method on message")
+                await loop.run_in_executor(None, lambda: msg.reply_text("收到图片了，但我暂时无法处理这种格式~"))
+                return
+
+            logger.info(f"WeChat image saved: {image_path}")
+        except Exception as e:
+            logger.error(f"WeChat image save failed: {e}")
+            try:
+                await loop.run_in_executor(None, lambda: msg.reply_text("图片接收失败了，请重试~"))
+            except Exception:
+                pass
+            return
+
+        # 2. 视觉识别（使用 VisionManager）
+        try:
+            # 从 app 全局获取 VisionManager（通过 handler 回调链路）
+            from core.multimodal.vision import VisionManager, is_multimodal_model
+
+            description = f"[收到图片，已保存至 {image_path}]"
+            # 尝试通过 message handler 获取 app 引用
+            if self._handler:
+                # 构建消息，让主流程通过 pipeline 处理
+                message = AdapterMessage(
+                    user_id=user_id,
+                    content=f"/img {image_path}",
+                    message_id=str(msg.message_id),
+                    platform="wechat",
+                    timestamp="",
+                    metadata={
+                        "context_token": getattr(msg, "context_token", ""),
+                        "from_user": msg.from_user,
+                        "raw_message": msg,
+                        "is_image": True,
+                        "image_path": image_path,
+                    },
+                )
+                reply = await self._handler(message)
+                if reply:
+                    await loop.run_in_executor(None, lambda: msg.reply_text(reply))
+                    logger.info(f"WeChat image reply to {msg.from_user}")
+                else:
+                    await loop.run_in_executor(None, lambda: msg.reply_text(description))
+            else:
+                await loop.run_in_executor(None, lambda: msg.reply_text(description))
+
+        except Exception as e:
+            logger.error(f"WeChat image vision failed: {e}")
+            try:
+                await loop.run_in_executor(None, lambda: msg.reply_text("图片识别失败了，请稍后再试~"))
+            except Exception:
+                pass
 
     async def _on_inbound_message(self, msg) -> None:
         """将 weixin-ilink 消息转换为 AdapterMessage 并回调
