@@ -240,8 +240,17 @@ class VisionManager:
         try:
             import litellm
 
+            # 已知的 litellm 原生提供商
+            LITELLM_PROVIDERS = {"openai", "gemini", "anthropic", "deepseek", "qwen", "zhipu", "kimi"}
+
+            # 非原生提供商 → 用 openai/ 前缀 + api_base 指向自定义 endpoint
+            if provider in LITELLM_PROVIDERS:
+                model = f"{provider}/{model_name}"
+            else:
+                model = f"openai/{model_name}"
+
             kwargs = {
-                "model": f"{provider}/{model_name}" if provider else model_name,
+                "model": model,
                 "messages": messages,
                 "max_tokens": 1000,
             }
