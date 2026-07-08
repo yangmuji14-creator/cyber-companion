@@ -600,15 +600,64 @@ def step_vision(provider: str, model_id: str = "") -> dict:
     vp = keys[max(0, min(len(keys)-1, choice-1))]
 
     vision["provider"] = vp
-    vision["model_name"] = _prompt("模型名称", "", "如 gpt-4o / gemini-1.5-flash / glm-4v-flash")
-    if vision["model_name"]:
-        vision["api_key"] = _prompt("API Key", "", "留空则用环境变量")
-        if vp == "custom":
-            vision["base_url"] = _prompt("Base URL", "", "API 地址")
-        else:
-            base = _prompt("Base URL（可选）", "")
-            if base:
-                vision["base_url"] = base
+
+    # API Key
+    api_key = _prompt(f"请输入 {vision_providers[vp]} 的 API Key")
+    if not api_key:
+        print(f"  ⚠ 未输入 API Key，将尝试使用环境变量")
+    vision["api_key"] = api_key
+
+    # Base URL（自定义才必填）
+    if vp == "custom":
+        vision["base_url"] = _prompt("Base URL", "", "API 地址（必填）")
+    else:
+        base = _prompt("Base URL（可选）", "")
+        if base:
+            vision["base_url"] = base
+
+    # 拉取可用模型列表
+    from core.provider_models import fetch_or_fallback
+    print(f"\n  🔄 正在拉取可用视觉模型列表...")
+    
+    # 拼接 base URL（自定义的用用户输入的，其他的用 PROVIDERS 中有对应 key 的）
+    fetch_base = vision.get("base_url") or ""
+    if not fetch_base and vp in PROVIDERS:
+        fetch_base = PROVIDERS[vp].get("base_url", "")
+    
+    models = fetch_or_fallback(vp, api_key, base_url=fetch_base or None, timeout=10)
+
+    if models and len(models) >= 1:
+        # 过滤出可能是视觉模型的（名称含 vision/vl/gpt-4o/gemini/glm-4v 等）
+        vision_keywords = ("vision", "vl", "gpt-4o", "gpt-4-turbo", "gemini",
+                          "claude-3", "claude-4", "glm-4v", "cogview",
+                          "llava", "mimo", "step-1v", "doubao-vision")
+        vision_models = [m for m in models if any(kw in m.lower() for kw in vision_keywords)]
+        if not vision_models:
+            vision_models = models  # 没匹配到就显示全部
+
+        print(f"\n  检测到 {len(vision_models)} 个视觉相关模型：\n")
+        show = vision_models[:15]
+        for i, m in enumerate(show, 1):
+            print(f"    {i}. {m}")
+        if len(vision_models) > 15:
+            print(f"    ... 还有 {len(vision_models)-15} 个（输入名称可搜索）")
+        print()
+
+        while True:
+            mc = _prompt("选择模型（输入序号或完整名称）", "1")
+            if mc.isdigit() and 1 <= int(mc) <= len(vision_models):
+                vision["model_name"] = vision_models[int(mc)-1]
+                break
+            if mc in vision_models:
+                vision["model_name"] = mc
+                break
+            matched = [m for m in vision_models if m.startswith(mc)]
+            if len(matched) == 1:
+                vision["model_name"] = matched[0]
+                break
+            print(f"  ⚠ 请输入 1-{len(vision_models)} 之间的序号，或完整的模型名称")
+    else:
+        vision["model_name"] = _prompt("模型名称", "", "如 gpt-4o / gemini-1.5-flash")
 
     return vision
 
