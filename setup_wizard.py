@@ -83,7 +83,7 @@ PROVIDERS = {
 def _banner():
     print()
     print("=" * 50)
-    print("  🎀 赛博伴侣 - 基础设置向导")
+    print("  🎀 赛博伴侣 v3.4 — 设置向导")
     print("=" * 50)
     print()
 
@@ -103,6 +103,17 @@ def _prompt(msg: str, default: str = "") -> str:
     except (EOFError, OSError):
         return default
     return val if val else default
+
+
+def _prompt_yn(msg: str, default: bool = True) -> bool:
+    hint = "Y/n" if default else "y/N"
+    try:
+        val = input(f"  {msg} ({hint}): ").strip().lower()
+    except (EOFError, OSError):
+        return default
+    if not val:
+        return default
+    return val in ("y", "yes", "是")
 
 
 def _prompt_int(msg: str, default: int, desc: str = "") -> int:
@@ -465,6 +476,45 @@ def _check_venv():
         sys.exit(0)
 
 
+# ========== 步骤 4：视觉降级模型（可选）==========
+
+def step_vision(provider: str) -> dict:
+    """配置图片识别的视觉降级模型"""
+    from core.multimodal.vision import is_multimodal_model
+
+    vision = {
+        "provider": "openai",
+        "model_name": "",
+        "api_key": "",
+        "base_url": "",
+    }
+
+    # 检测主模型是否多模态
+    mm = is_multimodal_model(provider)
+    if mm:
+        print(f"\n  📷 当前模型支持图片识别，无需配置视觉降级")
+        return vision
+
+    _section("📷 图片识别（可选）", 4, 4)
+
+    print(f"  当前主模型 '{provider}' 不支持图片识别。")
+    print("  配置一个视觉模型后，AI 可以「看图说话」。")
+    print("  跳过则 /img 命令不可用。\n")
+
+    if not _prompt_yn("是否配置视觉降级模型？"):
+        return vision
+
+    vision["provider"] = _prompt("视觉模型提供商", "openai", "openai / gemini / qwen 等")
+    vision["model_name"] = _prompt("模型名称", "", "如 gpt-4o / gemini-1.5-flash")
+    if vision["model_name"]:
+        vision["api_key"] = _prompt("API Key", "", "留空则用环境变量")
+        base = _prompt("Base URL（可选）", "")
+        if base:
+            vision["base_url"] = base
+
+    return vision
+
+
 def run_setup():
     _banner()
     _check_venv()
@@ -491,6 +541,9 @@ def run_setup():
 
     # ── 步骤 3：高级参数 ──
     advanced = step_advanced()
+
+    # ── 步骤 4：视觉降级模型（可选）──
+    vision_model = step_vision(provider)
 
     # 应用人设中的亲密度
     persona["relationship_level"] = advanced["relationship_level"]
@@ -538,6 +591,7 @@ def run_setup():
                 "brain_enabled", "proactive_enabled"]:
         if key in advanced:
             adv[key] = advanced[key]
+    adv["vision_model"] = vision_model
     settings["advanced"] = adv
     path.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
 

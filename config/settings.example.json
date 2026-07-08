@@ -1,5 +1,6 @@
 {
   "default_model": "deepseek",
+  "model_id": "deepseek-chat",
   "models": {
     "deepseek": {
       "provider": "deepseek",
@@ -19,6 +20,16 @@
     "proactive_evening": true,
     "proactive_missing_days": 2,
     "proactive_min_level": 20,
-    "memory_recall_enabled": true
+    "brain_enabled": true,
+    "brain_max_tokens": 1000,
+    "brain_debug": false,
+    "checker_enabled": true,
+    "vision_model": {
+      "provider": "openai",
+      "model_name": "",
+      "api_key": "",
+      "base_url": "",
+      "_comment": "当主模型不支持图片时（如 DeepSeek），用此视觉模型识别图片。填 model_name 即可启用。"
+    }
   }
 }
