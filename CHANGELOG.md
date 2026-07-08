@@ -1,5 +1,47 @@
 # Changelog
 
+## v3.4.0 — 2026-07-08（🔌 MCP 工具 + 📷 图片识别 + 🏗️ 架构加固）
+
+### ✨ 新功能
+
+- **MCP Client** — JSON-RPC 2.0 stdio 协议客户端，连接外部 MCP Server 调用工具
+- **MCP Manager** — 多 Server 并行管理，工具名冲突自动命名空间前缀，指数退避重连
+- **双路径图片识别** — 多模态模型直传 / 文本模型降级到视觉模型
+- **视觉模型配置** — settings.json advanced.vision_model + 安装向导第4步
+- **MCP Server 配置模板** — `config/mcp_servers.example.json`
+
+### 🏗️ 架构优化
+
+- **Commands 拆分** — `commands.py` (713行) → `commands/` 9文件包，每文件 <160行
+- **模块去重** — 删除 `core/identity.py` / `core/open_loop.py` / `core/summary.py`
+- **统一存储层** — 新增 `core/storage/db.py`，12个模块统一连接管理，补全 `foreign_keys=ON`
+- **显示逻辑去重** — `core/chat/display.py` 共享 spinner/流式输出/欢迎语/统计
+- **DebounceManager 提取** — `adapters/debounce.py` 独立模块
+- **Collector 简化** — `brain/collector.py` 498→445行，删除3段旧API兼容代码
+- **配置常量化** — `DEFAULT_PERSONA_ID` 统一管理，14个文件消除硬编码
+- **项目名称统一** — "赛博女友" → "赛博伴侣"
+- **版本更新** — v3.3.0 → v3.4.0
+
+### 🛡️ 稳定性
+
+- **MCP 加固** — 指数退避重连、分级超时、心跳监控、进程存活检测、16MB缓冲区保护
+- **MCP 异常体系** — `MCPError` → `ConnectionError` / `TimeoutError` / `ProtocolError` / `ToolError`
+- **工具冲突处理** — 多 Server 同名工具自动加 `server__toolname` 前缀
+- **34 项稳定性边缘测试** — 覆盖 MCP 崩溃/超时/冲突、空消息、多参数、PRAGMA验证
+
+### 📦 配置更新
+
+- `.env.example` — 新增 Vision API key 提示
+- `config/settings.example.json` — 新增 `vision_model` / `brain_*` / `checker_*`
+- `start.sh` — 更新名称和版本号
+- `QUICKSTART.md` — 新增 MCP 配置和 Vision 说明
+
+### 🧪 测试
+
+- **390 tests** 全部通过（356 core + 34 stability）
+- 集成连通性测试：23项
+- 对话功能测试：/help /mood /persona /tools + 聊天
+
 ## v3.3.1 — 2026-06-22（🛠️ 项目加固 + 全功能用户测试）
 
 ### ✨ 新功能
