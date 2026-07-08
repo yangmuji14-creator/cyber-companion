@@ -77,11 +77,12 @@ PROVIDERS = {
     },
     "mimo": {
         "name": "小米 MiMo",
-        "desc": "小米多模态模型",
+        "desc": "V2.5系列，多模态+深度思考",
         "model": "",
         "env_key": "MIMO_API_KEY",
         "base_url_env": "MIMO_BASE_URL",
         "base_url": "https://api.xiaomimimo.com/v1",
+        "note": "按量付费(sk-xxx) / Token Plan(tp-xxx) base_url不同",
     },
     "doubao": {
         "name": "豆包 (字节)",
@@ -297,6 +298,13 @@ def step_llm() -> tuple[str, str, str]:
 
     info = PROVIDERS[provider]
     print(f"\n  ✅ 已选择：{info['name']}")
+
+    # MiMo 特殊提示
+    if provider == "mimo":
+        print(f"  MiMo 支持两种计费方式：")
+        print(f"    按量付费：API Key 格式 sk-xxx，Base URL: https://api.xiaomimimo.com/v1")
+        print(f"    Token Plan：API Key 格式 tp-xxx，Base URL: https://token-plan-cn.xiaomimimo.com/v1")
+
     print(f"  请前往对应平台获取 API Key\n")
 
     api_key = _prompt(f"请输入 {info['name']} API Key")
@@ -359,6 +367,12 @@ def _default_fallback_model(provider: str) -> str:
         "qwen": "qwen-turbo",
         "kimi": "moonshot-v1-8k",
         "zhipu": "glm-4-flash",
+        "mimo": "mimo-v2.5-pro",
+        "doubao": "doubao-1.5-pro-32k",
+        "baichuan": "baichuan4",
+        "minimax": "abab6.5s-chat",
+        "stepfun": "step-1-8k",
+        "moonshot": "moonshot-v1-8k",
     }.get(provider, "deepseek-chat")
 
 
@@ -664,7 +678,7 @@ def step_vision(provider: str, model_id: str = "") -> dict:
             "gemini": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
             "qwen": ["qwen-vl-plus", "qwen-vl-max", "qwen2.5-vl-72b-instruct"],
             "zhipu": ["glm-4v-flash", "glm-4v-plus", "glm-4v"],
-            "mimo": ["mimo-vision-v1"],
+            "mimo": ["mimo-v2.5"],
             "doubao": ["doubao-1.5-vision-pro-32k"],
             "stepfun": ["step-1v-8k", "step-1o-vision-32k"],
             "moonshot": ["moonshot-v1-8k-vision"],

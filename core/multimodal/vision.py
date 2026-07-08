@@ -43,8 +43,8 @@ MULTIMODAL_PATTERNS = (
     "llava", "bakllava", "llama-3.2-vision", "llama-v", "pixtral",
     "internvl", "internlm-xcomposer", "minicpm-v", "cogvlm",
     # 小米 MiMo
-    "mimo",
-    # 字节豆包
+    "mimo-v2.5", "mimo-v2",
+    # 公司
     "doubao-vision", "doubao-1.5-vision",
     # 百川
     "baichuan-vl",
@@ -62,6 +62,7 @@ NOT_MULTIMODAL = (
     "deepseek-chat", "deepseek-reasoner", "deepseek-v3",
     "gpt-3.5", "gpt-3.5-turbo",
     "claude-2", "claude-instant",
+    "mimo-v2.5-pro",  # MiMo Pro 是纯文本，只有 V2.5 支持多模态
 )
 
 
