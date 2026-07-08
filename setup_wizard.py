@@ -81,7 +81,7 @@ PROVIDERS = {
         "model": "",
         "env_key": "MIMO_API_KEY",
         "base_url_env": "MIMO_BASE_URL",
-        "base_url": "https://api.mimo.xiaomi.com/v1",
+        "base_url": "https://api.xiaomimimo.com/v1",
     },
     "doubao": {
         "name": "豆包 (字节)",
