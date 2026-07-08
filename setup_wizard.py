@@ -96,10 +96,12 @@ def _section(title: str, step: int, total: int):
     print()
 
 
-def _prompt(msg: str, default: str = "") -> str:
-    hint = f" [{default}]" if default else ""
+def _prompt(msg: str, default: str = "", hint: str = "") -> str:
+    if hint:
+        print(f"  ({hint})")
+    display_hint = f" [{default}]" if default else ""
     try:
-        val = input(f"  {msg}{hint}: ").strip()
+        val = input(f"  {msg}{display_hint}: ").strip()
     except (EOFError, OSError):
         return default
     return val if val else default
@@ -485,7 +487,7 @@ def _check_venv():
 
 # ========== 步骤 4：视觉降级模型（可选）==========
 
-def step_vision(provider: str) -> dict:
+def step_vision(provider: str, model_id: str = "") -> dict:
     """配置图片识别的视觉降级模型"""
     from core.multimodal.vision import is_multimodal_model
 
@@ -496,25 +498,28 @@ def step_vision(provider: str) -> dict:
         "base_url": "",
     }
 
-    # 检测主模型是否多模态
-    mm = is_multimodal_model(provider)
+    # 用实际模型名检测多模态（不是 provider 名）
+    check_name = model_id or provider
+    mm = is_multimodal_model(check_name)
     if mm:
-        print(f"\n  📷 当前模型支持图片识别，无需配置视觉降级")
+        print(f"\n  📷 模型 '{check_name}' 支持图片识别，无需配置视觉降级")
         return vision
 
     _section("📷 图片识别（可选）", 4, 4)
 
-    print(f"  当前主模型 '{provider}' 不支持图片识别。")
-    print("  配置一个视觉模型后，AI 可以「看图说话」。")
-    print("  跳过则 /img 命令不可用。\n")
+    print(f"  当前模型 '{check_name}' 是纯文本模型，不支持直接识别图片。")
+    print(f"  配置视觉模型后的流程：")
+    print(f"    微信/CLI收到图片 → 视觉模型识别 → 输出文字描述")
+    print(f"    → 描述文字 + 用户输入 → 发给 '{check_name}' → 回复")
+    print(f"  跳过则收到图片时只能回复「未配置视觉识别」。\n")
 
     if not _prompt_yn("是否配置视觉降级模型？"):
         return vision
 
-    vision["provider"] = _prompt("视觉模型提供商", "openai", "openai / gemini / qwen 等")
+    vision["provider"] = _prompt("视觉模型提供商", "openai", "openai / gemini 等")
     vision["model_name"] = _prompt("模型名称", "", "如 gpt-4o / gemini-1.5-flash")
     if vision["model_name"]:
-        vision["api_key"] = _prompt("API Key", "", "留空则用环境变量")
+        vision["api_key"] = _prompt("API Key", "", "留空则用环境变量 OPENAI_API_KEY")
         base = _prompt("Base URL（可选）", "")
         if base:
             vision["base_url"] = base
@@ -550,7 +555,7 @@ def run_setup():
     advanced = step_advanced()
 
     # ── 步骤 4：视觉降级模型（可选）──
-    vision_model = step_vision(provider)
+    vision_model = step_vision(provider, model_id)
 
     # 应用人设中的亲密度
     persona["relationship_level"] = advanced["relationship_level"]
