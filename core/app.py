@@ -9,7 +9,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from core.config import ROOT, CONFIG_DIR, load_advanced
+from core.config import ROOT, CONFIG_DIR, load_advanced, DEFAULT_PERSONA_ID
 from core.llm import init_registry, LLMRegistry
 from core.memory import MemoryManager, ChatHistoryStorage
 from core.memory.open_loop import OpenLoopEngine
@@ -26,6 +26,8 @@ from core.social.affection.storage import UnifiedAffectionStorage
 from core.social.affection.migration import migrate_from_legacy
 from core.chat import ChatHandler
 from core.brain import BrainCoordinator, BrainConfig
+from core.tools.mcp_manager import MCPManager
+from core.multimodal.vision import VisionManager
 
 
 @dataclass
@@ -46,6 +48,8 @@ class AppComponents:
     handler: ChatHandler
     advanced_config: dict
     brain: BrainCoordinator | None = None
+    mcp_manager: MCPManager | None = None
+    vision_manager: VisionManager | None = None
 
 
 class ComponentBuilder:
@@ -148,7 +152,7 @@ class ComponentBuilder:
         persona_name = "小雨"
         if persona_loader:
             try:
-                persona = persona_loader.get("girlfriend_001")
+                persona = persona_loader.get(DEFAULT_PERSONA_ID)
                 if persona and hasattr(persona, "name"):
                     persona_name = persona.name
             except Exception:
@@ -187,7 +191,7 @@ class ComponentBuilder:
         unified_storage = self.build_unified_storage()
         proactive = self.build_proactive(persona_loader, memory_mgr, unified_storage, mood_manager)
 
-        # 大脑模块（必须在 ChatHandler 之前初始化，因为 handler 需要 brain）
+        # 大脑模块
         brain = self.build_brain(
             memory_mgr=memory_mgr,
             persona_loader=persona_loader,
@@ -200,6 +204,17 @@ class ComponentBuilder:
             chat_history=chat_history,
         )
 
+        # MCP Manager（同步创建，异步连接在 run_with_adapters 中）
+        mcp_manager = MCPManager()
+
+        # Vision Manager
+        from core.config import load_vision_config
+        llm = registry.get() if registry.available_models else None
+        vision_manager = VisionManager(
+            main_model=llm,
+            vision_config=load_vision_config(),
+        )
+
         handler = ChatHandler(
             registry=registry, memory_mgr=memory_mgr,
             persona_loader=persona_loader, personality_engine=personality_engine,
@@ -207,6 +222,7 @@ class ComponentBuilder:
             proactive=proactive, mood_manager=mood_manager, config=self.config,
             open_loop=open_loop, identity=identity, life_summary=life_summary,
             affection_storage=unified_storage, brain=brain,
+            mcp_manager=mcp_manager, vision_manager=vision_manager,
         )
 
         return AppComponents(
@@ -216,6 +232,7 @@ class ComponentBuilder:
             proactive=proactive, open_loop=open_loop, identity=identity,
             life_summary=life_summary, unified_storage=unified_storage,
             handler=handler, advanced_config=self.config, brain=brain,
+            mcp_manager=mcp_manager, vision_manager=vision_manager,
         )
 
 
@@ -233,118 +250,7 @@ def create_components(data_dir: str | Path | None = None) -> AppComponents:
     return ComponentBuilder(root, config).build_all()
 
 
-class DebounceState:
-    """消息去抖状态（按平台 + 用户隔离）"""
-
-    def __init__(self, platform: str, user_id: str, timeout: float,
-                 pipeline, app: AppComponents, manager: "AdapterManager"):
-        self.platform = platform
-        self.user_id = user_id
-        self.timeout = timeout
-        self.pipeline = pipeline
-        self.app = app
-        self.manager = manager
-        self.queue: list[str] = []
-        self._timer_task: asyncio.Task | None = None
-
-    async def add(self, text: str) -> None:
-        """添加消息到去抖队列"""
-        self.queue.append(text)
-        await self._reset_timer()
-
-    async def _reset_timer(self) -> None:
-        if self._timer_task:
-            self._timer_task.cancel()
-        self._timer_task = asyncio.create_task(self._debounce_timer())
-
-    async def _debounce_timer(self) -> None:
-        try:
-            await asyncio.sleep(self.timeout)
-            await self.flush()
-        except asyncio.CancelledError:
-            pass
-
-    async def flush(self) -> None:
-        """立即处理队列中所有消息，并按空行分段发送"""
-        if not self.queue:
-            return
-        combined = "\n".join(self.queue)
-        self.queue = []
-        self._timer_task = None
-        try:
-            reply, _ = await self.pipeline.process(
-                self.user_id, combined, "girlfriend_001"
-            )
-            # 分段发送：按标点符号分组（自动控制总段数不超过6段）
-            adapter = self.manager.get(self.platform)
-            if adapter:
-                # 第一步：按句子分割（保留标点）
-                import re
-                raw = re.split(r'(。|！|？|，|\n|\.|\!|\?|,)', reply)
-                sentences = []
-                i = 0
-                while i < len(raw):
-                    if i + 1 < len(raw):
-                        delim = raw[i + 1]
-                        # 逗号只做分割用，不拼回去；句末标点保留
-                        if delim in ("，", ","):
-                            sentence = raw[i].strip()
-                        else:
-                            sentence = (raw[i] + delim).strip()
-                        i += 2
-                    else:
-                        sentence = raw[i].strip()
-                        i += 1
-                    if sentence:
-                        sentences.append(sentence)
-                
-                # 第二步：自动分组，确保不超过6段
-                group_size = max(1, (len(sentences) + 5) // 6)
-                segments = []
-                for i in range(0, len(sentences), group_size):
-                    segment = "".join(sentences[i:i+group_size])
-                    if segment.strip():
-                        segments.append(segment.strip())
-                
-                # 第三步：兜底——如果没分出来，整条发
-                if not segments:
-                    segments = [reply]
-                
-                for i, seg in enumerate(segments):
-                    await adapter.send(self.user_id, seg)
-                    if i < len(segments) - 1:
-                        await asyncio.sleep(0.8)
-        except Exception as e:
-            logger.error(f"Debounce flush error ({self.platform}/{self.user_id}): {e}")
-
-
-class DebounceManager:
-    """统一消息去抖管理器"""
-
-    def __init__(self, timeout: float, pipeline, app: AppComponents, manager: "AdapterManager"):
-        self.timeout = timeout
-        self.pipeline = pipeline
-        self.app = app
-        self.manager = manager
-        self._states: dict[str, DebounceState] = {}
-
-    def _key(self, platform: str, user_id: str) -> str:
-        return f"{platform}:{user_id}"
-
-    async def add_message(self, platform: str, user_id: str, text: str) -> None:
-        """添加消息到去抖队列"""
-        key = self._key(platform, user_id)
-        if key not in self._states:
-            self._states[key] = DebounceState(
-                platform, user_id, self.timeout,
-                self.pipeline, self.app, self.manager,
-            )
-        await self._states[key].add(text)
-
-    async def flush_all(self) -> None:
-        """立即刷新所有队列"""
-        for state in self._states.values():
-            await state.flush()
+from adapters.debounce import DebounceManager, DebounceState  # noqa: F401 — used in run_with_adapters
 
 
 async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
@@ -359,7 +265,10 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
     from adapters.api import APIAdapter
     from adapters.base import AdapterConfig
     from core.chat.commands import Colors, CommandHandler
-    from core.chat.handler import SessionStats, _get_welcome_message, _print_reply_token, _print_rel_change, _spinner_task
+    from core.chat.display import (
+        spinner_task, print_reply_token, print_rel_change,
+        get_welcome_message, SessionStats,
+    )
 
     manager = AdapterManager()
 
@@ -396,15 +305,22 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
     # 启动所有适配器
     await manager.start_all()
 
+    # 连接 MCP Servers
+    if app.mcp_manager:
+        connected = await app.mcp_manager.load_and_connect(CONFIG_DIR)
+        if connected > 0:
+            logger.info(f"MCP: {connected} server(s) connected, "
+                        f"{app.mcp_manager.tools_count} tools available")
+
     # ---- CLI 用户信息 ----
     user_id = "local_user"
-    persona = app.persona_loader.get("girlfriend_001")
+    persona = app.persona_loader.get(DEFAULT_PERSONA_ID)
     persona_name = persona.name if persona else "小雨"
 
     # 会话统计
     stats = SessionStats()
     stats.start_level = int(app.unified_storage.get_level(
-        user_id, persona_id="girlfriend_001",
+        user_id, persona_id=DEFAULT_PERSONA_ID,
     ))
     last_reply = [""]
 
@@ -416,7 +332,7 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
     logger.info(f"人设: {persona_name}")
 
     # 欢迎语
-    welcome = _get_welcome_message(persona, stats.start_level)
+    welcome = get_welcome_message(persona, stats.start_level)
     print(f"\n{Colors.MAGENTA}{persona_name}:{Colors.RESET} {welcome}")
     print(f"{Colors.DIM}输入 /help 查看可用命令{Colors.RESET}")
     if debounce_seconds > 0:
@@ -459,17 +375,17 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
                         last_reply[0] += token
                         if first_token[0]:
                             spinner_stop.set()
-                            _print_reply_token(persona_name, token, True)
+                            print_reply_token(persona_name, token, True)
                             first_token[0] = False
                         else:
-                            _print_reply_token(persona_name, token, False)
+                            print_reply_token(persona_name, token, False)
 
                     spinner = asyncio.create_task(
-                        _spinner_task(spinner_stop, persona_name)
+                        spinner_task(spinner_stop, persona_name)
                     )
 
                     reply, rel_level = await pipeline.process(
-                        user_id, user_input, "girlfriend_001",
+                        user_id, user_input, DEFAULT_PERSONA_ID,
                         on_token=_on_token,
                     )
 
@@ -482,7 +398,7 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
                         print(f"\n{Colors.MAGENTA}{persona_name}:{Colors.RESET} {reply}")
                     else:
                         print()
-                    _print_rel_change(rel_level)
+                    print_rel_change(rel_level)
                     last_reply[0] = ""
                     continue
 
@@ -511,17 +427,17 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
                         if first_token[0]:
                             spinner_stop.set()
                             print(f"\r{' ' * 50}\r", end="", flush=True)
-                            _print_reply_token(persona_name, token, True)
+                            print_reply_token(persona_name, token, True)
                             first_token[0] = False
                         else:
-                            _print_reply_token(persona_name, token, False)
+                            print_reply_token(persona_name, token, False)
 
                     spinner = asyncio.create_task(
-                        _spinner_task(spinner_stop, persona_name)
+                        spinner_task(spinner_stop, persona_name)
                     )
 
                     reply, rel_level = await pipeline.process(
-                        user_id, combined, "girlfriend_001",
+                        user_id, combined, DEFAULT_PERSONA_ID,
                         on_token=_on_token,
                     )
 
@@ -534,7 +450,7 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
                         print(f"\n{Colors.MAGENTA}{persona_name}:{Colors.RESET} {reply}")
                     else:
                         print()
-                    _print_rel_change(rel_level)
+                    print_rel_change(rel_level)
                     last_reply[0] = ""
 
     except KeyboardInterrupt:
@@ -546,7 +462,7 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
 
         # 退出总结
         stats.end_level = int(app.unified_storage.get_level(
-            user_id, persona_id="girlfriend_001",
+            user_id, persona_id=DEFAULT_PERSONA_ID,
         ))
         print(stats.summary(persona_name))
         logger.info("所有适配器已停止")

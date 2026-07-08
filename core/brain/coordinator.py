@@ -22,6 +22,7 @@ from .models import BrainConfig, BrainDisabledError, BrainOutput, MonologueThoug
 from .organizer import ThoughtOrganizer
 from .triggers import MemoryTrigger
 from .weaver import MonologueWeaver
+from core.config import DEFAULT_PERSONA_ID
 
 
 class BrainCoordinator:
@@ -116,7 +117,7 @@ class BrainCoordinator:
     async def run(
         self,
         user_id: str,
-        persona_id: str = "girlfriend_001",
+        persona_id: str = DEFAULT_PERSONA_ID,
         user_message: str = "",
     ) -> BrainOutput:
         """完整运行大脑模块

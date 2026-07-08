@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from core.storage.db import open_db
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Union
@@ -60,8 +61,7 @@ class UnifiedAffectionStorage:
                 data_dir.mkdir(parents=True, exist_ok=True)
                 db_path = str(data_dir / "unified.db")
 
-            self._conn = sqlite3.connect(db_path, check_same_thread=False)
-            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn = open_db(db_path)
             self._conn.execute(CREATE_TABLE_SQL)
             self._conn.commit()
 

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from loguru import logger
+from core.config import DEFAULT_PERSONA_ID
 
 
 @dataclass
@@ -45,7 +46,7 @@ class PersonaConsistencyChecker:
         self._persona_loader = persona_loader
         self._persona = persona
 
-    def check_reply(self, reply: str, persona_id: str = "girlfriend_001") -> ConsistencyCheckResult:
+    def check_reply(self, reply: str, persona_id: str = DEFAULT_PERSONA_ID) -> ConsistencyCheckResult:
         """检查回复是否与人设冲突
 
         Args:

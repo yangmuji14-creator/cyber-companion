@@ -20,25 +20,21 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from .models import BrainInput
+from core.config import DEFAULT_PERSONA_ID
 
 if TYPE_CHECKING:
     from core.emotion.mood import MoodEngine
     from core.dialogue.thinker import DialogueThinker
-    from core.memory.open_loop import OpenLoopEngine as MemoryOpenLoopEngine
-    from core.open_loop import OpenLoopEngine as FlattenedOpenLoopEngine
+    from core.memory.open_loop import OpenLoopEngine
+    from core.memory.identity import IdentityLayer, IdentityStorage
+    from core.memory.life_summary import LifeSummaryEngine
     from core.dialogue.topic_tracker import TopicTracker
     from core.memory.chat_history import ChatHistoryStorage
     from core.personality.engine import PersonalityEngine
     from core.social.affection.storage import UnifiedAffectionStorage
-    from core.memory.identity import IdentityLayer
-    from core.memory.life_summary import LifeSummaryEngine as MemoryLifeSummaryEngine
-    from core.summary import LifeSummaryEngine as FlattenedLifeSummaryEngine
     from core.persona.loader import PersonaLoader
     from core.persona.drift_monitor import PersonaDriftMonitor
     from core.proactive import ProactiveMessenger
-    from core.identity import IdentityStorage
-    from core.open_loop import OpenLoopEngine as CoreOpenLoopEngine
-    from core.summary import LifeSummaryEngine as CoreLifeSummaryEngine
 
 
 class StateCollector:
@@ -80,7 +76,7 @@ class StateCollector:
     async def collect(
         self,
         user_id: str,
-        persona_id: str = "girlfriend_001",
+        persona_id: str = DEFAULT_PERSONA_ID,
     ) -> BrainInput:
         """从所有可用子系统收集状态
 
@@ -187,38 +183,19 @@ class StateCollector:
     # ────────── OpenLoop ──────────
 
     def _get_openloop_events(self, user_id: str) -> list[str] | None:
-        """获取活跃事件列表
-
-        支持两种 OpenLoopEngine 实现:
-        - core/memory/open_loop.py: 有 get_context() 返回 str
-        - core/open_loop.py: 有 get_pending() 返回 list[OpenLoop]
-        """
+        """获取活跃事件列表"""
         if not self._open_loop_engine:
             return None
         try:
-            # 方法 1: get_context() 返回多行字符串
             context = self._open_loop_engine.get_context(user_id)
             if context:
                 lines = [l.strip("- ").strip() for l in context.split("\n") if l.strip()]
-                # 过滤掉标题行
                 events = [l for l in lines if l and not l.startswith("【")]
                 return events if events else None
         except (AttributeError, TypeError):
             pass
         except Exception:
             logger.debug("StateCollector: open_loop_engine.get_context failed")
-            pass
-
-        try:
-            # 方法 2: get_pending() 返回 OpenLoop 对象列表
-            pending = self._open_loop_engine.get_pending(user_id)
-            if pending:
-                return [getattr(p, "title", str(p)) for p in pending]
-        except (AttributeError, TypeError):
-            pass
-        except Exception:
-            logger.debug("StateCollector: open_loop_engine.get_pending failed")
-
         return None
 
     # ────────── Topic ──────────
@@ -317,17 +294,6 @@ class StateCollector:
             pass
         except Exception:
             logger.debug("StateCollector: identity.get_context failed")
-            pass
-        # 兼容 core/identity.py 的 IdentityStorage
-        try:
-            profile = self._identity.load(user_id)
-            if profile and hasattr(profile, "to_prompt_section"):
-                text = profile.to_prompt_section()
-                return text if text else None
-        except (AttributeError, TypeError):
-            pass
-        except Exception:
-            logger.debug("StateCollector: identity.load failed")
         return None
 
     # ────────── Life Summary ──────────
@@ -335,7 +301,6 @@ class StateCollector:
     def _get_life_summary(self, user_id: str) -> str | None:
         if not self._life_summary:
             return None
-        # 方法 1: get_context() 返回字符串（core/memory/life_summary.py）
         try:
             context = self._life_summary.get_context(user_id)
             if context:
@@ -344,28 +309,6 @@ class StateCollector:
             pass
         except Exception:
             logger.debug("StateCollector: life_summary.get_context failed")
-            pass
-        # 方法 2: get_latest() 返回 LifeSummary（core/summary.py）
-        try:
-            latest = self._life_summary.get_latest(user_id)
-            if latest and hasattr(latest, "to_prompt_section"):
-                text = latest.to_prompt_section()
-                return text if text else None
-        except (AttributeError, TypeError):
-            pass
-        except Exception:
-            logger.debug("StateCollector: life_summary.get_latest failed")
-            pass
-        # 方法 3: 兼容 load() + to_prompt()
-        try:
-            summary = self._life_summary.load(user_id)
-            if summary and hasattr(summary, "to_prompt"):
-                text = summary.to_prompt()
-                return text if text else None
-        except (AttributeError, TypeError):
-            pass
-        except Exception:
-            logger.debug("StateCollector: life_summary.load failed")
         return None
 
     # ────────── Persona ──────────

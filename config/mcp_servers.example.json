@@ -1,0 +1,25 @@
+{
+  "servers": [
+    {
+      "name": "filesystem",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "enabled": false,
+      "comment": "文件系统访问 — 需要 Node.js + npx"
+    },
+    {
+      "name": "fetch",
+      "command": "python",
+      "args": ["-m", "mcp_server_fetch"],
+      "enabled": false,
+      "comment": "网页抓取工具"
+    },
+    {
+      "name": "calculator",
+      "command": "python",
+      "args": [],
+      "enabled": false,
+      "comment": "示例 — 自定义 Python MCP Server"
+    }
+  ]
+}

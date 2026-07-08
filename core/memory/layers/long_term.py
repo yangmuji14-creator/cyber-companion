@@ -6,7 +6,6 @@
 """
 
 import json
-import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -14,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
+
+from core.storage.db import open_db
 
 
 @dataclass
@@ -73,7 +74,7 @@ class LongTermMemory:
 
     def _init_db(self):
         """初始化 SQLite 数据库"""
-        with sqlite3.connect(str(self._db_path)) as conn:
+        with open_db(self._db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS facts (
                     id TEXT PRIMARY KEY,
@@ -99,7 +100,7 @@ class LongTermMemory:
 
     def add_fact(self, fact: LongTermFact) -> None:
         """添加一条长期事实"""
-        with sqlite3.connect(str(self._db_path)) as conn:
+        with open_db(self._db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO facts
                 (id, content, category, importance, confidence, source,
@@ -117,7 +118,7 @@ class LongTermMemory:
 
     def get_fact(self, fact_id: str) -> LongTermFact | None:
         """获取一条事实"""
-        with sqlite3.connect(str(self._db_path)) as conn:
+        with open_db(self._db_path) as conn:
             row = conn.execute(
                 "SELECT * FROM facts WHERE id = ?", (fact_id,)
             ).fetchone()
@@ -127,7 +128,7 @@ class LongTermMemory:
 
     def search_by_keyword(self, keyword: str, limit: int = 10) -> list[LongTermFact]:
         """关键词搜索"""
-        with sqlite3.connect(str(self._db_path)) as conn:
+        with open_db(self._db_path) as conn:
             rows = conn.execute(
                 "SELECT * FROM facts WHERE content LIKE ? ORDER BY importance DESC LIMIT ?",
                 (f"%{keyword}%", limit)
@@ -136,7 +137,7 @@ class LongTermMemory:
 
     def get_by_category(self, category: str, limit: int = 20) -> list[LongTermFact]:
         """按分类获取"""
-        with sqlite3.connect(str(self._db_path)) as conn:
+        with open_db(self._db_path) as conn:
             rows = conn.execute(
                 "SELECT * FROM facts WHERE category = ? ORDER BY importance DESC LIMIT ?",
                 (category, limit)
@@ -145,7 +146,7 @@ class LongTermMemory:
 
     def get_important_facts(self, min_importance: int = 3, limit: int = 30) -> list[LongTermFact]:
         """获取重要事实"""
-        with sqlite3.connect(str(self._db_path)) as conn:
+        with open_db(self._db_path) as conn:
             rows = conn.execute(
                 "SELECT * FROM facts WHERE importance >= ? ORDER BY importance DESC, last_accessed DESC LIMIT ?",
                 (min_importance, limit)
@@ -154,7 +155,7 @@ class LongTermMemory:
 
     def update_access(self, fact_id: str) -> None:
         """更新访问记录"""
-        with sqlite3.connect(str(self._db_path)) as conn:
+        with open_db(self._db_path) as conn:
             conn.execute("""
                 UPDATE facts
                 SET access_count = access_count + 1, last_accessed = ?
@@ -164,7 +165,7 @@ class LongTermMemory:
 
     def delete_fact(self, fact_id: str) -> bool:
         """删除一条事实"""
-        with sqlite3.connect(str(self._db_path)) as conn:
+        with open_db(self._db_path) as conn:
             cursor = conn.execute("DELETE FROM facts WHERE id = ?", (fact_id,))
             conn.commit()
             return cursor.rowcount > 0
@@ -205,6 +206,6 @@ class LongTermMemory:
     @property
     def size(self) -> int:
         """获取事实总数"""
-        with sqlite3.connect(str(self._db_path)) as conn:
+        with open_db(self._db_path) as conn:
             row = conn.execute("SELECT COUNT(*) FROM facts").fetchone()
             return row[0] if row else 0

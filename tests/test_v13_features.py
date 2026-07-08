@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def test_identity_create_default():
     """IdentityProfile 默认值"""
-    from core.identity import IdentityProfile
+    from core.memory.identity import IdentityProfile
     p = IdentityProfile(user_id="test_user")
     assert p.user_id == "test_user"
     assert p.education == ""
@@ -32,7 +32,7 @@ def test_identity_create_default():
 
 def test_identity_to_dict_roundtrip():
     """IdentityProfile 序列化往返"""
-    from core.identity import IdentityProfile
+    from core.memory.identity import IdentityProfile
     p = IdentityProfile(
         user_id="test_user",
         education="本科",
@@ -49,7 +49,7 @@ def test_identity_to_dict_roundtrip():
 
 def test_identity_merge():
     """IdentityProfile 合并"""
-    from core.identity import IdentityProfile
+    from core.memory.identity import IdentityProfile
     old = IdentityProfile(user_id="test_user", education="本科", interests=["Python"])
     new = IdentityProfile(user_id="test_user", education="硕士", interests=["AI"])
     merged = old.merge(new)
@@ -60,7 +60,7 @@ def test_identity_merge():
 
 def test_identity_to_prompt_section():
     """IdentityProfile.to_prompt_section() 生成非空文本"""
-    from core.identity import IdentityProfile
+    from core.memory.identity import IdentityProfile
     p = IdentityProfile(user_id="test", education="本科", major="计算机", interests=["AI"])
     text = p.to_prompt_section()
     assert "教育背景" in text
@@ -70,7 +70,7 @@ def test_identity_to_prompt_section():
 
 def test_identity_storage_save_and_load():
     """IdentityStorage 保存和加载"""
-    from core.identity import IdentityProfile, IdentityStorage
+    from core.memory.identity import IdentityProfile, IdentityStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = IdentityStorage(tmp)
         p = IdentityProfile(user_id="test", education="硕士")
@@ -82,7 +82,7 @@ def test_identity_storage_save_and_load():
 
 def test_identity_storage_delete():
     """IdentityStorage 删除"""
-    from core.identity import IdentityProfile, IdentityStorage
+    from core.memory.identity import IdentityProfile, IdentityStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = IdentityStorage(tmp)
         storage.save(IdentityProfile(user_id="test"))
@@ -92,7 +92,7 @@ def test_identity_storage_delete():
 
 def test_identity_extract_education():
     """extract_from_content 提取教育信息"""
-    from core.identity import IdentityStorage
+    from core.memory.identity import IdentityStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = IdentityStorage(tmp)
         result = storage.extract_from_content("test", "我是大学生，学计算机的")
@@ -103,7 +103,7 @@ def test_identity_extract_education():
 
 def test_identity_extract_interest():
     """extract_from_content 提取兴趣"""
-    from core.identity import IdentityStorage
+    from core.memory.identity import IdentityStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = IdentityStorage(tmp)
         result = storage.extract_from_content("test", "我喜欢吃火锅")
@@ -118,7 +118,7 @@ def test_identity_extract_interest():
 
 def test_open_loop_default_status():
     """OpenLoop 默认状态为 pending"""
-    from core.open_loop import OpenLoop
+    from core.memory.open_loop import OpenLoop
     loop = OpenLoop(id="ol_1", user_id="test", title="明天考试")
     assert loop.status == "pending"
     assert loop.is_active is True
@@ -127,7 +127,7 @@ def test_open_loop_default_status():
 
 def test_open_loop_status_transitions():
     """OpenLoop 状态变更"""
-    from core.open_loop import OpenLoop
+    from core.memory.open_loop import OpenLoop
     loop = OpenLoop(id="ol_1", user_id="test", title="考试")
     assert loop.is_active is True
 
@@ -144,7 +144,7 @@ def test_open_loop_status_transitions():
 
 def test_open_loop_expired():
     """OpenLoop 过期判断"""
-    from core.open_loop import OpenLoop
+    from core.memory.open_loop import OpenLoop
     loop = OpenLoop(
         id="ol_1", user_id="test", title="考试",
         expected_date=(datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d"),
@@ -154,7 +154,7 @@ def test_open_loop_expired():
 
 def test_open_loop_not_expired():
     """未到期的 OpenLoop 不过期"""
-    from core.open_loop import OpenLoop
+    from core.memory.open_loop import OpenLoop
     loop = OpenLoop(
         id="ol_1", user_id="test", title="考试",
         expected_date=(datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d"),
@@ -164,7 +164,7 @@ def test_open_loop_not_expired():
 
 def test_open_loop_should_follow_up():
     """到期后 24 小时内应追问"""
-    from core.open_loop import OpenLoop
+    from core.memory.open_loop import OpenLoop
     loop = OpenLoop(
         id="ol_1", user_id="test", title="考试",
         expected_date=datetime.now().strftime("%Y-%m-%d"),
@@ -174,7 +174,7 @@ def test_open_loop_should_follow_up():
 
 def test_open_loop_storage_save_and_load():
     """OpenLoopStorage 保存和加载"""
-    from core.open_loop import OpenLoop, OpenLoopStorage
+    from core.memory.open_loop import OpenLoop, OpenLoopStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = OpenLoopStorage(tmp)
         loop = OpenLoop(id="ol_1", user_id="test", title="明天考试", category="exam")
@@ -187,7 +187,7 @@ def test_open_loop_storage_save_and_load():
 
 def test_open_loop_storage_active():
     """load_active 只返回 pending 事件"""
-    from core.open_loop import OpenLoop, OpenLoopStorage
+    from core.memory.open_loop import OpenLoop, OpenLoopStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = OpenLoopStorage(tmp)
         storage.save(OpenLoop(id="ol_1", user_id="test", title="事件1"))
@@ -199,7 +199,7 @@ def test_open_loop_storage_active():
 
 def test_open_loop_engine_detect_exam():
     """OpenLoopEngine 检测考试事件"""
-    from core.open_loop import OpenLoopEngine
+    from core.memory.open_loop import OpenLoopEngine
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = OpenLoopEngine(tmp)
         created = engine.detect_and_create("test", "我明天要考试")
@@ -209,7 +209,7 @@ def test_open_loop_engine_detect_exam():
 
 def test_open_loop_engine_detect_health():
     """OpenLoopEngine 检测健康事件"""
-    from core.open_loop import OpenLoopEngine
+    from core.memory.open_loop import OpenLoopEngine
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = OpenLoopEngine(tmp)
         created = engine.detect_and_create("test", "我感冒了，好难受")
@@ -219,7 +219,7 @@ def test_open_loop_engine_detect_health():
 
 def test_open_loop_check_resolved():
     """check_and_update 检测完成"""
-    from core.open_loop import OpenLoopEngine, OpenLoop
+    from core.memory.open_loop import OpenLoopEngine, OpenLoop
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = OpenLoopEngine(tmp)
         engine._storage.save(OpenLoop(
@@ -233,7 +233,7 @@ def test_open_loop_check_resolved():
 
 def test_open_loop_check_failed():
     """check_and_update 检测失败"""
-    from core.open_loop import OpenLoopEngine, OpenLoop
+    from core.memory.open_loop import OpenLoopEngine, OpenLoop
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = OpenLoopEngine(tmp)
         engine._storage.save(OpenLoop(
@@ -247,7 +247,7 @@ def test_open_loop_check_failed():
 
 def test_open_loop_check_expired():
     """check_expired 标记过期事件"""
-    from core.open_loop import OpenLoopEngine, OpenLoop
+    from core.memory.open_loop import OpenLoopEngine, OpenLoop
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = OpenLoopEngine(tmp)
         engine._storage.save(OpenLoop(
@@ -261,8 +261,8 @@ def test_open_loop_check_expired():
 
 def test_open_loop_generate_follow_up():
     """generate_follow_up_message 生成非空追问"""
-    from core.open_loop import OpenLoop
-    from core.open_loop import OpenLoopEngine
+    from core.memory.open_loop import OpenLoop
+    from core.memory.open_loop import OpenLoopEngine
     loop = OpenLoop(id="ol_1", user_id="test", title="明天考试", category="exam")
     # 创建最小 engine 实例（不需要 storage）
     engine = OpenLoopEngine.__new__(OpenLoopEngine)
@@ -276,7 +276,7 @@ def test_open_loop_generate_follow_up():
 
 def test_life_summary_default():
     """LifeSummary 默认值"""
-    from core.summary import LifeSummary
+    from core.memory.life_summary import LifeSummary
     ls = LifeSummary(id="ls_1", user_id="test")
     assert ls.summary_type == "periodic"
     assert ls.current_goals == []
@@ -285,7 +285,7 @@ def test_life_summary_default():
 
 def test_life_summary_to_prompt_section():
     """to_prompt_section 生成非空文本"""
-    from core.summary import LifeSummary
+    from core.memory.life_summary import LifeSummary
     ls = LifeSummary(id="ls_1", user_id="test", recent_status="近期较忙", current_goals=["学AI"])
     text = ls.to_prompt_section()
     assert "近期状态" in text
@@ -294,7 +294,7 @@ def test_life_summary_to_prompt_section():
 
 def test_life_summary_storage():
     """LifeSummaryStorage 保存和读取"""
-    from core.summary import LifeSummary, LifeSummaryEngine
+    from core.memory.life_summary import LifeSummary, LifeSummaryEngine
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = LifeSummaryEngine(tmp)
         ls = engine.generate_from_memories("test", 10, ["今天学Python", "明天考试"])
@@ -306,7 +306,7 @@ def test_life_summary_storage():
 
 def test_life_summary_should_generate_initial():
     """首次 10 轮以上应生成"""
-    from core.summary import LifeSummaryEngine
+    from core.memory.life_summary import LifeSummaryEngine
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = LifeSummaryEngine(tmp)
         assert engine.should_generate("test", 15) is True
@@ -315,7 +315,7 @@ def test_life_summary_should_generate_initial():
 
 def test_life_summary_should_generate_periodic():
     """每 50 轮应生成一次"""
-    from core.summary import LifeSummaryEngine
+    from core.memory.life_summary import LifeSummaryEngine
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = LifeSummaryEngine(tmp)
         engine.generate_from_memories("test", 10, ["test"])
@@ -424,8 +424,8 @@ def test_drift_monitor_report_summary():
 
 def test_identity_openloop_integration():
     """Identity + OpenLoop 集成：身份提取和事件创建在同一轮对话"""
-    from core.identity import IdentityStorage
-    from core.open_loop import OpenLoopEngine
+    from core.memory.identity import IdentityStorage
+    from core.memory.open_loop import OpenLoopEngine
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         id_storage = IdentityStorage(tmp)
         ol_engine = OpenLoopEngine(tmp)
@@ -444,7 +444,7 @@ def test_identity_openloop_integration():
 
 def test_life_summary_with_memories():
     """LifeSummaryEngine 基于记忆生成摘要"""
-    from core.summary import LifeSummaryEngine
+    from core.memory.life_summary import LifeSummaryEngine
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = LifeSummaryEngine(tmp)
         memories = [
@@ -464,7 +464,7 @@ def test_life_summary_with_memories():
 
 def test_open_loop_stress():
     """OpenLoop 压力测试：连续创建 100 个事件"""
-    from core.open_loop import OpenLoop, OpenLoopStorage
+    from core.memory.open_loop import OpenLoop, OpenLoopStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = OpenLoopStorage(tmp)
         for i in range(100):
@@ -493,7 +493,7 @@ def test_open_loop_stress():
 
 def test_identity_stress():
     """IdentityStorage 压力测试：100 次读写"""
-    from core.identity import IdentityProfile, IdentityStorage
+    from core.memory.identity import IdentityProfile, IdentityStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = IdentityStorage(tmp)
         for i in range(100):
@@ -528,7 +528,7 @@ def test_drift_monitor_stress():
 
 def test_life_summary_stress():
     """LifeSummaryEngine 压力测试：生成 100 次摘要"""
-    from core.summary import LifeSummaryEngine
+    from core.memory.life_summary import LifeSummaryEngine
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = LifeSummaryEngine(tmp)
         for i in range(100):
@@ -543,7 +543,7 @@ def test_life_summary_stress():
 
 def test_open_loop_accuracy():
     """OpenLoop 准确率测试（目标 >= 95%）"""
-    from core.open_loop import OpenLoopEngine
+    from core.memory.open_loop import OpenLoopEngine
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = OpenLoopEngine(tmp)
 
@@ -575,7 +575,7 @@ def test_open_loop_accuracy():
 
 def test_open_loop_status_accuracy():
     """OpenLoop 状态变更准确率（目标 >= 95%）"""
-    from core.open_loop import OpenLoopEngine, OpenLoop
+    from core.memory.open_loop import OpenLoopEngine, OpenLoop
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = OpenLoopEngine(tmp)
 
@@ -656,7 +656,7 @@ def test_persona_drift_consistency_target():
 
 def test_long_conversation_stress():
     """长时间对话压力测试：模拟 10000 轮无崩溃"""
-    from core.open_loop import OpenLoopEngine, OpenLoop
+    from core.memory.open_loop import OpenLoopEngine, OpenLoop
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = OpenLoopEngine(tmp)
 
@@ -691,7 +691,7 @@ def test_long_conversation_stress():
 
 def test_identity_500_rounds():
     """Identity 500 轮对话一致性测试"""
-    from core.identity import IdentityStorage
+    from core.memory.identity import IdentityStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = IdentityStorage(tmp)
 
@@ -719,7 +719,7 @@ def test_identity_500_rounds():
 def test_identity_concurrent_safety():
     """IdentityStorage 线程安全：多线程同时写入"""
     import threading
-    from core.identity import IdentityProfile, IdentityStorage
+    from core.memory.identity import IdentityProfile, IdentityStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = IdentityStorage(tmp)
 
@@ -747,7 +747,7 @@ def test_identity_concurrent_safety():
 def test_open_loop_concurrent_safety():
     """OpenLoopStorage 线程安全"""
     import threading
-    from core.open_loop import OpenLoop, OpenLoopStorage
+    from core.memory.open_loop import OpenLoop, OpenLoopStorage
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         storage = OpenLoopStorage(tmp)
 

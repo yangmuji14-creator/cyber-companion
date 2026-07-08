@@ -44,9 +44,8 @@ class SQLiteAffectionStorage:
 
     def _open_conn(self) -> sqlite3.Connection:
         """创建并返回新的 SQLite 连接，确保表存在。"""
-        conn = sqlite3.connect(self.db_path)
-        # 使用 DELETE 日志模式（默认），避免 WAL 文件残留
-        conn.execute("PRAGMA journal_mode=DELETE")
+        from core.storage.db import open_db
+        conn = open_db(self.db_path)
         conn.execute(CREATE_TABLE_SQL)
         conn.commit()
         return conn

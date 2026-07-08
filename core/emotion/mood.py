@@ -204,22 +204,19 @@ class MoodEngine:
     @property
     def _conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn") or self._local.conn is None:
-            conn = sqlite3.connect(str(self._db_path))
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.row_factory = sqlite3.Row
-            self._local.conn = conn
+            from core.storage.db import open_db
+            self._local.conn = open_db(self._db_path)
         return self._local.conn
 
     def _init_db(self):
-        with sqlite3.connect(str(self._db_path)) as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
+        from core.storage.db import open_db
+        with open_db(self._db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS moods (
                     user_id TEXT PRIMARY KEY,
                     state   TEXT NOT NULL
                 )
             """)
-            conn.commit()
 
     # ---- 公开接口 ----
 

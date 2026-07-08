@@ -12,8 +12,6 @@
 """
 
 import asyncio
-import json
-import re
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -26,11 +24,12 @@ from core.memory import MemorySummarizer
 from core.multimodal import StickerReplier
 from core.persona import PromptBuilder
 from core.social.relationship import RelationshipEvolution
-from core.summary import LifeSummaryEngine
 from core.social.relationship.events import RelationshipEventTracker
 from core.persona.drift_monitor import PersonaDriftMonitor
 from core.social.affection.storage import UnifiedAffectionStorage
 from core.brain import BrainCoordinator
+from core.chat.tool_handler import parse_tool_call, build_tools_prompt, call_llm_with_tools
+from core.chat.post_process import PostProcessOrchestrator
 
 
 # ========== 模块级工具函数（可独立测试）==========
@@ -85,63 +84,6 @@ def get_llm_error_message(error: Exception) -> str:
         return "哎呀，出了点小问题，再试一次？"
 
 
-# 工具调用正则：从 LLM 回复中解析工具调用
-# 格式：【工具调用：工具名(参数名="值", 参数名2="值2")】
-_TOOL_CALL_PATTERN = re.compile(r'【工具调用：(\w+)\(([^)]*)\)】')
-
-
-def _parse_tool_call(text: str) -> list[tuple[str, dict[str, str]]]:
-    """从 LLM 回复中解析工具调用
-
-    Returns:
-        [(tool_name, {param: value}), ...]
-    """
-    results = []
-    for match in _TOOL_CALL_PATTERN.finditer(text):
-        name = match.group(1)
-        params_str = match.group(2)
-        params: dict[str, str] = {}
-        if params_str.strip():
-            # 解析 key="value" 或 key='value' 格式的参数
-            for param_match in re.finditer(r'(\w+)\s*=\s*["\']([^"\']*)["\']', params_str):
-                params[param_match.group(1)] = param_match.group(2)
-        results.append((name, params))
-    return results
-
-
-def _build_tools_prompt(tool_registry) -> str:
-    """构建工具描述 prompt，告诉 LLM 可用的工具"""
-    if not tool_registry or not tool_registry.available:
-        return ""
-
-    lines = [
-        "你有以下工具可以使用。当用户需要相关信息时，你可以调用工具来获取。",
-        "调用格式：【工具调用：工具名(参数名=\"值\")】",
-        "注意：一次只能调用一个工具。工具结果会自动呈现给你。",
-        "",
-        "可用工具：",
-    ]
-    for tool in tool_registry.list_tools():
-        params = tool.parameters
-        props = params.get("properties", {})
-        param_desc = []
-        for pname, pinfo in props.items():
-            required = "（必填）" if pname in params.get("required", []) else "（可选）"
-            desc = pinfo.get("description", "")
-            param_desc.append(f"    - {pname}: {desc} {required}")
-        param_str = "\n".join(param_desc) if param_desc else "    无参数"
-        lines.append(f"\n- {tool.name}：{tool.description}")
-        lines.append(param_str)
-
-    lines.extend([
-        "",
-        "示例：如果用户问「今天几号」，你可以调用：",
-        "【工具调用：get_current_time(format='date')】",
-        "等待工具返回结果后，把结果告诉用户即可。",
-    ])
-    return "\n".join(lines)
-
-
 # ========== ChatPipeline ==========
 
 class ChatPipeline:
@@ -185,14 +127,16 @@ class ChatPipeline:
         )
         self._consistency_guard = ConsistencyGuard()
 
-        # v1.3：身份层 / Open Loop / 人生摘要 / 关系事件 / 人格漂移
+        # v1.3：人生摘要 / 关系事件 / 人格漂移
         data_dir = memory_mgr.data_dir.parent if hasattr(memory_mgr, 'data_dir') else Path("data")
-        self._life_summary_engine = LifeSummaryEngine(data_dir)
         self._relationship_events = RelationshipEventTracker(data_dir)
         self._drift_monitor = PersonaDriftMonitor(persona_loader=persona_loader)
         self._conversation_counter: dict[str, int] = {}
         self._last_drift_check: dict[str, int] = {}
         self._last_replies: dict[str, list[str]] = {}
+
+        # v1.3 后台后处理编排器
+        self._post_processor = PostProcessOrchestrator(self)
 
     # ---- 主入口 ----
 
@@ -410,8 +354,11 @@ class ChatPipeline:
                 f"像真人聊天一样，抓住重点，整体回应。"
             )
 
-        # ---- 工具描述（新增）----
-        tools_prompt = _build_tools_prompt(self._tool_registry)
+        # ---- 工具描述 ----
+        tools_prompt = build_tools_prompt(
+            self._tool_registry,
+            mcp_manager=getattr(self, '_mcp_manager', None),
+        )
         if tools_prompt:
             extra_parts.append(tools_prompt)
 
@@ -498,111 +445,16 @@ class ChatPipeline:
             self._run_background(self._summarize_memories(user_id, short_ms))
 
         # ---- v1.3 后台任务 ----
-        self._run_background(self._v13_post_process(user_id, content, reply))
+        self._run_background(self._post_processor.run(user_id, content, reply))
 
         logger.debug(f"[{persona.name}] → {user_id}: {reply[:80]}...")
         return reply, rel_level
 
-    # ---- v1.3 后台处理 ----
-
-    async def _v13_post_process(self, user_id: str, content: str, reply: str):
-        """v1.3 后台处理：关系事件/人生摘要/对话计数/漂移检测"""
-        try:
-            # 1. 关系事件
-            self._relationship_events.detect_and_record(user_id, content, reply)
-
-            # 2. 对话计数
-            self._conversation_counter[user_id] = self._conversation_counter.get(user_id, 0) + 1
-            conv_count = self._conversation_counter[user_id]
-
-            # 3. 收集回复用于漂移检测
-            if user_id not in self._last_replies:
-                self._last_replies[user_id] = []
-            self._last_replies[user_id].append(reply)
-            if len(self._last_replies[user_id]) > 50:
-                self._last_replies[user_id] = self._last_replies[user_id][-50:]
-
-            # 4. 人生摘要生成
-            try:
-                if self._life_summary_engine.should_generate(user_id, conv_count):
-                    all_memories = self._memory_mgr.get_memories(user_id, limit=50)
-                    memory_texts = [m.content for m in all_memories if m.content]
-                    self._life_summary_engine.generate_from_memories(
-                        user_id, conv_count, memory_texts
-                    )
-            except Exception as e:
-                logger.debug(f"LifeSummary generation failed: {e}")
-
-            # 5. 人格漂移检测
-            try:
-                last_check = self._last_drift_check.get(user_id, 0)
-                if self._drift_monitor.should_check(conv_count, last_check):
-                    persona_id = "girlfriend_001"
-                    recent = self._last_replies.get(user_id, [])
-                    report = self._drift_monitor.analyze(
-                        user_id, persona_id, conv_count, recent[-20:]
-                    )
-                    self._last_drift_check[user_id] = conv_count
-                    if not report.passed:
-                        logger.warning(
-                            f"Persona drift: score={report.consistency_score:.2%}, "
-                            f"suggestions={report.suggestions}"
-                        )
-            except Exception as e:
-                logger.debug(f"Persona drift check failed: {e}")
-
-        except Exception as e:
-            logger.debug(f"v1.3 post-process failed: {e}")
-
     # ---- LLM 调用（含工具循环）----
 
     async def _llm_call_with_tools(self, messages, system_prompt, on_token=None) -> str:
-        """LLM 调用 + 工具调用循环
-
-        如果 LLM 回复中包含工具调用，执行工具并将结果喂回，
-        最多进行 1 轮工具调用（防止无限循环）。
-        """
-        if not self._tool_registry or not self._tool_registry.available:
-            # 没有工具，走标准调用
-            return await self._llm_call(messages, system_prompt, on_token)
-
-        # 第一轮调用
-        reply = await self._llm_call(messages, system_prompt, on_token)
-
-        # 检查是否有工具调用
-        tool_calls = _parse_tool_call(reply)
-        if not tool_calls:
-            return reply
-
-        # 只处理第一个工具调用（避免多工具复杂度）
-        tool_name, params = tool_calls[0]
-        tool = self._tool_registry.get(tool_name)
-        if not tool:
-            logger.warning(f"Unknown tool called: {tool_name}")
-            return reply
-
-        logger.info(f"Tool call: {tool_name}({params})")
-
-        # 执行工具
-        try:
-            result = await tool.execute(**params)
-        except Exception as e:
-            result = type("Result", (), {"output": f"工具执行失败：{e}", "success": False})()
-
-        if result.success:
-            tool_feedback = (
-                f"\n\n【工具 {tool_name} 执行结果】\n{result.output}\n"
-                f"请根据以上信息，自然地回复用户。如果结果是数据，直接告诉用户即可。"
-                f"不要提及「工具」或「调用」等词。"
-            )
-        else:
-            tool_feedback = (
-                f"\n\n【工具 {tool_name} 执行失败】\n{result.output}\n"
-                f"请告诉用户暂时无法提供这个信息，说点别的。"
-            )
-
-        # 如果原来是流式输出，工具调用后会走非流式
-        return await self._llm_call(messages, system_prompt + tool_feedback, on_token=None)
+        """LLM 调用 + 工具调用循环（委托给 ToolCallHandler）"""
+        return await call_llm_with_tools(self, messages, system_prompt, on_token)
 
     async def _llm_call(self, messages, system_prompt, on_token=None) -> str:
         """流式或非流式 LLM 调用"""
