@@ -127,7 +127,10 @@ def main():
 
     if args.command == "setup":
         from setup_wizard import run_setup
-        run_setup()
+        try:
+            run_setup()
+        except KeyboardInterrupt:
+            print("\n\n  设置已取消\n")
         return
 
     if args.command == "wechat":
@@ -188,7 +191,11 @@ def _setup_wechat():
     print("\n  1. 确保你已安装微信 ClawBot 插件")
     print("  2. 准备好微信手机客户端")
     print("\n  按回车键开始扫码登录...")
-    input()
+    try:
+        input()
+    except (EOFError, KeyboardInterrupt):
+        print("\n\n  已取消\n")
+        return
 
     try:
         from adapters.wechat import WeChatAdapter

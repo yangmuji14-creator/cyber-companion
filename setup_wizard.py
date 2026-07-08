@@ -158,8 +158,9 @@ def _prompt(msg: str, default: str = "", hint: str = "") -> str:
     display_hint = f" [{default}]" if default else ""
     try:
         val = input(f"  {msg}{display_hint}: ").strip()
-    except (EOFError, OSError):
-        return default
+    except (EOFError, KeyboardInterrupt):
+        print("\n\n  已取消")
+        sys.exit(0)
     return val if val else default
 
 
@@ -167,8 +168,9 @@ def _prompt_yn(msg: str, default: bool = True) -> bool:
     hint = "Y/n" if default else "y/N"
     try:
         val = input(f"  {msg} ({hint}): ").strip().lower()
-    except (EOFError, OSError):
-        return default
+    except (EOFError, KeyboardInterrupt):
+        print("\n\n  已取消")
+        sys.exit(0)
     if not val:
         return default
     return val in ("y", "yes", "是")
