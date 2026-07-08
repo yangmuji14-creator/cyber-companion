@@ -238,47 +238,44 @@ class VisionManager:
         }]
 
         try:
-            import litellm
+            import os
 
-            # 已知的 litellm 原生提供商
-            LITELLM_PROVIDERS = {"openai", "gemini", "anthropic", "deepseek", "qwen", "zhipu", "kimi"}
-
-            # 非原生提供商 → 用 openai/ 前缀 + api_base 指向自定义 endpoint
-            if provider in LITELLM_PROVIDERS:
-                model = f"{provider}/{model_name}"
-            else:
-                model = f"openai/{model_name}"
-
-            kwargs = {
-                "model": model,
-                "messages": messages,
-                "max_tokens": 1000,
-            }
-            if api_key:
-                kwargs["api_key"] = api_key
-            if base_url:
-                kwargs["api_base"] = base_url
-
-            # 保存 litellm 全局状态，避免 API key 泄漏到主模型
-            _saved_api_key = getattr(litellm, "api_key", None)
-            _saved_api_base = getattr(litellm, "api_base", None)
-
+            # 用独立 OpenAI client 调用，彻底隔离 API key
             try:
-                response = await litellm.acompletion(**kwargs)
+                from openai import AsyncOpenAI
+            except ImportError:
+                from openai import OpenAI as _OpenAI
+                AsyncOpenAI = None
+
+            actual_base = base_url or "https://api.openai.com/v1"
+            actual_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+
+            if AsyncOpenAI:
+                client = AsyncOpenAI(api_key=actual_key, base_url=actual_base)
+                response = await client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    max_tokens=1000,
+                )
                 description = response.choices[0].message.content
-            finally:
-                # 恢复全局状态
-                if _saved_api_key is not None:
-                    litellm.api_key = _saved_api_key
-                if _saved_api_base is not None:
-                    litellm.api_base = _saved_api_base
+            else:
+                # 降级到 litellm（旧版本 openai 库）
+                import litellm
+                response = await litellm.acompletion(
+                    model=f"openai/{model_name}",
+                    messages=messages,
+                    api_key=actual_key,
+                    api_base=actual_base,
+                    max_tokens=1000,
+                )
+                description = response.choices[0].message.content
 
             logger.debug(f"Fallback vision result ({len(description)} chars)")
             return f"[图片描述] {description}"
 
         except ImportError:
-            logger.error("litellm not available for vision fallback")
-            return "[图片识别失败: litellm 未安装]"
+            logger.error("openai package not available for vision fallback")
+            return "[图片识别失败: openai 未安装，请 pip install openai]"
         except Exception as e:
             logger.error(f"Fallback vision failed: {e}")
             return f"[图片识别失败: {e}]"
