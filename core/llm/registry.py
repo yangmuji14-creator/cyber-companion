@@ -62,6 +62,12 @@ class LLMRegistry:
             "qwen": "TONGYI_API_KEY",
             "kimi": "KIMI_API_KEY",
             "zhipu": "ZHIPU_API_KEY",
+            "mimo": "OPENAI_API_KEY",
+            "doubao": "OPENAI_API_KEY",
+            "baichuan": "OPENAI_API_KEY",
+            "minimax": "OPENAI_API_KEY",
+            "stepfun": "OPENAI_API_KEY",
+            "moonshot": "OPENAI_API_KEY",
         }
         env_key = env_key_map.get(name, f"{name.upper()}_API_KEY")
         api_key = os.getenv(env_key, "")
