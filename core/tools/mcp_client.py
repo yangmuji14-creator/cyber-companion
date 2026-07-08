@@ -542,51 +542,6 @@ class MCPClient:
             if self.config.auto_reconnect:
                 self._start_reconnect()
 
-    _remaining: bytes = b""  # 帧解析后的剩余数据
-
-    def _extract_frame(self, buf: bytes) -> bool:
-        """从缓冲区提取一个完整帧。返回 True 表示提取成功。"""
-        header_end = buf.find(b"\r\n\r\n")
-        if header_end == -1:
-            return False
-
-        header = buf[:header_end].decode("utf-8", errors="replace")
-        self._remaining = buf[header_end + 4:]
-
-        # 解析 Content-Length
-        content_length = 0
-        for line in header.split("\r\n"):
-            if line.lower().startswith("content-length:"):
-                try:
-                    content_length = int(line.split(":")[1].strip())
-                except ValueError:
-                    logger.warning(f"MCP [{self.config.name}]: bad Content-Length in header")
-                    return False
-                break
-
-        if content_length <= 0 or content_length > self.MAX_MESSAGE_SIZE:
-            logger.warning(f"MCP [{self.config.name}]: invalid content-length={content_length}")
-            return False
-
-        # 等待 body 完整
-        if len(self._remaining) < content_length:
-            self._remaining = buf  # 恢复
-            return False
-
-        body_bytes = self._remaining[:content_length]
-        self._remaining = self._remaining[content_length:]
-
-        try:
-            body = body_bytes.decode("utf-8", errors="replace")
-            message = json.loads(body)
-        except json.JSONDecodeError as e:
-            logger.warning(f"MCP [{self.config.name}]: JSON parse error: {e}")
-            return True  # 仍然消费了这个帧（跳过坏帧）
-
-        self._last_activity = time.time()
-        self._dispatch_message(message)
-        return True
-
     def _dispatch_message(self, message: dict) -> None:
         """分发 JSON-RPC 消息"""
         msg_id = message.get("id")
