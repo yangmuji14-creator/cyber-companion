@@ -272,12 +272,19 @@ class VisionManager:
 
             logger.debug(f"Fallback vision result ({len(description)} chars)")
 
-            # 暴力重置 litellm 全局状态 — 防止任何 API key 泄漏
+            # 暴力重置 litellm 全局状态 + 重新加载 .env
             try:
                 import litellm
                 litellm.api_key = None
                 litellm.api_base = None
                 litellm._async_client_cleanup_registered = False
+            except Exception:
+                pass
+
+            # 重新加载 .env — 某些库（litellm/openai）可能覆盖了环境变量
+            try:
+                from dotenv import load_dotenv
+                load_dotenv(override=True)
             except Exception:
                 pass
 
