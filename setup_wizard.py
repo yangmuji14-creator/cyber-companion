@@ -559,9 +559,7 @@ def _check_venv():
 # ========== 步骤 4：视觉降级模型（可选）==========
 
 def step_vision(provider: str, model_id: str = "") -> dict:
-    """配置图片识别的视觉降级模型"""
-    from core.multimodal.vision import is_multimodal_model
-
+    """配置图片识别的视觉降级模型（仅纯文本模型调用此函数）"""
     vision = {
         "provider": "openai",
         "model_name": "",
@@ -569,20 +567,14 @@ def step_vision(provider: str, model_id: str = "") -> dict:
         "base_url": "",
     }
 
-    # 用实际模型名检测多模态
     check_name = model_id or provider
-    mm = is_multimodal_model(check_name)
 
-    if not mm and provider == "custom":
-        # 自定义模型：让用户自己声明是否支持图片
-        print(f"\n  📷 模型 '{check_name}' 是否为多模态模型？")
-        print(f"  （多模态 = 能直接识别图片内容，如 GPT-4o、Claude 3.5）")
+    # 自定义模型：让用户声明是否支持图片
+    if provider == "custom":
+        print(f"\n  📷 模型 '{check_name}' 是否为多模态？")
         if _prompt_yn("是否支持图片识别？", default=False):
-            mm = True
-
-    if mm:
-        print(f"\n  📷 模型 '{check_name}' 支持图片识别，无需额外配置")
-        return vision
+            print(f"\n  ✅ 已标记为多模态，无需配置视觉降级")
+            return vision
 
     _section("📷 图片识别（可选）", 4, 4)
 
@@ -731,7 +723,13 @@ def run_setup():
     advanced = step_advanced()
 
     # ── 步骤 4：视觉降级模型（可选）──
-    vision_model = step_vision(provider, model_id)
+    # 多模态模型直接跳过（不需要视觉降级）
+    from core.multimodal.vision import is_multimodal_model
+    if is_multimodal_model(model_id or provider):
+        print(f"\n  📷 模型 '{model_id or provider}' 已支持图片识别，跳过视觉配置\n")
+        vision_model = {"provider": "openai", "model_name": "", "api_key": "", "base_url": ""}
+    else:
+        vision_model = step_vision(provider, model_id)
 
     # 应用人设中的亲密度
     persona["relationship_level"] = advanced["relationship_level"]
