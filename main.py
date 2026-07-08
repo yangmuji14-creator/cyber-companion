@@ -85,8 +85,33 @@ def _has_wechat_config() -> bool:
 
 # ========== CLI 入口 ==========
 
+def _ensure_venv():
+    """自动检测并使用 .venv 虚拟环境"""
+    if sys.prefix != sys.base_prefix:
+        return  # 已在 venv 中
+
+    venv_dir = ROOT / ".venv"
+    if not venv_dir.exists():
+        return  # 没有 .venv，用系统 Python
+
+    if sys.platform == "win32":
+        venv_python = venv_dir / "Scripts" / "python.exe"
+    else:
+        venv_python = venv_dir / "bin" / "python"
+
+    if not venv_python.exists():
+        return
+
+    # 用 venv 的 Python 重新执行
+    print(f"\n  🔄 自动切换到虚拟环境...\n")
+    os.execv(str(venv_python), [str(venv_python)] + sys.argv)
+
+
 def main():
     import argparse
+
+    # 自动检测并使用 .venv
+    _ensure_venv()
 
     parser = argparse.ArgumentParser(description="Cyber Girlfriend")
     parser.add_argument(

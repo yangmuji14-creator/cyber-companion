@@ -263,19 +263,11 @@ def main():
     print("  接下来运行：")
     print("    python main.py setup   # 配置模型和人设")
     print("    python main.py         # 开始聊天")
+    print()
+    print("  💡 无需手动激活虚拟环境，main.py 会自动检测 .venv")
     if args.dev:
         print("    python -m pytest tests/ -v  # 运行测试")
     print()
-
-    # 提示未激活虚拟环境
-    if not using_uv and sys.prefix == sys.base_prefix:
-        print("  ! 注意：依赖已安装到 .venv，启动前请激活：")
-        if sys.platform == "win32":
-            print("    .venv\\Scripts\\activate.bat")
-        else:
-            print("    source .venv/bin/activate")
-        print("    或直接运行 python main.py（从项目根目录）")
-        print()
 
 
 def _prompt_yes_no(msg: str, default: bool = True) -> bool:

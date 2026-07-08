@@ -456,24 +456,31 @@ def step_advanced() -> dict:
 # ========== 主流程 ==========
 
 def _check_venv():
-    """检查是否在虚拟环境中运行"""
+    """检查虚拟环境，未激活则自动使用 .venv"""
     in_venv = sys.prefix != sys.base_prefix
-    if not in_venv:
-        venv_dir = ROOT / ".venv"
-        print()
-        print("  ! 未激活虚拟环境！")
-        print()
-        if venv_dir.exists():
-            print("  检测到 .venv 目录，请先激活：")
-            print("    .venv\\Scripts\\activate.bat")
-            print("    python main.py setup")
-            print()
-            print("  或运行 python main.py 直接启动（如果已全局安装依赖）")
-        else:
-            print("  请先运行安装脚本：")
-            print("    python install.py")
-        print()
-        sys.exit(0)
+    if in_venv:
+        return  # 已在 venv 中
+
+    venv_dir = ROOT / ".venv"
+    if not venv_dir.exists():
+        print("\n  ❌ 未找到虚拟环境，请先运行安装脚本：")
+        print("    python install.py\n")
+        sys.exit(1)
+
+    # .venv 存在但未激活 → 用 venv Python 重启自己
+    if sys.platform == "win32":
+        venv_python = venv_dir / "Scripts" / "python.exe"
+    else:
+        venv_python = venv_dir / "bin" / "python"
+
+    if not venv_python.exists():
+        print(f"\n  ❌ 虚拟环境 Python 不存在: {venv_python}")
+        print("  请重新运行: python install.py\n")
+        sys.exit(1)
+
+    # 用 venv 的 Python 重新执行当前脚本
+    print(f"\n  🔄 检测到 .venv，自动切换中...\n")
+    os.execv(str(venv_python), [str(venv_python)] + sys.argv)
 
 
 # ========== 步骤 4：视觉降级模型（可选）==========
