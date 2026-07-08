@@ -271,6 +271,16 @@ class VisionManager:
                 description = response.choices[0].message.content
 
             logger.debug(f"Fallback vision result ({len(description)} chars)")
+
+            # 暴力重置 litellm 全局状态 — 防止任何 API key 泄漏
+            try:
+                import litellm
+                litellm.api_key = None
+                litellm.api_base = None
+                litellm._async_client_cleanup_registered = False
+            except Exception:
+                pass
+
             return f"[图片描述] {description}"
 
         except ImportError:

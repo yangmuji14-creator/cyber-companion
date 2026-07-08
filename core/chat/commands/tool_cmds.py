@@ -85,6 +85,13 @@ async def cmd_img(handler, user_id: str, cmd: str) -> None:
                 messages=vision_messages, system_prompt=vision_prompt,
             )
             result = response.content
+            # 暴力清空 litellm 全局状态
+            try:
+                import litellm
+                litellm.api_key = None
+                litellm.api_base = None
+            except Exception:
+                pass
         except Exception as e:
             logger.error(f"图片识别失败: {e}")
             print(f"\n{Colors.DIM}  图片识别失败{Colors.RESET}\n")
@@ -92,6 +99,14 @@ async def cmd_img(handler, user_id: str, cmd: str) -> None:
 
     # 如果主模型不是多模态的（走降级路径），需要把描述 + 用户文字发给主模型
     if vm and not vm.main_is_multimodal:
+        # 暴力清空 litellm 全局状态，防止视觉调用的 API key 泄漏
+        try:
+            import litellm
+            litellm.api_key = None
+            litellm.api_base = None
+        except Exception:
+            pass
+
         enhanced = vm.build_enhanced_message(result, user_text or "")
         handler._h.chat_history.add_message(
             user_id, "user",
