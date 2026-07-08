@@ -272,21 +272,32 @@ class VisionManager:
 
             logger.debug(f"Fallback vision result ({len(description)} chars)")
 
-            # 暴力重置 litellm 全局状态 + 重新加载 .env
+            # 暴力恢复环境变量 + litellm 状态
             try:
                 import litellm
                 litellm.api_key = None
                 litellm.api_base = None
-                litellm._async_client_cleanup_registered = False
             except Exception:
                 pass
 
-            # 重新加载 .env — 某些库（litellm/openai）可能覆盖了环境变量
+            # 重新加载 .env（强制覆盖）
+            import os as _os
             try:
                 from dotenv import load_dotenv
                 load_dotenv(override=True)
             except Exception:
                 pass
+
+            # 兜底：如果 DEEPSEEK_API_KEY 还是空的，从文件直接读
+            if not _os.environ.get("DEEPSEEK_API_KEY"):
+                _env_path = _os.path.join(_os.path.dirname(__file__), "..", "..", ".env")
+                if _os.path.exists(_env_path):
+                    with open(_env_path) as _f:
+                        for _line in _f:
+                            _line = _line.strip()
+                            if _line.startswith("DEEPSEEK_API_KEY=") and not _line.startswith("#"):
+                                _os.environ["DEEPSEEK_API_KEY"] = _line.split("=", 1)[1].strip()
+                                break
 
             return f"[图片描述] {description}"
 
