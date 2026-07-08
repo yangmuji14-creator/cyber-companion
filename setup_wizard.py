@@ -153,11 +153,10 @@ def _section(title: str, step: int, total: int):
 
 
 def _prompt(msg: str, default: str = "", hint: str = "") -> str:
-    if hint:
-        print(f"  ({hint})")
     display_hint = f" [{default}]" if default else ""
+    extra = f"  例: {hint}" if hint else ""
     try:
-        val = input(f"  {msg}{display_hint}: ").strip()
+        val = input(f"  {msg}{display_hint}{extra}: ").strip()
     except (EOFError, KeyboardInterrupt):
         print("\n\n  已取消")
         sys.exit(0)
@@ -659,7 +658,33 @@ def step_vision(provider: str, model_id: str = "") -> dict:
                 break
             print(f"  ⚠ 请输入 1-{len(vision_models)} 之间的序号，或完整的模型名称")
     else:
-        vision["model_name"] = _prompt("模型名称", "", "如 gpt-4o / gemini-1.5-flash")
+        # 拉取失败 → 用预设模型列表让用户选
+        fallback_models = {
+            "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-vision-preview"],
+            "gemini": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
+            "qwen": ["qwen-vl-plus", "qwen-vl-max", "qwen2.5-vl-72b-instruct"],
+            "zhipu": ["glm-4v-flash", "glm-4v-plus", "glm-4v"],
+            "mimo": ["mimo-vision-v1"],
+            "doubao": ["doubao-1.5-vision-pro-32k"],
+            "stepfun": ["step-1v-8k", "step-1o-vision-32k"],
+            "moonshot": ["moonshot-v1-8k-vision"],
+            "custom": [],
+        }
+        fb = fallback_models.get(vp, ["gpt-4o"])
+        
+        if fb:
+            print(f"  ⚠ 未能从 API 拉取，使用预设列表：\n")
+            for i, m in enumerate(fb, 1):
+                print(f"    {i}. {m}")
+            print(f"    {len(fb)+1}. 手动输入\n")
+
+            mc = _prompt_int("选择", 1, f"1-{len(fb)+1}")
+            if 1 <= mc <= len(fb):
+                vision["model_name"] = fb[mc-1]
+            else:
+                vision["model_name"] = _prompt("模型名称", "", "gpt-4o")
+        else:
+            vision["model_name"] = _prompt("模型名称", "", "gpt-4o")
 
     return vision
 
