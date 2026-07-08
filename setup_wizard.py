@@ -30,14 +30,14 @@ PROVIDERS = {
     "deepseek": {
         "name": "DeepSeek",
         "desc": "国产便宜好用，推荐新手",
-        "model": "",  # 向导中实时填充
+        "model": "",
         "env_key": "DEEPSEEK_API_KEY",
         "base_url_env": "DEEPSEEK_BASE_URL",
         "base_url": "https://api.deepseek.com",
     },
     "openai": {
         "name": "OpenAI",
-        "desc": "GPT 系列，需海外网络或代理",
+        "desc": "GPT-4o 系列，多模态，需海外网络",
         "model": "",
         "env_key": "OPENAI_API_KEY",
         "base_url_env": "OPENAI_BASE_URL",
@@ -45,7 +45,7 @@ PROVIDERS = {
     },
     "gemini": {
         "name": "Gemini",
-        "desc": "Google 模型，有免费额度",
+        "desc": "Google 模型，多模态，有免费额度",
         "model": "",
         "env_key": "GEMINI_API_KEY",
         "base_url_env": None,
@@ -53,7 +53,7 @@ PROVIDERS = {
     },
     "qwen": {
         "name": "通义千问",
-        "desc": "阿里云，国内访问快",
+        "desc": "阿里云，国内访问快，VL版本支持视觉",
         "model": "",
         "env_key": "TONGYI_API_KEY",
         "base_url_env": None,
@@ -69,11 +69,67 @@ PROVIDERS = {
     },
     "zhipu": {
         "name": "智谱",
-        "desc": "GLM-4-Flash，有免费额度",
+        "desc": "GLM-4V-Flash 支持视觉，有免费额度",
         "model": "",
         "env_key": "ZHIPU_API_KEY",
         "base_url_env": None,
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    },
+    "mimo": {
+        "name": "小米 MiMo",
+        "desc": "小米多模态模型",
+        "model": "",
+        "env_key": "MIMO_API_KEY",
+        "base_url_env": "MIMO_BASE_URL",
+        "base_url": "https://api.mimo.xiaomi.com/v1",
+    },
+    "doubao": {
+        "name": "豆包 (字节)",
+        "desc": "字节跳动，Vision版本支持图片",
+        "model": "",
+        "env_key": "DOUBAO_API_KEY",
+        "base_url_env": "DOUBAO_BASE_URL",
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+    },
+    "baichuan": {
+        "name": "百川",
+        "desc": "Baichuan4，国产大模型",
+        "model": "",
+        "env_key": "BAICHUAN_API_KEY",
+        "base_url_env": "BAICHUAN_BASE_URL",
+        "base_url": "https://api.baichuan-ai.com/v1",
+    },
+    "minimax": {
+        "name": "MiniMax",
+        "desc": "海螺AI，abab系列",
+        "model": "",
+        "env_key": "MINIMAX_API_KEY",
+        "base_url_env": "MINIMAX_BASE_URL",
+        "base_url": "https://api.minimax.chat/v1",
+    },
+    "stepfun": {
+        "name": "阶跃星辰",
+        "desc": "Step系列，Step-1V支持视觉",
+        "model": "",
+        "env_key": "STEPFUN_API_KEY",
+        "base_url_env": "STEPFUN_BASE_URL",
+        "base_url": "https://api.stepfun.com/v1",
+    },
+    "moonshot": {
+        "name": "Moonshot",
+        "desc": "Kimi 同厂，VL版本支持视觉",
+        "model": "",
+        "env_key": "MOONSHOT_API_KEY",
+        "base_url_env": "MOONSHOT_BASE_URL",
+        "base_url": "https://api.moonshot.cn/v1",
+    },
+    "custom": {
+        "name": "自定义 (OpenAI 兼容)",
+        "desc": "任何 OpenAI 兼容的 API",
+        "model": "",
+        "env_key": "CUSTOM_API_KEY",
+        "base_url_env": "CUSTOM_BASE_URL",
+        "base_url": "",
     },
 }
 
@@ -498,31 +554,61 @@ def step_vision(provider: str, model_id: str = "") -> dict:
         "base_url": "",
     }
 
-    # 用实际模型名检测多模态（不是 provider 名）
+    # 用实际模型名检测多模态
     check_name = model_id or provider
     mm = is_multimodal_model(check_name)
+
+    if not mm and provider == "custom":
+        # 自定义模型：让用户自己声明是否支持图片
+        print(f"\n  📷 模型 '{check_name}' 是否为多模态模型？")
+        print(f"  （多模态 = 能直接识别图片内容，如 GPT-4o、Claude 3.5）")
+        if _prompt_yn("是否支持图片识别？", default=False):
+            mm = True
+
     if mm:
-        print(f"\n  📷 模型 '{check_name}' 支持图片识别，无需配置视觉降级")
+        print(f"\n  📷 模型 '{check_name}' 支持图片识别，无需额外配置")
         return vision
 
     _section("📷 图片识别（可选）", 4, 4)
 
     print(f"  当前模型 '{check_name}' 是纯文本模型，不支持直接识别图片。")
     print(f"  配置视觉模型后的流程：")
-    print(f"    微信/CLI收到图片 → 视觉模型识别 → 输出文字描述")
-    print(f"    → 描述文字 + 用户输入 → 发给 '{check_name}' → 回复")
+    print(f"    收到图片 → 视觉模型识别 → 文字描述")
+    print(f"    → 描述 + 用户输入 → 发给 '{check_name}' → 回复")
     print(f"  跳过则收到图片时只能回复「未配置视觉识别」。\n")
 
     if not _prompt_yn("是否配置视觉降级模型？"):
         return vision
 
-    vision["provider"] = _prompt("视觉模型提供商", "openai", "openai / gemini 等")
-    vision["model_name"] = _prompt("模型名称", "", "如 gpt-4o / gemini-1.5-flash")
+    # 视觉模型提供商
+    vision_providers = {
+        "openai": "OpenAI (GPT-4o) — 推荐",
+        "gemini": "Gemini (1.5 Flash) — 有免费额度",
+        "qwen": "通义千问 VL — 阿里云",
+        "zhipu": "智谱 GLM-4V — 国产",
+        "mimo": "小米 MiMo",
+        "doubao": "豆包 Vision",
+        "stepfun": "阶跃星辰 Step-1V",
+        "moonshot": "Moonshot VL",
+        "custom": "自定义 (OpenAI 兼容)",
+    }
+    print(f"\n  视觉模型提供商：")
+    keys = list(vision_providers.keys())
+    for i, k in enumerate(keys, 1):
+        print(f"    {i}. {vision_providers[k]}")
+    choice = _prompt_int("选择", 1, f"1-{len(keys)}")
+    vp = keys[max(0, min(len(keys)-1, choice-1))]
+
+    vision["provider"] = vp
+    vision["model_name"] = _prompt("模型名称", "", "如 gpt-4o / gemini-1.5-flash / glm-4v-flash")
     if vision["model_name"]:
-        vision["api_key"] = _prompt("API Key", "", "留空则用环境变量 OPENAI_API_KEY")
-        base = _prompt("Base URL（可选）", "")
-        if base:
-            vision["base_url"] = base
+        vision["api_key"] = _prompt("API Key", "", "留空则用环境变量")
+        if vp == "custom":
+            vision["base_url"] = _prompt("Base URL", "", "API 地址")
+        else:
+            base = _prompt("Base URL（可选）", "")
+            if base:
+                vision["base_url"] = base
 
     return vision
 

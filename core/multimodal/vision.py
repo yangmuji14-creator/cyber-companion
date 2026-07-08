@@ -26,28 +26,83 @@ from typing import Any
 from loguru import logger
 
 
-# 已知支持图片的多模态模型
-MULTIMODAL_MODELS = {
-    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-vision",
-    "gpt-4-vision-preview",
-    "claude-3", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku",
-    "claude-3-5-sonnet", "claude-3-5-haiku",
-    "gemini-pro-vision", "gemini-1.5-pro", "gemini-1.5-flash",
-    "gemini-2.0-flash",
-    "qwen-vl", "qwen-vl-plus", "qwen-vl-max",
-    "glm-4v",
-    "llava", "bakllava",
-}
+# 已知支持图片的多模态模型（持续更新）
+# 匹配方式：model_name.lower() 包含这些字符串即判定为多模态
+MULTIMODAL_PATTERNS = (
+    # OpenAI
+    "gpt-4o", "gpt-4-turbo", "gpt-4-vision", "o1", "o3",
+    # Anthropic
+    "claude-3", "claude-3-5", "claude-4",
+    # Google
+    "gemini-1.5", "gemini-2.0", "gemini-pro-vision", "gemini-flash",
+    # Qwen / 通义千问
+    "qwen-vl", "qwen2-vl", "qwen2.5-vl",
+    # GLM / 智谱
+    "glm-4v", "cogview", "cogvideox",
+    # 开源模型
+    "llava", "bakllava", "llama-3.2-vision", "llama-v", "pixtral",
+    "internvl", "internlm-xcomposer", "minicpm-v", "cogvlm",
+    # 小米 MiMo
+    "mimo",
+    # 字节豆包
+    "doubao-vision", "doubao-1.5-vision",
+    # 百川
+    "baichuan-vl",
+    # 零一万物
+    "yi-vision", "yi-vl",
+    # DeepSeek（注意：DeepSeek-VL2 支持视觉，但 DeepSeek-V3/Chat 不支持）
+    "deepseek-vl",
+    # 其他
+    "step-1v", "step-1o-vision", "hunyuan-vision", "minimax-vl",
+    "kimi-vl", "moonshot-vl",
+)
+
+# 明确不支持的模型（避免误判）
+NOT_MULTIMODAL = (
+    "deepseek-chat", "deepseek-reasoner", "deepseek-v3",
+    "gpt-3.5", "gpt-3.5-turbo",
+    "claude-2", "claude-instant",
+)
 
 
 def is_multimodal_model(model_name: str) -> bool:
-    """检查模型是否支持图片输入"""
+    """检测模型是否支持图片输入
+
+    检测顺序：
+    1. 先查 litellm model_cost 中的 input_cost_per_image 标记
+    2. 匹配已知多模态模型列表
+    3. 排除明确不支持的模型
+
+    Returns:
+        True 如果模型支持图片
+    """
     if not model_name:
         return False
+
     model_lower = model_name.lower()
-    for name in MULTIMODAL_MODELS:
-        if name in model_lower:
+
+    # 1. 排除明确不支持的模型
+    for pattern in NOT_MULTIMODAL:
+        if pattern in model_lower:
+            return False
+
+    # 2. 检查 litellm model info（有 input_cost_per_image 说明支持）
+    try:
+        import litellm
+        info = litellm.get_model_info(model_name, ignore_HF_hub=True)
+        if info and isinstance(info, dict):
+            if info.get("input_cost_per_image") or info.get("input_cost_per_image_token"):
+                return True
+            if info.get("supports_vision") or info.get("supports_vision", False):
+                return True
+    except Exception:
+        pass
+
+    # 3. 匹配已知多模态模型
+    for pattern in MULTIMODAL_PATTERNS:
+        if pattern.lower() in model_lower:
             return True
+
     return False
 
 
