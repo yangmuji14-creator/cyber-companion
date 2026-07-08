@@ -259,8 +259,19 @@ class VisionManager:
             if base_url:
                 kwargs["api_base"] = base_url
 
-            response = await litellm.acompletion(**kwargs)
-            description = response.choices[0].message.content
+            # 保存 litellm 全局状态，避免 API key 泄漏到主模型
+            _saved_api_key = getattr(litellm, "api_key", None)
+            _saved_api_base = getattr(litellm, "api_base", None)
+
+            try:
+                response = await litellm.acompletion(**kwargs)
+                description = response.choices[0].message.content
+            finally:
+                # 恢复全局状态
+                if _saved_api_key is not None:
+                    litellm.api_key = _saved_api_key
+                if _saved_api_base is not None:
+                    litellm.api_base = _saved_api_base
 
             logger.debug(f"Fallback vision result ({len(description)} chars)")
             return f"[图片描述] {description}"
