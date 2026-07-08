@@ -455,42 +455,67 @@ class MCPClient:
         if not self._process or not self._process.stdout:
             return
 
-        buf = b""
+        stdout = self._process.stdout
+        loop = asyncio.get_running_loop()
+        _read = lambda n: loop.run_in_executor(None, stdout.read, n)
+
         while self.state not in (MCPState.DISCONNECTED,):
             try:
-                loop = asyncio.get_running_loop()
-                chunk = await loop.run_in_executor(
-                    None, self._process.stdout.read, 4096
-                )
-                if not chunk:
-                    logger.warning(f"MCP [{self.config.name}]: stdout EOF")
+                # 1. 逐字节读 header（read(1) 在无数据时返回空，非 EOF）
+                header_bytes = b""
+                while not header_bytes.endswith(b"\r\n\r\n"):
+                    ch = await _read(1)
+                    if not ch:
+                        # 无数据 — 检查进程是否还活着
+                        if self._process and self._process.poll() is not None:
+                            logger.warning(f"MCP [{self.config.name}]: process died")
+                            break
+                        await asyncio.sleep(0.01)
+                        continue
+                    header_bytes += ch
+
+                if self._process and self._process.poll() is not None:
                     break
 
-                buf += chunk
-
-                # 缓冲区保护
-                if len(buf) > self.MAX_BUFFER_SIZE:
-                    logger.error(f"MCP [{self.config.name}]: buffer overflow ({len(buf)} bytes), resetting")
-                    buf = b""
+                # 2. 解析 Content-Length
+                header = header_bytes.decode("utf-8", errors="replace")
+                cl = 0
+                for line in header.split("\r\n"):
+                    if line.lower().startswith("content-length:"):
+                        cl = int(line.split(":")[1].strip())
+                if cl <= 0 or cl > self.MAX_MESSAGE_SIZE:
                     continue
 
-                # 帧解析循环
-                while self._extract_frame(buf):
-                    # 提取完整帧后，更新 buf
-                    buf = self._remaining
-                    if not buf:
-                        break
+                # 3. 读 body
+                body_bytes = b""
+                while len(body_bytes) < cl:
+                    need = min(cl - len(body_bytes), 65536)
+                    chunk = await _read(need)
+                    if not chunk:
+                        if self._process and self._process.poll() is not None:
+                            break
+                        await asyncio.sleep(0.01)
+                        continue
+                    body_bytes += chunk
+
+                if len(body_bytes) < cl:
+                    break
+
+                # 4. 分发
+                self._last_activity = time.time()
+                try:
+                    message = json.loads(body_bytes.decode("utf-8", errors="replace"))
+                    self._dispatch_message(message)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"MCP [{self.config.name}]: JSON: {e}")
 
             except asyncio.CancelledError:
                 break
-            except OSError as e:
-                logger.debug(f"MCP [{self.config.name}]: read OS error: {e}")
-                break
             except Exception as e:
-                logger.warning(f"MCP [{self.config.name}]: read error: {e}")
+                logger.warning(f"MCP [{self.config.name}]: read err: {e}")
                 break
 
-        # 连接断开处理
+        # 断连
         if self.state == MCPState.READY:
             logger.warning(f"MCP [{self.config.name}]: unexpected disconnect")
             self.state = MCPState.ERROR
