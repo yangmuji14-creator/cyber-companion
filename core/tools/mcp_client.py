@@ -146,6 +146,7 @@ class MCPClient:
         self._pending: dict[int, asyncio.Future] = {}
         self._reader_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
+        self._reconnect_task: asyncio.Task | None = None
         self._server_capabilities: dict[str, Any] = {}
         self._tools: list[MCPTool] = []
         self._reconnect_attempts = 0
@@ -187,7 +188,7 @@ class MCPClient:
             self.state = MCPState.ERROR
             self._cleanup()
             if self.config.auto_reconnect:
-                asyncio.create_task(self._reconnect_loop())
+                self._start_reconnect()
             return False
 
     async def disconnect(self) -> None:
@@ -309,13 +310,21 @@ class MCPClient:
 
     def _cancel_tasks(self) -> None:
         """取消后台任务"""
-        for task in (self._reader_task, self._heartbeat_task):
+        for task in (self._reader_task, self._heartbeat_task, self._reconnect_task):
             if task and not task.done():
                 task.cancel()
         self._reader_task = None
         self._heartbeat_task = None
 
     # ── 重连逻辑 ──
+
+    def _start_reconnect(self) -> None:
+        """启动重连任务（去重：已有则跳过；auto_reconnect=False 则忽略）"""
+        if not self.config.auto_reconnect:
+            return
+        if self._reconnect_task and not self._reconnect_task.done():
+            return
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
     async def _reconnect_loop(self) -> None:
         """指数退避重连循环"""
@@ -353,13 +362,12 @@ class MCPClient:
 
             # 进程存活检查
             if self._process and self._process.poll() is not None:
-                logger.warning(
-                    f"MCP [{self.config.name}]: process died (code={self._process.returncode})"
-                )
+                rc = self._process.returncode if self._process else None
+                logger.warning(f"MCP [{self.config.name}]: process died (code={rc})")
                 self.state = MCPState.ERROR
                 self._cleanup()
                 if self.config.auto_reconnect:
-                    asyncio.create_task(self._reconnect_loop())
+                    self._start_reconnect()
                 return
 
             # 空闲超时
@@ -461,41 +469,52 @@ class MCPClient:
 
         while self.state not in (MCPState.DISCONNECTED,):
             try:
-                # 1. 逐字节读 header（read(1) 在无数据时返回空，非 EOF）
+                # 1. 逐字节读 header（64KB 上限，空读 100 次判定 EOF）
                 header_bytes = b""
+                empty_hdr = 0
                 while not header_bytes.endswith(b"\r\n\r\n"):
                     ch = await _read(1)
                     if not ch:
-                        # 无数据 — 检查进程是否还活着
-                        if self._process and self._process.poll() is not None:
-                            logger.warning(f"MCP [{self.config.name}]: process died")
+                        empty_hdr += 1
+                        if empty_hdr > 100 or (self._process and self._process.poll() is not None):
                             break
                         await asyncio.sleep(0.01)
                         continue
+                    empty_hdr = 0
                     header_bytes += ch
+                    if len(header_bytes) > 65536:
+                        logger.warning(f"MCP [{self.config.name}]: header too large")
+                        break
 
-                if self._process and self._process.poll() is not None:
+                if empty_hdr > 100 or (self._process and self._process.poll() is not None):
                     break
 
-                # 2. 解析 Content-Length
+                # 2. 解析 Content-Length（保护异常）
                 header = header_bytes.decode("utf-8", errors="replace")
                 cl = 0
                 for line in header.split("\r\n"):
                     if line.lower().startswith("content-length:"):
-                        cl = int(line.split(":")[1].strip())
+                        try:
+                            cl = int(line.split(":")[1].strip())
+                        except (ValueError, IndexError):
+                            logger.warning(f"MCP [{self.config.name}]: bad CL header: {line}")
                 if cl <= 0 or cl > self.MAX_MESSAGE_SIZE:
                     continue
 
-                # 3. 读 body
+                # 3. 读 body（空读 200 次判定 EOF）
                 body_bytes = b""
+                empty_body = 0
                 while len(body_bytes) < cl:
                     need = min(cl - len(body_bytes), 65536)
                     chunk = await _read(need)
                     if not chunk:
-                        if self._process and self._process.poll() is not None:
+                        empty_body += 1
+                        if empty_body > 200 or (self._process and self._process.poll() is not None):
                             break
                         await asyncio.sleep(0.01)
                         continue
+                    empty_body = 0
+                    body_bytes += chunk
                     body_bytes += chunk
 
                 if len(body_bytes) < cl:
@@ -521,7 +540,7 @@ class MCPClient:
             self.state = MCPState.ERROR
             self._cleanup()
             if self.config.auto_reconnect:
-                asyncio.create_task(self._reconnect_loop())
+                self._start_reconnect()
 
     _remaining: bytes = b""  # 帧解析后的剩余数据
 

@@ -18,28 +18,38 @@ def _send(msg):
     sys.stdout.buffer.write(hdr + body); sys.stdout.buffer.flush()
 
 def _read():
-    h = b""
+    h = b""; empty = 0
     while not h.endswith(b"\r\n\r\n"):
         c = sys.stdin.buffer.read(1)
-        if not c: time.sleep(0.01); continue
-        h += c
+        if not c:
+            empty += 1
+            if empty > 500: return None
+            time.sleep(0.01); continue
+        empty = 0; h += c
     cl = 0
     for ln in h.decode("utf-8").split("\r\n"):
         if ln.lower().startswith("content-length:"):
             cl = int(ln.split(":")[1].strip())
-    b = b""
+    b = b""; empty = 0
     while len(b) < cl:
         c = sys.stdin.buffer.read(cl - len(b))
-        if not c: time.sleep(0.01); continue
-        b += c
+        if not c:
+            empty += 1
+            if empty > 500: return None
+            time.sleep(0.01); continue
+        empty = 0; b += c
     return json.loads(b.decode("utf-8"))
 
 def ok(rid, res):
     _send({"jsonrpc": "2.0", "id": rid, "result": res})
 
+def err(rid, code, msg):
+    _send({"jsonrpc": "2.0", "id": rid, "error": {"code": code, "message": msg}})
+
 def add(args):
     n = ld()
-    note = {"id": len(n)+1, "title": args.get("title",""), "content": args.get("content",""), "created_at": datetime.now().isoformat()}
+    note = {"id": len(n)+1, "title": args.get("title",""), "content": args.get("content",""),
+            "created_at": datetime.now().isoformat()}
     n.append(note); sv(n)
     return f"saved: {note['title']}"
 
@@ -77,6 +87,7 @@ T = [
 while True:
     try:
         m = _read()
+        if m is None: break
         rid, method = m.get("id"), m.get("method","")
         if method == "initialize":
             ok(rid, {"protocolVersion": "2024-11-05", "serverInfo": {"name": "notes-server", "version": "1.0"}, "capabilities": {"tools": {}}})
@@ -85,9 +96,9 @@ while True:
         elif method == "tools/call":
             p = m["params"]; h = H.get(p["name"])
             if h: ok(rid, {"content": [{"type": "text", "text": h(p.get("arguments",{}))}]})
-            else: ok(rid, {"content": [{"type": "text", "text": f"unknown: {p['name']}"}]})
+            else: err(rid, -32601, f"unknown tool: {p['name']}")
         elif method == "notifications/initialized": pass
-        else: ok(rid, {})
+        else: err(rid, -32601, f"unknown method: {method}")
     except KeyboardInterrupt: break
     except Exception as e:
         sys.stderr.write(f"E: {e}\n"); sys.stderr.flush()

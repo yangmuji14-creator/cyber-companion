@@ -9,20 +9,26 @@ def _send(msg):
     sys.stdout.buffer.flush()
 
 def _read():
-    h = b""
+    h = b""; empty = 0
     while not h.endswith(b"\r\n\r\n"):
         c = sys.stdin.buffer.read(1)
-        if not c: time.sleep(0.01); continue
-        h += c
+        if not c:
+            empty += 1
+            if empty > 500: return None
+            time.sleep(0.01); continue
+        empty = 0; h += c
     cl = 0
     for ln in h.decode("utf-8").split("\r\n"):
         if ln.lower().startswith("content-length:"):
             cl = int(ln.split(":")[1].strip())
-    b = b""
+    b = b""; empty = 0
     while len(b) < cl:
         c = sys.stdin.buffer.read(cl - len(b))
-        if not c: time.sleep(0.01); continue
-        b += c
+        if not c:
+            empty += 1
+            if empty > 500: return None
+            time.sleep(0.01); continue
+        empty = 0; b += c
     return json.loads(b.decode("utf-8"))
 
 def ok(rid, res):
@@ -71,6 +77,7 @@ T = [
 while True:
     try:
         m = _read()
+        if m is None: break
         rid, method = m.get("id"), m.get("method", "")
         if method == "initialize":
             ok(rid, {"protocolVersion": "2024-11-05", "serverInfo": {"name": "system-tools", "version": "1.0"}, "capabilities": {"tools": {}}})
