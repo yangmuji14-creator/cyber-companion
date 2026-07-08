@@ -99,11 +99,16 @@ async def cmd_img(handler, user_id: str, cmd: str) -> None:
 
     # 如果主模型不是多模态的（走降级路径），需要把描述 + 用户文字发给主模型
     if vm and not vm.main_is_multimodal:
-        # 暴力清空 litellm 全局状态，防止视觉调用的 API key 泄漏
+        # 暴力恢复环境变量 + litellm 状态
         try:
             import litellm
             litellm.api_key = None
             litellm.api_base = None
+        except Exception:
+            pass
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=True)
         except Exception:
             pass
 

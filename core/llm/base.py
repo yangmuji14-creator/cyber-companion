@@ -1,6 +1,7 @@
 """LLM 统一接口定义"""
 
 import asyncio
+import os
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
@@ -122,12 +123,16 @@ class BaseLLM(ABC):
         logger.debug(f"Calling {model_id} with {len(full_messages)} messages")
 
         async def _do_call():
+            # 每次调用重新读 env（视觉调用可能污染 os.environ）
+            _key = self.api_key
+            if not _key:
+                _key = os.environ.get(f"{self._build_model_id().split('/')[0].upper()}_API_KEY", "")
             response = await litellm.acompletion(
                 model=model_id,
                 messages=full_messages,
                 max_tokens=kwargs.pop("max_tokens", self.max_tokens),
                 temperature=kwargs.pop("temperature", self.temperature),
-                api_key=self.api_key,
+                api_key=_key,
                 base_url=self.base_url,
                 **kwargs,
             )
@@ -187,12 +192,16 @@ class BaseLLM(ABC):
         last_error = None
         for attempt in range(self.max_retries + 1):
             try:
+                # 每次调用重新读 env
+                _key = self.api_key
+                if not _key:
+                    _key = os.environ.get(f"{model_id.split('/')[0].upper()}_API_KEY", "")
                 response = await litellm.acompletion(
                     model=model_id,
                     messages=full_messages,
                     max_tokens=kwargs.pop("max_tokens", self.max_tokens),
                     temperature=kwargs.pop("temperature", self.temperature),
-                    api_key=self.api_key,
+                    api_key=_key,
                     base_url=self.base_url,
                     stream=True,
                     **kwargs,
