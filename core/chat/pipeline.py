@@ -482,7 +482,7 @@ class ChatPipeline:
                 content = extracted["content"]
                 importance = extracted.get("importance", 3)
                 if importance >= 2:
-                    self._memory_mgr.add_memory(
+                    await self._memory_mgr.add_memory(
                         user_id, content, level=importance, tags=["自动提取"]
                     )
                     logger.info(

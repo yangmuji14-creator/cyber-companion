@@ -17,6 +17,7 @@
 import asyncio
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,9 @@ class WeChatAdapter(BaseAdapter):
         self._credentials: dict[str, Any] | None = None
         self._running = False
         self._task: asyncio.Task | None = None
+
+        # 图片+文字合并缓冲：用户发图+文时 SDK 拆成两个事件，此处暂存等待合并
+        self._pending_images: dict[str, tuple[str, float]] = {}  # user_id → (path, ts)
 
     # ---- 生命周期 ----
 
@@ -258,23 +262,19 @@ class WeChatAdapter(BaseAdapter):
             bot_thread.join(timeout=5)
 
     async def _on_image_message(self, msg) -> None:
-        """处理微信图片消息：下载 → 视觉识别 → 回复
+        """处理微信图片消息
 
-        支持：
-        - 纯图片：识别后用自然语言回复
-        - 图片+文字：识别图片后结合文字一起理解
-        - 回复分段：长回复自动分段发送，模拟真人聊天节奏
+        SDK 会把图片+文字拆成两个独立事件。此处暂存图片，
+        等待 2 秒内是否有文字到达，有则合并处理。
         """
         user_id = f"wechat_{msg.from_user}"
-        logger.info(f"WeChat image from {msg.from_user}")
+        raw_user = msg.from_user
+        logger.info(f"WeChat image from {raw_user}")
 
-        # 提取可能的附文（图片+文字一起发送的情况）
-        image_text = getattr(msg, "text", "") or getattr(msg, "caption", "") or ""
-
-        # 1. 下载图片到本地
+        # 1. 下载图片
         image_dir = Path(__file__).resolve().parent.parent / "data" / "wechat_images"
         image_dir.mkdir(parents=True, exist_ok=True)
-        image_path = str(image_dir / f"{msg.from_user}_{msg.message_id}.jpg")
+        image_path = str(image_dir / f"{raw_user}_{msg.message_id}.jpg")
 
         try:
             loop = asyncio.get_running_loop()
@@ -287,27 +287,48 @@ class WeChatAdapter(BaseAdapter):
                 with open(image_path, "wb") as f:
                     f.write(img_data)
             else:
-                logger.warning(f"WeChat image: no save/download method on message")
-                await loop.run_in_executor(None, lambda: msg.reply_text("收到图片了，但我暂时无法处理这种格式~"))
+                logger.warning(f"WeChat image: no save/download method")
+                await loop.run_in_executor(None, lambda: msg.reply_text("收到图片了，但我暂时无法处理~"))
                 return
 
             logger.info(f"WeChat image saved: {image_path}")
         except Exception as e:
             logger.error(f"WeChat image save failed: {e}")
             try:
-                await loop.run_in_executor(None, lambda: msg.reply_text("图片接收失败了，请重试~"))
+                await loop.run_in_executor(None, lambda: msg.reply_text("图片接收失败了~"))
             except Exception:
                 pass
             return
 
-        # 2. 视觉识别 + 回复
+        # 2. 暂存图片，等待文字到达
+        self._pending_images[raw_user] = (image_path, time.time())
+
+        # 保存 raw msg，供合并时回复使用
+        if not hasattr(self, '_pending_raw_msgs'):
+            self._pending_raw_msgs = {}
+        self._pending_raw_msgs[raw_user] = msg
+
+        # 3. 2 秒超时：如果文字还没到，按纯图片处理
+        async def _timeout_process():
+            await asyncio.sleep(2.0)
+            pending = self._pending_images.pop(raw_user, None)
+            raw = self._pending_raw_msgs.pop(raw_user, None)
+            if pending and raw:
+                image_path, _ = pending
+                await self._process_image_with_text(raw, image_path, "")
+
+        asyncio.create_task(_timeout_process())
+
+    async def _process_image_with_text(self, msg, image_path: str, text: str) -> None:
+        """合并处理图片+文字：下载已完成，直接走视觉识别"""
+        user_id = f"wechat_{msg.from_user}"
+        loop = asyncio.get_running_loop()
+
         try:
             if self._handler:
-                # 将图片路径和文字一起传给 handler
-                content_parts = [f"/img {image_path}"]
-                if image_text:
-                    content_parts.append(image_text)
-                content = " ".join(content_parts)
+                content = f"/img {image_path}"
+                if text:
+                    content += f" {text}"
 
                 message = AdapterMessage(
                     user_id=user_id,
@@ -321,27 +342,24 @@ class WeChatAdapter(BaseAdapter):
                         "raw_message": msg,
                         "is_image": True,
                         "image_path": image_path,
-                        "image_text": image_text,  # 图片附文
+                        "image_text": text,
                     },
                 )
                 reply = await self._handler(message)
                 if reply:
-                    # 分段发送长回复
                     await self._send_segmented(loop, msg, reply)
-                    logger.info(f"WeChat image reply to {msg.from_user}")
+                    logger.info(f"WeChat image+text reply to {msg.from_user}")
                 else:
-                    await loop.run_in_executor(
-                        None, lambda: msg.reply_text("收到啦~")
-                    )
+                    await loop.run_in_executor(None, lambda: msg.reply_text("收到啦~"))
             else:
                 await loop.run_in_executor(
-                    None, lambda: msg.reply_text(f"[收到图片，已保存至 {image_path}]")
+                    None, lambda: msg.reply_text(f"[收到图片]")
                 )
 
         except Exception as e:
-            logger.error(f"WeChat image vision failed: {e}")
+            logger.error(f"WeChat image process failed: {e}")
             try:
-                await loop.run_in_executor(None, lambda: msg.reply_text("图片识别失败了，请稍后再试~"))
+                await loop.run_in_executor(None, lambda: msg.reply_text("图片识别失败了~"))
             except Exception:
                 pass
 
@@ -390,11 +408,23 @@ class WeChatAdapter(BaseAdapter):
         """将 weixin-ilink 消息转换为 AdapterMessage 并回调
 
         使用 msg.reply_text() 直接回复，SDK 自动处理 context_token。
+
+        特殊处理：如果 2 秒内先收到图片再收到文字，合并处理。
         """
         if not self._handler:
             return
 
         loop = asyncio.get_running_loop()
+        raw_user = msg.from_user
+
+        # 检查是否有待合并的图片（图片+文字合并发送场景）
+        pending = self._pending_images.pop(raw_user, None)
+        raw_img_msg = self._pending_raw_msgs.pop(raw_user, None) if hasattr(self, '_pending_raw_msgs') else None
+        if pending and raw_img_msg:
+            image_path, _ = pending
+            logger.info(f"WeChat: merging text with pending image from {raw_user}")
+            await self._process_image_with_text(raw_img_msg, image_path, msg.text)
+            return
 
         # 显示"正在输入"状态
         try:
