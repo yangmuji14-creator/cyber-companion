@@ -421,8 +421,10 @@ class ChatPipeline:
         # 基础记忆存储
         self._memory_mgr.add_memory_sync(user_id, content)
 
-        # 后台任务 — 记忆提取 + 总结
-        self._run_background(self._extract_memory(user_id, content, reply))
+        # 后台任务 — 记忆提取（有开关 + 短消息跳过）
+        auto_extract = self._config.get("auto_extract_memory", True)
+        if auto_extract and len(content) > 10:
+            self._run_background(self._extract_memory(user_id, content, reply))
         threshold = self._config.get("summarize_threshold", 15)
         short_ms = self._chat_history.get_short_memories(user_id)
         if len(short_ms) >= threshold:

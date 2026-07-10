@@ -30,6 +30,7 @@ def load_advanced() -> dict:
         "proactive_interval_max": 180,
         "proactive_missing_days": 2,
         "proactive_min_level": 20,
+        "auto_extract_memory": False,
         "brain_enabled": True,
         "brain_max_tokens": 1000,
         "brain_debug": False,
