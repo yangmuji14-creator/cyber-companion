@@ -267,15 +267,6 @@ class ChatPipeline:
         if self._identity and not skip_user_message:
             self._identity.extract_from_message(user_id, content)
 
-        # 对话思考
-        if self._dialogue_thinker:
-            thought = await self._dialogue_thinker.think(
-                content, recent_messages=messages[-6:] if messages else None
-            )
-            self._dialogue_thinker._last_thought = thought
-        else:
-            thought = self._last_thought
-
         # 构建上下文
         time_context = get_time_context()
 
@@ -283,19 +274,6 @@ class ChatPipeline:
         memory_context = self._memory_mgr.get_context_prompt(
             user_id, limit=8, query=content
         )
-
-        # v1.3 新增上下文层
-        open_loop_context = ""
-        if self._open_loop:
-            open_loop_context = self._open_loop.get_context(user_id)
-
-        identity_context = ""
-        if self._identity:
-            identity_context = self._identity.get_context(user_id)
-
-        life_summary_context = ""
-        if self._life_summary:
-            life_summary_context = self._life_summary.get_context(user_id)
 
         # 当嵌入器不可用时，用 LLM 做二次相关性过滤作为补充
         relevant_context = ""
@@ -319,39 +297,24 @@ class ChatPipeline:
 
         _brain_active = brain_enabled and bool(brain_monologue)
 
-        # extra_instructions（v3.5.1: Brain 激活时替换冗余子系统输出）
-        extra_parts = [f"时间：{time_context}\n用户当前情绪：{emotion.emotion.value}（强度 {emotion.intensity}）"]
+        # extra_instructions — 精简到真正有价值的信息
+        extra_parts = [f"当前时间：{time_context}"]
 
-        # ---- Brain 内心独白（v3.5.1）----
+        # ---- Brain 内心独白 ----
         if _brain_active:
             extra_parts.insert(0, brain_monologue)
         else:
-            # ---- Mood 表达风格指令（v3.5）----
+            # Mood 风格指令（精简版）
             if self._mood_engine:
                 mood_state = self._mood_engine.get_mood(user_id)
-                style_instructions = MoodExpressionEngine.get_style_instructions(mood_state)
-                extra_parts.append(style_instructions)
-                energy_bar = MoodExpressionEngine.get_energy_bar(mood_state.energy)
-                extra_parts.append(f"你的精力：{energy_bar}")
-
-            # ---- 对话思考结果注入（v3.5）----
-            if self._last_thought and self._dialogue_thinker:
-                thought_instruction = DialogueThinker.format_thought_as_instruction(self._last_thought)
-                if thought_instruction:
-                    extra_parts.append(thought_instruction)
-
-            # ---- 人格上下文 ----
-            if self._personality_engine:
-                personality_context = self._personality_engine.get_personality_context(user_id)
-                extra_parts.append(personality_context)
+                style_hint = MoodExpressionEngine.get_style_instructions(mood_state)
+                if style_hint:
+                    extra_parts.append(style_hint)
 
         # 多消息提示
         if msg_count > 1:
             extra_parts.append(
-                f"【重要】用户连续发了 {msg_count} 条消息，这是用户在短时间内快速输入的碎片化想法。"
-                f"请把它们作为一个整体来理解用户的情绪和意图，"
-                f"回复时自然地回应所有内容，不要逐条回复，也不要提到「你发了很多消息」之类的话。"
-                f"像真人聊天一样，抓住重点，整体回应。"
+                f"用户一口气发了 {msg_count} 条消息。把它们当整体理解，自然地回应。"
             )
 
         # ---- 工具描述 ----
@@ -363,24 +326,15 @@ class ChatPipeline:
             extra_parts.append(tools_prompt)
 
         # 话题追踪上下文
-        topic_context = ""
-        if self._topic_tracker:
+        if self._topic_tracker and not _brain_active:
             topic_context = self._topic_tracker.get_topic_context()
+            if topic_context:
+                extra_parts.append(topic_context)
 
-        # 合并额外指令（Brain 激活时跳过冗余子系统输出）
-        if not _brain_active:
-            extra_parts.append(topic_context) if topic_context else None
-            extra_parts.append(open_loop_context) if open_loop_context else None
-            extra_parts.append(identity_context) if identity_context else None
-            extra_parts.append(life_summary_context) if life_summary_context else None
         if self._tool_registry:
             tool_block = self._tool_registry.get_prompt_block()
             if tool_block:
                 extra_parts.append(tool_block)
-
-        # ---- [Brain] 内心独白已由上方（第367行）预先处理 ----
-        # 冗余子系统输出（mood/人格/思考/话题/OpenLoop/身份/人生总结）
-        # 已在 _brain_active=True 时跳过，此处不再重复。
 
         extra_combined = "\n\n".join(filter(None, extra_parts))
 

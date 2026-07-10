@@ -27,30 +27,29 @@ class ConsistencyGuard:
     4. 知识边界：是否说了角色不应该知道的事情
     """
 
-    CHECK_PROMPT = """你是一个角色扮演检查员。检查以下 AI 回复是否符合角色设定。
+    CHECK_PROMPT = """检查这条 AI 回复是否符合角色设定。
 
-角色设定摘要：
+角色设定：
 {persona_summary}
 
-AI 的回复：
+AI 回复：
 {reply}
 
-请检查以下维度，返回 JSON：
+以 JSON 格式输出：
 {{
-    "consistent": true/false,
-    "issues": ["问题1", "问题2"],
-    "severity": "none/minor/major",
-    "suggestion": "如何修正（仅在不一致时提供）"
+    "consistent": true或false,
+    "issues": ["问题描述"],
+    "severity": "none|minor|major"
 }}
 
 检查要点：
-1. 身份一致性：是否保持了角色身份？有没有暴露自己是 AI/程序/模型？
-2. 语言风格：回复是否自然口语化？有没有像机器人一样说话？
-3. 角色设定：有没有说了不符合角色性格/年龄/背景的话？
-4. 语言：是否始终使用中文？有没有突然切换成英文？
+- 有没有说「作为AI」「作为语言模型」之类的话？
+- 有没有突然切换成英文？
+- 有没有用括号写动作描写？
+- 回复语气是否符合角色性格？
 
-如果完全一致，consistent=true，issues=[]，severity="none"。
-只返回 JSON，不要其他内容。"""
+如果没问题，consistent=true，issues=[]，severity="none"。
+只输出 JSON。"""
 
     # 破防关键词（快速检测，不需要 LLM）
     BREAK_KEYWORDS = [

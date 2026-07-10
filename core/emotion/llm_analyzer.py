@@ -235,40 +235,25 @@ class LLMEmotionAnalyzer:
     5. 输出 emotion_understanding / affection_impact / personality_shift / response_guidance
     """
 
-    ENRICHED_ANALYZE_PROMPT = """Analyze the user's emotional state and its impact on the relationship.
+    ENRICHED_ANALYZE_PROMPT = """分析用户消息的情感状态。
 
-Current relationship stage: {relationship_stage}
-Recent conversation context for context:
+最近对话上下文：
 {context}
 
-User message: {text}
+用户消息：{text}
 
-Analyze and return JSON ONLY with these fields:
+以 JSON 格式输出：
 {{
-  "emotion_understanding": "Describe the user's deep emotion — what they're really feeling below the surface",
-  "emotional_needs": ["list", "of", "what", "they", "need"],
+  "emotion_understanding": "用户此刻的真实情绪——表面之下在感受什么",
+  "emotional_needs": ["需要1", "需要2"],
   "affection_impact": {{
     "direction": "strong_positive|positive|slight_positive|neutral|slight_negative|negative|strong_negative",
     "level": "high|medium|low",
-    "reason": "Why this message affects the relationship this way"
-  }},
-  "personality_shift": {{
-    "trust": "up|down|no_change",
-    "dependence": "up|down|no_change"
-  }},
-  "response_guidance": {{
-    "tone": "suggested tone in Chinese",
-    "key_points": ["list", "of", "points"],
-    "avoid": ["things", "to", "avoid"]
+    "reason": "简要原因"
   }}
 }}
 
-IMPORTANT:
-- Do NOT output the current affection score - only the change direction and level
-- For emotionally neutral messages (factual statements), output neutral/slight direction
-- Be aware of conversation context - short messages like "ok" after an argument are meaningful
-- Return ONLY valid JSON, no other text
-"""
+只输出 JSON。"""
 
     def __init__(self, llm: BaseLLM | None = None):
         self._llm = llm
@@ -520,7 +505,6 @@ IMPORTANT:
             context = "（无历史上下文）"
 
         prompt = self.ENRICHED_ANALYZE_PROMPT.format(
-            relationship_stage="",
             context=context,
             text=text,
         )

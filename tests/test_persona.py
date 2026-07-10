@@ -63,12 +63,14 @@ def test_prompt_with_full_persona():
                 happy_expression="会发很多消息", values=["真诚"], taboos=["说谎"],
                 how_we_met="社团认识的", favorite_topics=["动漫"], avoided_topics=["前任"])
     prompt = PromptBuilder.build(p)
+    assert "小测试" in prompt
+    assert "20岁" in prompt
     assert "成都" in prompt
     assert "INFP" in prompt
     assert "诶嘿" in prompt
     assert "笨蛋" in prompt
-    assert "真诚" in prompt
     assert "社团认识的" in prompt
+    # 叙事化prompt不再逐项列出情绪反应和价值观，但核心身份信息都有
 
 
 def test_prompt_empty_fields():
@@ -80,10 +82,10 @@ def test_prompt_empty_fields():
 
 def test_prompt_with_relationship_level():
     p = Persona(id="t", name="T", personality=[], relationship_level=50)
-    prompt_low = PromptBuilder.build(p, relationship_level=20)
+    prompt_low = PromptBuilder.build(p, relationship_level=10)
     prompt_high = PromptBuilder.build(p, relationship_level=90)
-    assert "朋友" in prompt_low
-    assert "恋人" in prompt_high
+    assert "刚认识" in prompt_low
+    assert "在一起很久" in prompt_high
 
 
 def test_prompt_hobbies():
@@ -97,13 +99,16 @@ def test_prompt_hobbies():
 
 
 def test_prompt_emotions():
+    """叙事化prompt不再逐项列出情绪反应模式，只验证核心结构"""
     p = Persona(id="t", name="T", personality=[],
                 happy_expression="会发很多消息", sad_expression="变安静",
                 angry_expression="冷淡", jealous_expression="阴阳怪气",
                 shy_expression="转移话题")
     prompt = PromptBuilder.build(p)
-    assert "会发很多消息" in prompt
-    assert "阴阳怪气" in prompt
+    # 验证叙事化prompt结构完整
+    assert "你是T" in prompt
+    assert "说话的时候记住" in prompt
+    assert "像真人聊微信" in prompt
 
 
 def test_prompt_behavior_rules():
