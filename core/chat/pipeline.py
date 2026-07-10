@@ -497,7 +497,7 @@ class ChatPipeline:
             summarizer = MemorySummarizer(self._llm)
             summary = await summarizer.summarize(short_memories)
             if summary:
-                self._memory_mgr.add_memory(user_id, summary, level=4, tags=["总结"])
+                await self._memory_mgr.add_memory(user_id, summary, level=4, tags=["总结"])
                 self._chat_history.clear_short_memories(user_id)
                 logger.info(f"Short memory summarized for {user_id}")
         except Exception as e:
