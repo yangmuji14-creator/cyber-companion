@@ -12,7 +12,14 @@
       "command": "python",
       "args": ["-u", "mcp_servers/web_fetch.py"],
       "enabled": true,
-      "comment": "网页搜索 — 抓取网页 + 百度搜索"
+      "comment": "网页 — 抓取网页 + Bing搜索"
+    },
+    {
+      "name": "weather",
+      "command": "python",
+      "args": ["-u", "mcp_servers/weather.py"],
+      "enabled": true,
+      "comment": "天气 — 实时天气 + 预报 (wttr.in)"
     }
   ]
 }
