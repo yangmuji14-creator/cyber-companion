@@ -85,19 +85,18 @@ def get_llm_error_message(error: Exception) -> str:
         return "哎呀，出了点小问题，再试一次？"
 
 
-# 括号动作描写正则（匹配 (笑)（叹气）(戳你) 等）
-_BRACKET_ACTION_RE = re.compile(
-    r'[（(][^）)]{1,6}[）)]', re.UNICODE
+# 只删中文全角括号（DeepSeek 动作描写专用），不碰英文半角括号（颜文字）
+_ACTION_BRACKET_RE = re.compile(
+    r'（[^）]{1,10}）', re.UNICODE
 )
 
 
 def _strip_action_brackets(text: str) -> str:
-    """去掉回复中的括号动作描写，如 (笑)（叹气）(戳你)"""
-    stripped = _BRACKET_ACTION_RE.sub("", text)
-    # 清理多余空格
+    """去掉中文全角括号的动作描写（笑）（叹气），保留英文半角颜文字 (≧▽≦)"""
+    stripped = _ACTION_BRACKET_RE.sub("", text)
     stripped = re.sub(r"  +", " ", stripped)
     stripped = stripped.strip()
-    return stripped if stripped else text  # 全删光了就保留原文
+    return stripped if stripped else text
 
 
 # ========== ChatPipeline ==========
