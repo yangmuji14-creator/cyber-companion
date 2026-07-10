@@ -19,16 +19,14 @@ from pathlib import Path
 from loguru import logger
 
 from core.emotion import EmotionEnhancer, MoodExpressionEngine
-from core.dialogue import DialogueThinker, PersonaConsistencyChecker, ConsistencyGuard
+from core.dialogue import PersonaConsistencyChecker, ConsistencyGuard
 from core.memory import MemorySummarizer
-from core.multimodal import StickerReplier
 from core.persona import PromptBuilder
-from core.social.relationship import RelationshipEvolution
 from core.social.relationship.events import RelationshipEventTracker
 from core.persona.drift_monitor import PersonaDriftMonitor
 from core.social.affection.storage import UnifiedAffectionStorage
 from core.brain import BrainCoordinator
-from core.chat.tool_handler import parse_tool_call, build_tools_prompt, call_llm_with_tools
+from core.chat.tool_handler import build_tools_prompt, call_llm_with_tools
 from core.chat.post_process import PostProcessOrchestrator
 
 
