@@ -12,6 +12,7 @@
 """
 
 import asyncio
+import re
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -82,6 +83,21 @@ def get_llm_error_message(error: Exception) -> str:
         return "网络好像断了，检查一下网络连接~"
     else:
         return "哎呀，出了点小问题，再试一次？"
+
+
+# 括号动作描写正则（匹配 (笑)（叹气）(戳你) 等）
+_BRACKET_ACTION_RE = re.compile(
+    r'[（(][^）)]{1,6}[）)]', re.UNICODE
+)
+
+
+def _strip_action_brackets(text: str) -> str:
+    """去掉回复中的括号动作描写，如 (笑)（叹气）(戳你)"""
+    stripped = _BRACKET_ACTION_RE.sub("", text)
+    # 清理多余空格
+    stripped = re.sub(r"  +", " ", stripped)
+    stripped = stripped.strip()
+    return stripped if stripped else text  # 全删光了就保留原文
 
 
 # ========== ChatPipeline ==========
@@ -186,6 +202,7 @@ class ChatPipeline:
                 relationship_level=current_level,
             )
             reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
+            reply = _strip_action_brackets(reply)
             return reply, current_level
 
         # 首次使用初始化 LLM 情感分析器
@@ -362,6 +379,9 @@ class ChatPipeline:
         reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
         if reply.startswith(("模型太忙了", "API key", "网络", "哎呀")):
             return reply, rel_level
+
+        # 去掉括号动作描写（DeepSeek 顽固输出，prompt 约束不够用）
+        reply = _strip_action_brackets(reply)
 
         # ---- v1.2：人设一致性检查 ----
         try:
