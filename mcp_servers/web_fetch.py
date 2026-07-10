@@ -62,20 +62,19 @@ def fetch(args):
         return f"抓取失败: {str(e)[:200]}"
 
 def search(args):
-    """简单的百度搜索（提取标题和摘要）"""
+    """Bing 搜索"""
     keyword = args.get("keyword", "")
     if not keyword: return "请提供关键词"
     try:
         q = urllib.parse.quote(keyword)
-        url = f"https://www.baidu.com/s?wd={q}"
+        url = f"https://www.bing.com/search?q={q}&mkt=zh-CN"
         req = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         })
         with urllib.request.urlopen(req, timeout=10) as resp:
             html = resp.read().decode("utf-8", errors="replace")
-            # 提取搜索结果
             results = []
-            for m in re.finditer(r'<h3[^>]*>(.*?)</h3>', html, re.DOTALL):
+            for m in re.finditer(r'<li class="b_algo"[^>]*>.*?<h2[^>]*>.*?<a[^>]*>(.*?)</a>', html, re.DOTALL):
                 title = re.sub(r"<[^>]+>", "", m.group(1)).strip()
                 if title and len(title) > 3:
                     results.append(title)
