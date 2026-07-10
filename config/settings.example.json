@@ -6,7 +6,7 @@
       "provider": "deepseek",
       "model_name": "deepseek-chat",
       "max_tokens": 4096,
-      "temperature": 0.8
+      "temperature": 1.0
     }
   },
   "advanced": {

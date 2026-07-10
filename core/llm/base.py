@@ -40,8 +40,10 @@ class BaseLLM(ABC):
         api_key: str,
         base_url: str | None = None,
         max_tokens: int = 2048,
-        temperature: float = 0.8,
+        temperature: float = 1.0,
         max_retries: int = 2,
+        presence_penalty: float = 0.3,   # 减少重复模式（如括号动作描写）
+        frequency_penalty: float = 0.3,  # 同上
     ):
         self.model_name = model_name
         self.api_key = api_key
@@ -49,6 +51,8 @@ class BaseLLM(ABC):
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.max_retries = max_retries
+        self.presence_penalty = presence_penalty
+        self.frequency_penalty = frequency_penalty
 
     @staticmethod
     def _is_retryable(error: Exception) -> bool:
@@ -132,6 +136,8 @@ class BaseLLM(ABC):
                 messages=full_messages,
                 max_tokens=kwargs.pop("max_tokens", self.max_tokens),
                 temperature=kwargs.pop("temperature", self.temperature),
+                presence_penalty=kwargs.pop("presence_penalty", self.presence_penalty),
+                frequency_penalty=kwargs.pop("frequency_penalty", self.frequency_penalty),
                 api_key=_key,
                 base_url=self.base_url,
                 **kwargs,
@@ -201,6 +207,8 @@ class BaseLLM(ABC):
                     messages=full_messages,
                     max_tokens=kwargs.pop("max_tokens", self.max_tokens),
                     temperature=kwargs.pop("temperature", self.temperature),
+                    presence_penalty=kwargs.pop("presence_penalty", self.presence_penalty),
+                    frequency_penalty=kwargs.pop("frequency_penalty", self.frequency_penalty),
                     api_key=_key,
                     base_url=self.base_url,
                     stream=True,

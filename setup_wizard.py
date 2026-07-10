@@ -878,7 +878,7 @@ def run_setup():
         "model_name": model_id,
         "base_url": info.get("base_url", ""),
         "max_tokens": 4096,
-        "temperature": 0.8,
+                "temperature": 1.0,
     }
 
     adv = settings.get("advanced", {})

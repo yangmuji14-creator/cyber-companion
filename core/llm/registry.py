@@ -88,8 +88,10 @@ class LLMRegistry:
             api_key=api_key,
             base_url=base_url,
             max_tokens=cfg.get("max_tokens", 2048),
-            temperature=cfg.get("temperature", 0.8),
+            temperature=cfg.get("temperature", 1.0),
             max_retries=max_retries,
+            presence_penalty=cfg.get("presence_penalty", 0.3),
+            frequency_penalty=cfg.get("frequency_penalty", 0.3),
         )
         self._models[name] = llm
         logger.debug(f"Registered model: {name} ({provider}/{model_name})")
