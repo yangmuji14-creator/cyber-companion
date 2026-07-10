@@ -24,14 +24,20 @@ python main.py
 
 ---
 
-## 新功能（v3.4）
+## 新功能（v4.1）
 
-### 🔌 接入 MCP 工具
+### 🔌 内置 MCP 工具
 
-1. 复制配置模板：`cp config/mcp_servers.example.json config/mcp_servers.json`
-2. 编辑 `mcp_servers.json`，将想启用的 Server 的 `"enabled"` 改为 `true`
-3. 启动后 AI 可自动发现并调用 MCP 工具
-4. 输入 `/tools` 查看可用工具列表
+启动后即可使用以下 MCP 工具（无需额外配置）：
+
+| 工具 | 功能 |
+|---|---|
+| `get_weather` | 天气查询（wttr.in，免费） |
+| `fetch` / `search` | 网页抓取 / Bing 搜索 |
+| `get_datetime` / `random_number` | 日期时间 / 随机数 |
+| `read_text_file` | 文件读取（安全白名单） |
+
+输入 `/tools` 查看完整工具列表。
 
 ### 📷 图片识别
 
@@ -77,7 +83,10 @@ A: 检查 Python 版本（3.11+），重新运行 `install.py`
 A: 确认已安装 ClawBot 插件，网络正常
 
 **Q: MCP 工具不显示？**
-A: 检查 `config/mcp_servers.json` 是否存在且正确配置，确保 Server 命令可执行
+A: 检查 `config/mcp_servers.json` 是否存在且正确配置，确保 Server 的命令可执行
+
+**Q: 安全吗？**
+A: MCP 文件读取有路径白名单限制，网页抓取有 SSRF 内网防护，仅允许安全目录和数据格式
 
 **Q: 图片识别失败？**
 A: 如果使用 DeepSeek 等文本模型，需要在 `settings.json` 配置视觉降级模型

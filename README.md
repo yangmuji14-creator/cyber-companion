@@ -1,4 +1,4 @@
-# 🎀 赛博伴侣 — Cyber Companion v3.4
+# 🎀 赛博伴侣 — Cyber Companion v4.1
 
 纯终端 AI 伴侣聊天机器人。支持 **MCP 工具扩展**、**双路径图片识别**、语义记忆、情感分析、30+ 字段人设、动态亲密度、持续性情绪系统、内心独白大脑、多平台接入。
 
@@ -34,18 +34,23 @@ python main.py
 | Kimi | moonshot-v1-8k | 长上下文 |
 | 智谱 | glm-4-flash | 免费额度 |
 
-### 🔌 MCP 工具系统（v3.4 新增）
+### 🔌 MCP 工具系统
 
-连接外部 MCP (Model Context Protocol) Server，让 AI 可调用文件系统、网页抓取、数据库查询等工具：
+连接外部 MCP (Model Context Protocol) Server，内置三个 Server：
+
+| Server | 功能 |
+|---|---|
+| `system_tools` | 日期时间 / 字数统计 / 随机数 / 文件读取（安全白名单） |
+| `web_fetch` | 网页抓取（SSRF 防护）+ Bing 搜索 |
+| `weather` | 天气查询 + 预报（wttr.in，免费无需 API Key） |
 
 - **协议兼容** — JSON-RPC 2.0 over stdio，支持 initialize / tools/list / tools/call
 - **稳定可靠** — 指数退避重连、分级超时、心跳监控、16MB 缓冲区保护
 - **冲突处理** — 多 Server 同名工具自动加命名空间前缀
-- **零依赖** — 纯 Python stdlib 实现，无需额外安装
+- **安全加固（v4.1）** — 文件读取路径白名单 + SSRF 内网防护
+- 配置：`config/mcp_servers.json`
 
-配置：编辑 `config/mcp_servers.json`（参考 `mcp_servers.example.json`）
-
-### 📷 图片识别（v3.4 新增）
+### 📷 图片识别
 
 两种策略，自动切换：
 
@@ -54,7 +59,9 @@ python main.py
 | 多模态（GPT-4o / Claude / Gemini） | **直传** | 图片 → 主模型 → 回复 |
 | 纯文本（DeepSeek / GPT-3.5） | **降级** | 图片 → 视觉模型 → 描述文字 → 主模型 → 回复 |
 
-降级方案的视觉模型由用户自行配置：`settings.json` → `advanced.vision_model`
+- 30+ 模型自动多模态检测
+- 微信图片自动识别：收到图片 → 视觉模型 → 主模型 → 回复
+- 配置：`settings.json → advanced.vision_model`
 
 ### 🧠 语义记忆
 
@@ -82,17 +89,18 @@ AI 在回复前自主进行「内心思考」：
 - SQLite 持久化，边际递减 + 自然衰减
 - 人格联动：亲密度变化影响人格维度
 
-### 🛠️ 内置工具
+### 🛠️ 内置工具 + MCP 扩展
 
-AI 可调用工具获取实时信息：
+| 工具 | 来源 | 功能 |
+|---|---|---|
+| `get_current_time` | 内置 | 当前时间 / 日期 |
+| `calculate` | 内置 | 数学计算 |
+| `get_weather` | MCP | 天气查询（wttr.in） |
+| `fetch` / `search` | MCP | 网页抓取 / Bing 搜索 |
+| `read_text_file` | MCP | 文件读取（安全白名单） |
+| `get_datetime` / `random_number` | MCP | 日期 / 随机数 |
 
-| 工具 | 功能 |
-|---|---|
-| `get_current_time` | 当前时间 / 日期 |
-| `calculate` | 数学计算 |
-| `get_weather` | 天气查询 |
-
-MCP 工具与内置工具统一在 `【工具调用：xxx()】` 格式下调用。
+MCP 与内置工具统一在 `【工具调用：xxx()】` 格式下调用。
 
 ### 🎀 30+ 字段人设
 
@@ -172,8 +180,13 @@ cyber-companion/
 ├── adapters/               # 平台适配器（CLI/微信/API）
 │   └── debounce.py         # 消息去抖（v3.4 提取）
 ├── plugins/                # 插件系统
+├── mcp_servers/            # MCP 工具 Server（v3.4）
+│   ├── system_tools.py     #   系统工具（日期/文件/随机数）
+│   ├── web_fetch.py        #   网页抓取+搜索（SSRF 防护）
+│   └── weather.py          #   天气查询（wttr.in）
+├── plugins/                # 插件系统
 ├── tools/                  # 开发工具
-├── tests/                  # 测试（390 tests, v3.4）
+├── tests/                  # 测试（395 tests, v4.1）
 ├── setup_wizard.py         # 配置向导
 ├── install.py              # 环境安装
 └── config/                 # 用户配置（不进 git）
@@ -213,18 +226,23 @@ cyber-companion/
 ## 测试
 
 ```bash
-# 全部测试
+# 全部测试（395 tests）
 pytest tests -v
 
 # 集成连通性
 pytest tests/test_integration_connectivity.py -v
 
-# 稳定性测试
+# 稳定性 + MCP 测试
 pytest tests/test_stability.py -v
+
+# 300 轮对话压测 + MCP 安全验证
+pytest tests/test_stress_300_conversations.py -v
 
 # 大脑自测
 python tools/brain_self_test.py
 ```
+
+当前测试状态：**395/395 全部通过**
 
 ---
 
