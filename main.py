@@ -134,12 +134,16 @@ def main():
     parser = argparse.ArgumentParser(description="Cyber Girlfriend")
     parser.add_argument(
         "command", nargs="?", default="run",
-        choices=["setup", "run", "wechat", "import-skill"],
-        help="setup=配置向导, run=启动（默认）, wechat=配置微信, import-skill=导入人设",
+        choices=["setup", "run", "wechat", "import-skill", "import-chat"],
+        help="setup=配置向导, run=启动（默认）, wechat=配置微信, import-skill=导入人设, import-chat=导入聊天记录",
     )
     parser.add_argument(
         "path", nargs="?",
-        help="import-skill 时的文件路径",
+        help="import-skill 或 import-chat 时的文件路径",
+    )
+    parser.add_argument(
+        "--name", "-n", default="",
+        help="import-chat 时目标发言者的名字",
     )
     args = parser.parse_args()
 
@@ -157,6 +161,10 @@ def main():
 
     if args.command == "import-skill":
         _import_skill_cli(args.path)
+        return
+
+    if args.command == "import-chat":
+        _import_chat_cli(args.path, args.name)
         return
 
     # ── run（默认） ──
@@ -213,6 +221,32 @@ def _import_skill_cli(path_arg: str | None):
     """独立的 ex-skill 人设导入命令（需要 LLM 已配置）"""
     from import_exskill import run_import
     run_import(path_arg)
+
+
+# ========== 导入聊天记录 ==========
+
+def _import_chat_cli(chat_path: str | None, target_name: str):
+    """从聊天记录导入人设、风格和记忆"""
+    import asyncio
+    from import_chat import run_import
+
+    if not chat_path:
+        print("\n  用法: python main.py import-chat <聊天记录文件> --name <目标名字>")
+        print('  示例: python main.py import-chat chat.txt --name 张三')
+        return
+
+    if not target_name:
+        target_name = input("请输入目标发言者的名字: ").strip()
+        if not target_name:
+            print("  ❌ 必须指定目标名字")
+            return
+
+    try:
+        asyncio.run(run_import(chat_path, target_name))
+    except KeyboardInterrupt:
+        print("\n\n  已取消\n")
+    except Exception as e:
+        print(f"\n  ❌ 导入失败: {e}")
 
 
 if __name__ == "__main__":
