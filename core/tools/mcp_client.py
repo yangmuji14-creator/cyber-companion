@@ -34,24 +34,47 @@ from loguru import logger
 
 @dataclass
 class MCPConfig:
-    """MCP Server 配置"""
+    """MCP Server 配置 — 对齐官方 StdioServerParameters"""
     name: str
     command: str
     args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     enabled: bool = True
 
+    # 进程控制
+    cwd: str = ""                         # 工作目录
+    encoding: str = "utf-8"               # 通信编码
+    encoding_errors: str = "replace"       # 编码错误处理
+
     # 连接策略
     auto_reconnect: bool = True
-    max_reconnect_attempts: int = 10              # 最大重连次数（-1=无限）
-    reconnect_base_delay: float = 1.0             # 初始退避延迟（秒）
-    reconnect_max_delay: float = 60.0             # 最大退避延迟
-    reconnect_backoff: float = 2.0                # 退避倍数
+    max_reconnect_attempts: int = 10
+    reconnect_base_delay: float = 1.0
+    reconnect_max_delay: float = 60.0
+    reconnect_backoff: float = 2.0
 
     # 超时（秒）
-    startup_timeout: float = 30.0                 # 启动+初始化超时
-    operation_timeout: float = 60.0               # 工具调用超时
-    idle_timeout: float = 300.0                   # 空闲超时（无请求即断开）
+    startup_timeout: float = 30.0
+    operation_timeout: float = 60.0
+    idle_timeout: float = 300.0
+
+
+# ── 安全环境变量继承（对齐官方 MCP SDK）──
+_SAFE_ENV_VARS = {
+    "PATH", "HOME", "USER", "USERPROFILE", "TMP", "TEMP", "TMPDIR",
+    "SYSTEMROOT", "APPDATA", "LOCALAPPDATA",
+    "LANG", "LC_ALL", "PYTHONPATH", "NODE_PATH", "JAVA_HOME",
+}
+
+
+def _safe_environment() -> dict[str, str]:
+    """返回可安全继承的环境变量（对齐 get_default_environment）"""
+    env = {}
+    for key in _SAFE_ENV_VARS:
+        value = os.environ.get(key)
+        if value:
+            env[key] = value
+    return env
 
 
 class MCPState(Enum):
@@ -202,20 +225,27 @@ class MCPClient:
     # ── 进程管理 ──
 
     async def _spawn_process(self) -> None:
-        """启动子进程"""
-        env = os.environ.copy()
+        """启动子进程 — 安全环境继承 + cwd 支持"""
+        env = _safe_environment()
         env.update(self.config.env)
+
+        popen_kwargs = {
+            "stdin": subprocess.PIPE,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "env": env,
+            "text": False,
+            "bufsize": 0,
+        }
+        if self.config.cwd:
+            popen_kwargs["cwd"] = self.config.cwd
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
         try:
             self._process = subprocess.Popen(
                 [self.config.command] + self.config.args,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=env,
-                text=False,
-                bufsize=0,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                **popen_kwargs,
             )
 
             # 短暂等待进程启动
