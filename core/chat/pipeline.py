@@ -356,8 +356,12 @@ class ChatPipeline:
         )
         self._last_system_prompt = system_prompt
 
-        # LLM 调用（含工具循环）
-        reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
+        # LLM 调用（含工具循环 + 错误隔离）
+        try:
+            reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
+        except Exception as e:
+            logger.error(f"Main LLM call failed: {e}")
+            reply = get_llm_error_message(e)
         if reply.startswith(("模型太忙了", "API key", "网络", "哎呀")):
             return reply, rel_level
 

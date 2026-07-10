@@ -36,8 +36,10 @@ class MemoryStorage:
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._db_path = self._data_dir / "memories.db"
         self._local = threading.local()
+        self._write_counter = 0
         self._init_db()
         self._migrate_from_json()
+        self._verify_integrity()
 
     # ---- 连接管理 ----
 
@@ -157,6 +159,25 @@ class MemoryStorage:
         """添加单条记忆"""
         self._insert(memory, user_id)
         self._conn.commit()
+        self._maybe_checkpoint()
+
+    def _maybe_checkpoint(self):
+        """每 100 次写入触发一次 WAL 检点，防止 WAL 文件无限增长"""
+        self._write_counter += 1
+        if self._write_counter % 100 == 0:
+            try:
+                self._conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            except Exception:
+                pass
+
+    def _verify_integrity(self):
+        """数据库完整性检查（启动时运行）"""
+        try:
+            result = self._conn.execute("PRAGMA integrity_check").fetchone()
+            if result and result[0] != "ok":
+                logger.warning(f"DB integrity check: {result[0]}")
+        except Exception as e:
+            logger.warning(f"DB integrity check failed: {e}")
 
     def update(self, user_id: str, memory: Memory) -> None:
         """更新单条记忆"""

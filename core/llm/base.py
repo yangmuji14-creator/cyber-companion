@@ -1,11 +1,11 @@
-"""LLM 统一接口定义"""
+"""LLM 统一接口定义 — v4.1 hardened"""
 
 import asyncio
 import os
+import random
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import litellm
@@ -14,7 +14,7 @@ from loguru import logger
 # 可重试的 HTTP 状态码
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 # 不可重试的错误关键词（永久性错误）
-_NON_RETRYABLE_KEYWORDS = {"auth", "401", "403", "api_key", "invalid_request"}
+_NON_RETRYABLE_KEYWORDS = {"auth", "401", "403", "api_key", "invalid_request", "insufficient_quota"}
 
 
 @dataclass
@@ -58,28 +58,16 @@ class BaseLLM(ABC):
     def _is_retryable(error: Exception) -> bool:
         """判断错误是否可重试（网络/超时/限流/服务端错误）"""
         error_str = str(error).lower()
-        # 永久性错误不重试
         for kw in _NON_RETRYABLE_KEYWORDS:
             if kw in error_str:
                 return False
-        # 可重试的错误
         retryable_keywords = {"timeout", "connection", "connect", "rate", "429",
-                              "500", "502", "503", "504", "eof", "reset"}
+                              "500", "502", "503", "504", "eof", "reset",
+                              "overloaded", "server error", "try again"}
         return any(kw in error_str for kw in retryable_keywords)
 
     async def _retry(self, coro_factory, operation_name: str):
-        """带指数退避的重试包装器
-
-        Args:
-            coro_factory: 无参数的协程工厂函数（每次重试创建新协程）
-            operation_name: 操作名称（用于日志）
-
-        Returns:
-            协程执行结果
-
-        Raises:
-            最后一次重试仍然失败时抛出原始异常
-        """
+        """带指数退避 + 随机抖动的重试包装器"""
         last_error = None
         for attempt in range(self.max_retries + 1):
             try:
@@ -87,15 +75,35 @@ class BaseLLM(ABC):
             except Exception as e:
                 last_error = e
                 if attempt < self.max_retries and self._is_retryable(e):
-                    delay = 1.0 * (2 ** attempt)  # 1s, 2s
+                    # 指数退避 + 随机抖动（避免惊群效应）
+                    base_delay = 1.0 * (2 ** attempt)
+                    jitter = random.uniform(0, base_delay * 0.5)
+                    delay = base_delay + jitter
                     logger.warning(
                         f"{operation_name} failed (attempt {attempt + 1}/{self.max_retries + 1}): {e}. "
-                        f"Retrying in {delay:.0f}s..."
+                        f"Retrying in {delay:.1f}s..."
                     )
                     await asyncio.sleep(delay)
                 else:
                     break
         raise last_error
+
+    def _resolve_api_key(self, model_id: str) -> str:
+        """解析 API key：实例属性 > 环境变量"""
+        if self.api_key:
+            return self.api_key
+        prefix = model_id.split("/")[0].upper()
+        return os.environ.get(f"{prefix}_API_KEY", "")
+
+    def _litellm_kwargs(self, kwargs: dict) -> dict:
+        """构建 litellm 参数，用 get() 避免 pop() 副作用"""
+        return {
+            "max_tokens": kwargs.get("max_tokens", self.max_tokens),
+            "temperature": kwargs.get("temperature", self.temperature),
+            "presence_penalty": kwargs.get("presence_penalty", self.presence_penalty),
+            "frequency_penalty": kwargs.get("frequency_penalty", self.frequency_penalty),
+            "timeout": kwargs.get("timeout", 120),  # 默认 120s 超时
+        }
 
     @abstractmethod
     def _build_model_id(self) -> str:
@@ -127,20 +135,13 @@ class BaseLLM(ABC):
         logger.debug(f"Calling {model_id} with {len(full_messages)} messages")
 
         async def _do_call():
-            # 每次调用重新读 env（视觉调用可能污染 os.environ）
-            _key = self.api_key
-            if not _key:
-                _key = os.environ.get(f"{self._build_model_id().split('/')[0].upper()}_API_KEY", "")
             response = await litellm.acompletion(
                 model=model_id,
                 messages=full_messages,
-                max_tokens=kwargs.pop("max_tokens", self.max_tokens),
-                temperature=kwargs.pop("temperature", self.temperature),
-                presence_penalty=kwargs.pop("presence_penalty", self.presence_penalty),
-                frequency_penalty=kwargs.pop("frequency_penalty", self.frequency_penalty),
-                api_key=_key,
+                api_key=self._resolve_api_key(model_id),
                 base_url=self.base_url,
-                **kwargs,
+                **self._litellm_kwargs(kwargs),
+                **kwargs,  # 用户自定义覆盖参数
             )
 
             content = response.choices[0].message.content or ""
@@ -205,13 +206,10 @@ class BaseLLM(ABC):
                 response = await litellm.acompletion(
                     model=model_id,
                     messages=full_messages,
-                    max_tokens=kwargs.pop("max_tokens", self.max_tokens),
-                    temperature=kwargs.pop("temperature", self.temperature),
-                    presence_penalty=kwargs.pop("presence_penalty", self.presence_penalty),
-                    frequency_penalty=kwargs.pop("frequency_penalty", self.frequency_penalty),
-                    api_key=_key,
+                    api_key=self._resolve_api_key(model_id),
                     base_url=self.base_url,
                     stream=True,
+                    **self._litellm_kwargs(kwargs),
                     **kwargs,
                 )
 

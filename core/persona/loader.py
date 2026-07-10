@@ -8,6 +8,23 @@ from loguru import logger
 from .models import Persona
 
 
+# 新版 Persona 字段的默认值（向后兼容旧版数据）
+_PERSONA_DEFAULTS = {
+    "hard_rules": [], "emotional_patterns": {}, "relationship_behavior": {},
+    "taboos": [], "example_dialogs": [], "speaking_style": {},
+    "mbti": "", "hometown": "", "occupation": "", "daily_routine": "",
+    "appearance": "", "birthday": "", "catchphrases": [], "hobbies": [],
+    "music_taste": "", "food_preferences": "", "nickname_for_user": "",
+}
+
+
+def _ensure_defaults(data: dict) -> None:
+    """为旧版 Persona 数据填充缺失的新字段默认值"""
+    for key, default in _PERSONA_DEFAULTS.items():
+        if key not in data:
+            data[key] = default
+
+
 class PersonaLoader:
     """人设加载器"""
 
@@ -24,6 +41,7 @@ class PersonaLoader:
             with open(self._config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             for p_data in data.get("personas", []):
+                _ensure_defaults(p_data)
                 persona = Persona.from_dict(p_data)
                 self._personas[persona.id] = persona
             logger.info(f"Loaded {len(self._personas)} personas: {list(self._personas.keys())}")
