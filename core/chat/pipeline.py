@@ -203,6 +203,7 @@ class ChatPipeline:
             self._affection_storage.apply_decay(user_id, persona_id)
 
         # ---- [MODIFIED] 情感分析（现在是 (EmotionResult, dict) 元组） ----
+        # ---- 情感分析：每条消息都经过完整 LLM 分析 ----
         emotion, enriched = await self._llm_emotion_analyzer.analyze(content)
 
         # ---- Mood 更新 ----
@@ -233,7 +234,7 @@ class ChatPipeline:
                 persona_id=persona_id,
             ) if self._relationship_tracker else 50
 
-        # ---- 对话思考（v3.5）— 在 prompt 构建前分析用户意图 ----
+        # ---- 对话思考 — 分析用户意图，但不注入冗余块到 prompt ----
         self._last_thought = None
         if self._dialogue_thinker:
             try:
@@ -271,8 +272,12 @@ class ChatPipeline:
         time_context = get_time_context()
 
         # 语义/关键词混合记忆检索
+        # 用 thinker 分析到的 topic 增强检索精度
+        memory_query = content
+        if self._last_thought and self._last_thought.get("topic"):
+            memory_query = f"{self._last_thought['topic']} {content}"
         memory_context = self._memory_mgr.get_context_prompt(
-            user_id, limit=8, query=content
+            user_id, limit=8, query=memory_query
         )
 
         # 当嵌入器不可用时，用 LLM 做二次相关性过滤作为补充
@@ -299,6 +304,12 @@ class ChatPipeline:
 
         # extra_instructions — 精简到真正有价值的信息
         extra_parts = [f"当前时间：{time_context}"]
+
+        # ---- 对话思考：仅注入一行意图提示（非整段分析）----
+        if self._last_thought and not _brain_active:
+            intent = self._last_thought.get("intent", "")
+            if intent in ("撒娇", "抱怨", "倾诉", "表白"):
+                extra_parts.append(f"对方似乎在{intent}，注意语气。")
 
         # ---- Brain 内心独白 ----
         if _brain_active:
