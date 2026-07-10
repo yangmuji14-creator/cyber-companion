@@ -9,8 +9,6 @@
 - 检查失败时静默通过，不阻塞对话
 """
 
-import json
-import re
 from loguru import logger
 
 from core.utils import parse_json_response

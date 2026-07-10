@@ -6,7 +6,6 @@
 """
 
 import re
-import json
 from loguru import logger
 
 from core.utils import parse_json_response

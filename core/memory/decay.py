@@ -17,9 +17,7 @@
 - 自动标记 archived = True
 """
 
-import math
-from datetime import datetime, timedelta
-from typing import Callable
+from datetime import datetime
 
 from loguru import logger
 

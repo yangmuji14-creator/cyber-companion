@@ -1,6 +1,5 @@
 """情感分析器"""
 
-import re
 from enum import Enum
 from dataclasses import dataclass
 
