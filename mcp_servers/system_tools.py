@@ -9,27 +9,42 @@ def _send(msg):
     sys.stdout.buffer.flush()
 
 def _read():
-    h = b""; empty = 0
-    while not h.endswith(b"\r\n\r\n"):
-        c = sys.stdin.buffer.read(1)
-        if not c:
-            empty += 1
-            if empty > 500: return None
+    """读取一条 JSON-RPC 消息 — Windows pipe 兼容"""
+    header = b""
+    empty_header = 0
+    while not header.endswith(b"\r\n\r\n"):
+        chunk = sys.stdin.buffer.read(4096)
+        if not chunk:
+            empty_header += 1
+            if empty_header > 100: return None
             time.sleep(0.01); continue
-        empty = 0; h += c
+        empty_header = 0; header += chunk
+        if b"\r\n\r\n" in header:
+            header, leftover = header.split(b"\r\n\r\n", 1)
+            header += b"\r\n\r\n"
+            break
+        leftover = b""
+
     cl = 0
-    for ln in h.decode("utf-8").split("\r\n"):
+    for ln in header.decode("utf-8", errors="replace").split("\r\n"):
         if ln.lower().startswith("content-length:"):
-            cl = int(ln.split(":")[1].strip())
-    b = b""; empty = 0
-    while len(b) < cl:
-        c = sys.stdin.buffer.read(cl - len(b))
-        if not c:
-            empty += 1
-            if empty > 500: return None
+            try: cl = int(ln.split(":")[1].strip())
+            except (ValueError, IndexError): pass
+
+    if cl <= 0: return None
+
+    body = leftover if leftover else b""
+    empty_body = 0
+    while len(body) < cl:
+        need = cl - len(body)
+        chunk = sys.stdin.buffer.read(min(need, 65536))
+        if not chunk:
+            empty_body += 1
+            if empty_body > 200: return None
             time.sleep(0.01); continue
-        empty = 0; b += c
-    return json.loads(b.decode("utf-8"))
+        empty_body = 0; body += chunk
+
+    return json.loads(body.decode("utf-8", errors="replace"))
 
 def ok(rid, res):
     _send({"jsonrpc": "2.0", "id": rid, "result": res})
