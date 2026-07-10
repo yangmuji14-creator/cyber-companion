@@ -21,7 +21,7 @@ def _read():
     for ln in h.decode(errors="replace").split("\r\n"):
         if "content-length:" in ln.lower():
             try: cl = int(ln.split(":")[1].strip())
-            except: pass
+            except (ValueError, IndexError): pass
     if cl <= 0: return None
     b = lo if lo else b""; eb = 0
     while len(b) < cl:

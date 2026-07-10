@@ -1,5 +1,13 @@
-"""MCP Web Fetch Server — 网页抓取"""
-import json, sys, time, urllib.request, urllib.error, re
+"""MCP Web Fetch Server — 网页抓取 (SSRF 防护)"""
+import ipaddress
+import json
+import re
+import socket
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 def _send(msg):
     body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
@@ -24,7 +32,7 @@ def _read():
     for ln in header.decode("utf-8", errors="replace").split("\r\n"):
         if ln.lower().startswith("content-length:"):
             try: cl = int(ln.split(":")[1].strip())
-            except: pass
+            except (ValueError, IndexError): pass
     if cl <= 0: return None
     body = leftover if leftover else b""
     empty_body = 0
@@ -40,10 +48,59 @@ def _read():
 def ok(rid, res): _send({"jsonrpc": "2.0", "id": rid, "result": res})
 def err(rid, code, msg): _send({"jsonrpc": "2.0", "id": rid, "error": {"code": code, "message": msg}})
 
+# ── SSRF 防护 ──
+_BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"}
+_BLOCKED_NETS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("fc00::/7"),
+]
+
+def _is_internal_url(url: str) -> bool:
+    """检测 URL 是否指向内网地址（SSRF 防护）"""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.hostname
+        if not host:
+            return False
+        # 主机名黑名单
+        host_lower = host.lower()
+        if host_lower in _BLOCKED_HOSTS:
+            return True
+        # IP 地址黑名单
+        try:
+            addr = ipaddress.ip_address(host)
+            if addr.is_private or addr.is_loopback or addr.is_link_local:
+                return True
+            for net in _BLOCKED_NETS:
+                if addr in net:
+                    return True
+        except ValueError:
+            pass  # 不是 IP 地址，跳过
+        # DNS 解析后再次检查（防止 DNS rebinding）
+        try:
+            resolved = socket.gethostbyname(host)
+            addr = ipaddress.ip_address(resolved)
+            if addr.is_private or addr.is_loopback or addr.is_link_local:
+                return True
+            for net in _BLOCKED_NETS:
+                if addr in net:
+                    return True
+        except Exception:
+            return True  # 解析失败，fail-safe
+        return False
+    except Exception:
+        return True
+
 def fetch(args):
     url = args.get("url", "")
     if not url: return "请提供 URL"
     if not url.startswith(("http://", "https://")): url = "https://" + url
+    # SSRF 检查
+    if _is_internal_url(url):
+        return "安全限制: 不允许访问内网地址"
     try:
         req = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"

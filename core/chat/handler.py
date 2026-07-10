@@ -47,7 +47,6 @@ class ChatHandler:
         self.relationship_tracker = relationship_tracker
         self._proactive = proactive
         self._mood_manager = mood_manager
-        self._personality_engine = personality_engine
         self._tool_registry = tool_registry
         self.config = config
         self._open_loop = open_loop

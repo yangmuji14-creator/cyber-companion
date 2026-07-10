@@ -333,7 +333,10 @@ class WeChatAdapter(BaseAdapter):
             finally:
                 self._pending_vision.pop(raw_user, None)
 
-        asyncio.create_task(_do_vision())
+        task = asyncio.create_task(_do_vision())
+        task.add_done_callback(
+            lambda t: logger.error(f"WeChat vision task crashed: {t.exception()}") if t.exception() else None
+        )
 
     async def _call_vision(self, image_path: str) -> str:
         """调用视觉模型获取纯事实描述"""

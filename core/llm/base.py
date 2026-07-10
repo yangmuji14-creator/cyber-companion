@@ -200,9 +200,6 @@ class BaseLLM(ABC):
         for attempt in range(self.max_retries + 1):
             try:
                 # 每次调用重新读 env
-                _key = self.api_key
-                if not _key:
-                    _key = os.environ.get(f"{model_id.split('/')[0].upper()}_API_KEY", "")
                 response = await litellm.acompletion(
                     model=model_id,
                     messages=full_messages,

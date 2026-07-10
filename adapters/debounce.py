@@ -95,12 +95,18 @@ def _send_segments(adapter, user_id: str, reply: str) -> None:
         segments = [reply]
 
     async def _send():
-        for idx, seg in enumerate(segments):
-            await adapter.send(user_id, seg)
-            if idx < len(segments) - 1:
-                await asyncio.sleep(0.8)
+        try:
+            for idx, seg in enumerate(segments):
+                await adapter.send(user_id, seg)
+                if idx < len(segments) - 1:
+                    await asyncio.sleep(0.8)
+        except Exception as e:
+            logger.error(f"Debounce segment send failed: {e}")
 
-    asyncio.create_task(_send())
+    task = asyncio.create_task(_send())
+    task.add_done_callback(
+        lambda t: logger.error(f"Debounce send task crashed: {t.exception()}") if t.exception() else None
+    )
 
 
 class DebounceManager:

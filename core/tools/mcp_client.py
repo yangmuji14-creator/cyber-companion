@@ -611,7 +611,10 @@ class MCPClient:
         """处理服务器推送的通知"""
         if method == "notifications/tools/list_changed":
             logger.info(f"MCP [{self.config.name}]: tools list changed, refreshing...")
-            asyncio.create_task(self.list_tools())
+            task = asyncio.create_task(self.list_tools())
+            task.add_done_callback(
+                lambda t: logger.warning(f"MCP [{self.config.name}]: tool refresh failed: {t.exception()}") if t.exception() else None
+            )
         elif method == "notifications/resources/list_changed":
             logger.debug(f"MCP [{self.config.name}]: resources list changed")
         else:
