@@ -317,10 +317,10 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
                 try:
                     # 取得图片附文（用户发送图片时附带的话）
                     image_text = message.metadata.get("image_text", "") or ""
-                    # 优化后的视觉识别 prompt：让视觉模型用聊天式的口语化描述
+                    # 视觉识别：只要求纯事实描述，语气由主模型添加
                     vision_prompt = (
-                        "请用自然的口语描述这张图片的内容，像跟朋友聊天分享照片一样。"
-                        "描述画面主题、氛围和有趣的细节，不要用「图片中」「图中显示」等书面语。"
+                        "请客观描述这张图片的内容：画面里有什么、是什么场景、"
+                        "有什么值得注意的细节。只描述事实，不要加表情、语气和评价。"
                     )
                     vision_result = await app.vision_manager.process(
                         image_path, vision_prompt
