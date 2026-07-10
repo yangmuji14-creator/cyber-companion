@@ -44,7 +44,7 @@ def load_advanced() -> dict:
     }
     if path.exists():
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
             defaults.update(
                 {k: v for k, v in data.get("advanced", {}).items() if k in defaults}
             )

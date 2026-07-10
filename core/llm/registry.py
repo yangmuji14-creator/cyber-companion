@@ -36,7 +36,7 @@ class LLMRegistry:
             logger.warning(f"Config file not found: {path}")
             return
 
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:
             self._config = json.load(f)
 
         self._default_model = self._config.get("default_model")
