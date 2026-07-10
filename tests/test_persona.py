@@ -107,7 +107,7 @@ def test_prompt_emotions():
     prompt = PromptBuilder.build(p)
     # 验证叙事化prompt结构完整
     assert "你是T" in prompt
-    assert "说话的时候记住" in prompt
+    assert "NON-NEGOTIABLE RULES" in prompt
     assert "像真人聊微信" in prompt
 
 

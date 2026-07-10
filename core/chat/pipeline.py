@@ -12,7 +12,6 @@
 """
 
 import asyncio
-import re
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -83,20 +82,6 @@ def get_llm_error_message(error: Exception) -> str:
         return "网络好像断了，检查一下网络连接~"
     else:
         return "哎呀，出了点小问题，再试一次？"
-
-
-# 只删中文全角括号（DeepSeek 动作描写专用），不碰英文半角括号（颜文字）
-_ACTION_BRACKET_RE = re.compile(
-    r'（[^）]{1,10}）', re.UNICODE
-)
-
-
-def _strip_action_brackets(text: str) -> str:
-    """去掉中文全角括号的动作描写（笑）（叹气），保留英文半角颜文字 (≧▽≦)"""
-    stripped = _ACTION_BRACKET_RE.sub("", text)
-    stripped = re.sub(r"  +", " ", stripped)
-    stripped = stripped.strip()
-    return stripped if stripped else text
 
 
 # ========== ChatPipeline ==========
@@ -201,7 +186,6 @@ class ChatPipeline:
                 relationship_level=current_level,
             )
             reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
-            reply = _strip_action_brackets(reply)
             return reply, current_level
 
         # 首次使用初始化 LLM 情感分析器
@@ -378,9 +362,6 @@ class ChatPipeline:
         reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
         if reply.startswith(("模型太忙了", "API key", "网络", "哎呀")):
             return reply, rel_level
-
-        # 去掉括号动作描写（DeepSeek 顽固输出，prompt 约束不够用）
-        reply = _strip_action_brackets(reply)
 
         # ---- v1.2：人设一致性检查 ----
         try:
