@@ -425,17 +425,22 @@ async def extract_and_import_memories(
         combined = f"{other_text}\n{target_text}"
 
         prompt = (
-            f"从以下对话中提取值得长期记住的信息。"
-            f"每条记忆用第一人称写（以'{target_name}的视角'），"
-            f"像写日记一样自然。\n\n"
+            f"你是{target_name}。请以你自己的第一人称视角，"
+            f"从你和{other_speaker}的对话中，提取值得记住的事情。\n\n"
+            f"关键规则：\n"
+            f"- 用「我」来写，不要用「对方」或「{target_name}」。你是{target_name}本人\n"
+            f"- 像写日记一样：今天我和他...，我今天...，他跟我说...\n"
+            f"- 记录你的感受和想法，不只是客观事实\n\n"
             f"关注的类型：\n"
-            f"- 个人信息（喜好、习惯、计划、经历）\n"
+            f"- 个人信息（你的喜好、习惯、计划、经历）\n"
             f"- 关系时刻（约定、重要对话、情感表达）\n"
-            f"- 趣事和日常（值得回忆的小事）\n\n"
-            f"对话内容：\n{combined[:6000]}\n\n"
+            f"- 日常趣事（值得回忆的小事）\n\n"
+            f"对话内容：\n"
+            f"{other_speaker}: {other_text[:3000]}\n"
+            f"你({target_name}): {target_text[:3000]}\n\n"
             f"以 JSON 数组格式返回，每项包含 content 和 importance(1-5)：\n"
-            f'[{{"content": "日记体记忆内容", "importance": 3}}, ...]\n\n'
-            f"只输出 JSON 数组。如果没有值得记住的内容，返回 []。"
+            f'[{{"content": "日记体记忆（第一人称）", "importance": 3}}, ...]\n\n'
+            f"只输出 JSON 数组。没有值得记住的就返回 []。"
         )
 
         print(f"    批次 {batch_idx + 1}/{len(batches)}...", end=" ", flush=True)
@@ -466,37 +471,14 @@ async def extract_and_import_memories(
 
 
 def _write_memories(entries: list[dict], source_tag: str = "chat_import") -> int:
-    """将记忆条目写入记忆系统"""
-    from core.memory.manager import MemoryManager
+    """将记忆条目写入记忆系统（直接使用 MemoryStorage，避免 embedder 依赖）"""
+    from core.memory.storage import MemoryStorage
     from core.memory.models import Memory
 
-    try:
-        mgr = MemoryManager(str(ROOT / "data"))
-    except Exception:
-        # MemoryManager 在无 embedder 时会失败，降级为直接存储
-        from core.memory.storage import MemoryStorage
-        storage = MemoryStorage(str(ROOT / "data"))
-        ts = datetime.now()
-        imported = 0
-        for i, entry in enumerate(entries):
-            if not entry.get("content"):
-                continue
-            mem = Memory(
-                id=f"{source_tag}_{ts.strftime('%Y%m%d%H%M%S')}_{i:04d}",
-                content=entry["content"],
-                level=min(5, max(1, int(entry.get("importance", 3)))),
-                category="personal",
-                created_at=ts.isoformat(),
-                source=source_tag,
-                confidence=0.85,
-                tags=["聊天导入"],
-            )
-            storage.add("local_user", mem)
-            imported += 1
-        return imported
-
-    imported = 0
+    storage = MemoryStorage(str(ROOT / "data"))
     ts = datetime.now()
+    imported = 0
+
     for i, entry in enumerate(entries):
         if not entry.get("content"):
             continue
@@ -510,12 +492,10 @@ def _write_memories(entries: list[dict], source_tag: str = "chat_import") -> int
             confidence=0.85,
             tags=["聊天导入"],
         )
-        try:
-            mgr.add_memory_sync("local_user", mem)
-            imported += 1
-        except Exception:
-            continue
+        storage.add("local_user", mem)
+        imported += 1
 
+    print(f"\n  ✅ 已写入 {imported} 条记忆到 {ROOT / 'data' / 'memories.db'}")
     return imported
 
 
