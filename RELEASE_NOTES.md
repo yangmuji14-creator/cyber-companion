@@ -1,5 +1,34 @@
 # 更新日志
 
+## v4.1.1 — 安全加固 + 代码质量清理（2026-07-10）
+
+### 🔒 安全修复
+
+- **MCP `read_text_file` 路径白名单** — 新增 `_is_path_safe()` 检查：路径必须在安全目录（data/logs/config）内，扩展名限制（.txt/.md/.json/.log/.csv/.yaml），防止路径遍历攻击读取 `.env` 等敏感文件
+- **MCP `web_fetch` SSRF 防护** — 新增内网 IP 黑名单（localhost/127.0.0.1/10.0.0.0/8/172.16.0.0/12/192.168.0.0/16），DNS 解析后二次校验防止 DNS rebinding，fail-safe 策略
+- **bare except 修复** — `web_fetch.py`、`weather.py` 中 Content-Length 解析的 `except: pass` 改为 `except (ValueError, IndexError): pass`，不再吞掉 KeyboardInterrupt
+
+### 🐛 Bug 修复
+
+- **Fire-and-forget 任务错误处理** — `wechat.py:_do_vision()`、`debounce.py:_send()`、`mcp_client.py:list_tools()` 三处 `asyncio.create_task()` 添加 `add_done_callback` 错误日志，防止静默失败
+
+### 🧹 代码清理
+
+- **`core/llm/base.py`** — 删除 `chat_stream` 中未使用的 `_key` 死代码变量
+- **`core/chat/handler.py`** — 移除 `__init__` 中重复的 `self._personality_engine` 赋值
+
+### 🧪 测试
+
+- **新增 `tests/test_stress_300_conversations.py`** — 300 轮模拟对话压测，覆盖全部模块协作：
+  - 300 轮 pipeline 对话处理（记忆/情绪/亲密度/身份/开放式循环/大脑）
+  - MCP `read_text_file` 路径安全验证
+  - MCP `web_fetch` SSRF 拦截验证
+  - 50 条并发记忆写入测试
+  - 消息去抖模块集成测试
+- 总测试数：**395**（390 原有 + 5 新增），全部通过
+
+---
+
 ## v3.4.0 — 赛博伴侣 3.4（MCP 工具 + 视觉识别 + 稳定性加固）
 
 ### 🔌 MCP 工具系统（新增）
