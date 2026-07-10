@@ -51,16 +51,18 @@ class MemorySummarizer:
         prompt = f"""以第一人称写日记的方式，从以下对话中提取值得记住的事情。
 
 要求：
+- 你是对话中的「助手」，用「我」来写日记
 - 用「今天」开头，像写日记一样自然
 - 记录发生了什么、你的感受和想法
+- 把对话中的「用户」替换成「他/她」，不要出现「用户」「助手」这些词
 - 如果提到了具体时间，根据当前日期 {today_date} 推算绝对日期
 - 每条 1-2 句话，不要太长
 - 以 JSON 数组格式输出
 
 示例格式：
 [
-  {{"content": "今天对方说想吃火锅了，之前还说过想去重庆吃正宗的。", "importance": 3}},
-  {{"content": "对方告诉我生日是5月20日，要记下来。", "importance": 4}}
+  {{"content": "今天他说想吃火锅了，之前还说过想去重庆吃正宗的，我也好想去。", "importance": 3}},
+  {{"content": "他告诉我生日是5月20日，我得记下来。", "importance": 4}}
 ]"""
 
         try:
@@ -106,12 +108,13 @@ class MemorySummarizer:
             {"content": "提取的信息", "importance": 1-5, "category": "..."} 或 None
         """
         prompt = f"""分析这段对话，判断是否包含值得长期记住的信息。
+你是对话中的「助手」，用第一人称「我」来写记忆。把「用户」替换成「他/她」。
 
 用户: {user_msg}
 助手: {assistant_reply}
 
-如果包含值得记住的信息（个人信息、偏好、重要事件、情感表达等），返回 JSON：
-{{"content": "提取的信息", "importance": 1-5, "category": "personal|emotion|event|preference|relationship|opinion|other"}}
+如果包含值得记住的信息，返回 JSON：
+{{"content": "第一人称记忆内容（不要出现用户/助手字样）", "importance": 1-5, "category": "personal|emotion|event|preference|relationship|opinion|other"}}
 
 重要度说明：
 5 = 核心信息（生日、名字、关系里程碑）
