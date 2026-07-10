@@ -27,11 +27,16 @@ class PromptBuilder:
         parts = []
 
         # 0. 铁律——放在最开头，权重最高
-        parts.append(
-            "【铁律】你的回复里绝对不能出现括号。不要写（笑）、（叹气）、（歪头）、"
+        rules_prefix = [
+            "你的回复里绝对不能出现括号。不要写（笑）、（叹气）、（歪头）、"
             "（戳你）、（抿嘴）、（无奈）、（认真）、（小声）——任何括号都禁止。"
-            "你是在微信上发消息，不是在写小说或角色扮演。"
-        )
+            "你是在微信上发消息，不是在写小说或角色扮演。",
+        ]
+        # L0 硬规则（ex-skill 人设导入的最高优先级约束）
+        hard = getattr(persona, "hard_rules", None)
+        if hard:
+            rules_prefix.append("、".join(hard))
+        parts.append("【铁律】" + "；".join(rules_prefix))
 
         # 1. 核心身份叙事（最关键的段落）
         identity = PromptBuilder._build_identity_narrative(persona)
@@ -142,6 +147,19 @@ class PromptBuilder:
         if daily:
             lines.append(f"你的日常：{daily}。")
 
+        # L3 情感模式（ex-skill）
+        emo_patterns = getattr(p, "emotional_patterns", None)
+        if emo_patterns and isinstance(emo_patterns, dict):
+            parts = []
+            if "依恋类型" in emo_patterns:
+                parts.append(f"依恋类型是{emo_patterns['依恋类型']}")
+            if "压力反应" in emo_patterns:
+                parts.append(f"压力大时会{emo_patterns['压力反应']}")
+            if "爱的语言" in emo_patterns:
+                parts.append(f"表达爱的方式是{emo_patterns['爱的语言']}")
+            if parts:
+                lines.append("情感上，" + "，".join(parts) + "。")
+
         return "".join(lines)
 
     # ---------- 关系叙事 ----------
@@ -150,17 +168,17 @@ class PromptBuilder:
     def _build_relationship_narrative(p, dynamic_level=None) -> str:
         """构建自然的关系描述"""
         level = dynamic_level if dynamic_level is not None else getattr(p, "relationship_level", 50)
-        parts = []
+        rel_parts = []
 
         # 如何认识
         how_met = getattr(p, "how_we_met", "")
         if how_met:
-            parts.append(f"你们{how_met}。")
+            rel_parts.append(f"你们{how_met}。")
 
         # 第一印象
         impression = getattr(p, "first_impression", "")
         if impression:
-            parts.append(f"你对对方的第一印象：{impression}。")
+            rel_parts.append(f"你对对方的第一印象：{impression}。")
 
         # 关系动态（根据亲密度级别，用叙事而非数字描述）
         if level >= 85:
@@ -174,14 +192,30 @@ class PromptBuilder:
         else:
             desc = "你们刚认识不久。你友好但会保持一些距离，慢慢了解对方。"
 
-        parts.append(desc)
+        rel_parts.append(desc)
+
+        # L4 关系行为（ex-skill）
+        rel_behavior = getattr(p, "relationship_behavior", None)
+        if rel_behavior and isinstance(rel_behavior, dict):
+            behavior_parts = []
+            if "冲突模式" in rel_behavior:
+                behavior_parts.append(f"有矛盾时你会{rel_behavior['冲突模式']}")
+            if "边界需求" in rel_behavior:
+                behavior_parts.append(f"你需要{rel_behavior['边界需求']}")
+            if behavior_parts:
+                rel_parts.append("，" + "，".join(behavior_parts) + "。")
+
+        # 禁忌
+        taboos = getattr(p, "taboos", None)
+        if taboos:
+            rel_parts.append(f"你特别反感：{'、'.join(taboos)}。")
 
         # 对方专属昵称
         pet_names = getattr(p, "pet_names", [])
         if pet_names:
-            parts.append(f"你私下给对方起的昵称是{'、'.join(pet_names)}。")
+            rel_parts.append(f"你私下给对方起的昵称是{'、'.join(pet_names)}。")
 
-        return "你和对方的关系：" + "".join(parts)
+        return "你和对方的关系：" + "".join(rel_parts)
 
     # ---------- 核心行为准则 ----------
 
