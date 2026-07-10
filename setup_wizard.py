@@ -405,7 +405,26 @@ def _load_tag_translation() -> dict:
 def step_persona() -> dict:
     _section("👤 人设配置", 2, 4)
 
-    print("  填写人设信息（直接回车使用默认值）：\n")
+    print("  请选择人设创建方式：\n")
+    print("  [1] 问答向导 — 逐步填写各项信息（推荐新手）")
+    print("  [2] 手动填写 — 直接输入完整的系统提示词和对话示例（适合有经验）")
+    print()
+
+    while True:
+        mode = _prompt("选择方式", "1")
+        if mode in ("1", "2"):
+            break
+        print("  ⚠ 请输入 1 或 2")
+
+    if mode == "2":
+        return _manual_persona()
+    else:
+        return _wizard_persona()
+
+
+def _wizard_persona() -> dict:
+    """问答向导模式"""
+    print("\n  填写人设信息（直接回车使用默认值）：\n")
 
     name = _prompt("名字", DEFAULT_PERSONA["name"])
     age = _prompt_int("年龄", DEFAULT_PERSONA["age"])
@@ -501,6 +520,72 @@ def step_persona() -> dict:
     persona["first_impression"] = _prompt("对你的第一印象", "")
 
     return persona
+
+
+def _manual_persona() -> dict:
+    """手动填写模式 — 用户直接编辑完整的人设文本"""
+    print()
+    print("  手动填写模式：你可以直接输入系统提示词和对话示例。")
+    print("  基础信息仍然需要填写，下面的提示词框可以自由发挥。\n")
+
+    name = _prompt("名字", DEFAULT_PERSONA["name"])
+    age = _prompt_int("年龄", DEFAULT_PERSONA["age"])
+    gender = _prompt("性别", "女")
+    personality_str = _prompt("性格特征（顿号分隔）", "温柔、活泼")
+    personality = [p.strip() for p in personality_str.split("、") if p.strip()]
+    speaking_style = _prompt("说话风格（一句话描述）", DEFAULT_PERSONA["speaking_style"])
+    background = _prompt("背景描述（一句话）", DEFAULT_PERSONA["background"])
+
+    print()
+    print("  ── 以下为高级自定义（直接回车跳过）──\n")
+
+    print("  系统提示词：直接告诉 AI 它是谁、怎么说话。")
+    print("  可以写任何内容——越详细 AI 越像真人。")
+    print("  输入 END 结束（单独一行）:\n")
+    sp_lines = []
+    while True:
+        line = input("  > ")
+        if line.strip() == "END":
+            break
+        sp_lines.append(line)
+    system_prompt = "\n".join(sp_lines).strip()
+
+    print("\n  语言示例：写 3 段示范对话，让 AI 模仿你的语气。")
+    print("  格式：场景描述 → AI 可能的回复。输入 END 结束:\n")
+    example_lines = []
+    while True:
+        line = input("  > ")
+        if line.strip() == "END":
+            break
+        example_lines.append(line)
+    example_text = "\n".join(example_lines).strip()
+
+    # 解析示例对话
+    example_dialogs = []
+    if example_text:
+        # 简单解析：每行 "场景 → 回复1 / 回复2"
+        for line in example_text.split("\n"):
+            line = line.strip()
+            if "→" in line:
+                parts = line.split("→", 1)
+                scenario = parts[0].strip()
+                replies = [r.strip() for r in parts[1].split("/") if r.strip()]
+                if scenario and replies:
+                    example_dialogs.append({"scenario": scenario, "reply": replies})
+
+    return {
+        "id": "girlfriend_001",
+        "name": name,
+        "age": age,
+        "gender": gender,
+        "personality": personality,
+        "speaking_style": {"基础风格": speaking_style},
+        "background": background,
+        "system_prompt": system_prompt,
+        "example_dialogs": example_dialogs,
+        "core_memories": [],
+        "relationship_level": 50,
+    }
 
 
 # ========== 步骤 3：高级参数 ==========
