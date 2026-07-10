@@ -1,13 +1,6 @@
 {
   "servers": [
     {
-      "name": "notes",
-      "command": "python",
-      "args": ["-u", "mcp_servers/notes_server.py"],
-      "enabled": true,
-      "comment": "笔记管理 — 保存/搜索/删除笔记"
-    },
-    {
       "name": "system",
       "command": "python",
       "args": ["-u", "mcp_servers/system_tools.py"],
