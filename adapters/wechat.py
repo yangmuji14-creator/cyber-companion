@@ -80,8 +80,8 @@ class WeChatAdapter(BaseAdapter):
         self._running = False
         self._task: asyncio.Task | None = None
 
-        # 图片+文字合并缓冲：用户发图+文时 SDK 拆成两个事件，此处暂存等待合并
-        self._pending_images: dict[str, tuple[str, float]] = {}  # user_id → (path, ts)
+        # 图片识别状态：图片一到立刻启动视觉，文字到达后组合
+        self._pending_vision: dict[str, dict] = {}
 
     # ---- 生命周期 ----
 
@@ -300,27 +300,58 @@ class WeChatAdapter(BaseAdapter):
                 pass
             return
 
-        # 2. 暂存图片，等待文字到达
-        self._pending_images[raw_user] = (image_path, time.time())
+        # 2. 立刻启动视觉识别（不等文字），文字通过 _on_inbound_message 注入
+        text_event = asyncio.Event()
+        text_buffer = [""]
 
-        # 保存 raw msg，供合并时回复使用
-        if not hasattr(self, '_pending_raw_msgs'):
-            self._pending_raw_msgs = {}
-        self._pending_raw_msgs[raw_user] = msg
+        if not hasattr(self, '_pending_vision'):
+            self._pending_vision = {}
+        self._pending_vision[raw_user] = {
+            "image_path": image_path,
+            "text_event": text_event,
+            "text_buffer": text_buffer,
+            "raw_msg": msg,
+        }
 
-        # 3. 10 秒超时：如果文字还没到，按纯图片处理
-        async def _timeout_process():
-            await asyncio.sleep(10.0)
-            pending = self._pending_images.pop(raw_user, None)
-            raw = self._pending_raw_msgs.pop(raw_user, None)
-            if pending and raw:
-                image_path, _ = pending
-                await self._process_image_with_text(raw, image_path, "")
+        async def _do_vision():
+            try:
+                vision_result = await self._call_vision(image_path)
+                # 等文字到达，最多 30s
+                try:
+                    await asyncio.wait_for(text_event.wait(), timeout=30.0)
+                    combined_text = text_buffer[0]
+                except asyncio.TimeoutError:
+                    combined_text = ""
+                await self._process_image_with_text(msg, image_path, combined_text, vision_result)
+            except Exception as e:
+                logger.error(f"WeChat vision processing failed: {e}")
+                try:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, lambda: msg.reply_text("图片识别失败了~"))
+                except Exception:
+                    pass
+            finally:
+                self._pending_vision.pop(raw_user, None)
 
-        asyncio.create_task(_timeout_process())
+        asyncio.create_task(_do_vision())
 
-    async def _process_image_with_text(self, msg, image_path: str, text: str) -> None:
-        """合并处理图片+文字：下载已完成，直接走视觉识别"""
+    async def _call_vision(self, image_path: str) -> str:
+        """调用视觉模型获取纯事实描述"""
+        try:
+            from core.multimodal.vision import VisionManager
+            from core.config import load_vision_config
+            vision_config = load_vision_config()
+            if vision_config.get("model_name"):
+                vm = VisionManager(vision_config=vision_config)
+                prompt = "请客观描述图片内容：画面里有什么、什么场景、什么细节。只描述事实。"
+                return await vm.process(image_path, prompt)
+        except Exception as e:
+            logger.error(f"Vision call failed: {e}")
+        return "[图片描述失败]"
+
+    async def _process_image_with_text(self, msg, image_path: str, text: str,
+                                        vision_result: str = "") -> None:
+        """合并图片描述+文字，发给主 LLM"""
         user_id = f"wechat_{msg.from_user}"
         loop = asyncio.get_running_loop()
 
@@ -330,20 +361,24 @@ class WeChatAdapter(BaseAdapter):
                 if text:
                     content += f" {text}"
 
+                meta = {
+                    "context_token": getattr(msg, "context_token", ""),
+                    "from_user": msg.from_user,
+                    "raw_message": msg,
+                    "is_image": True,
+                    "image_path": image_path,
+                    "image_text": text,
+                }
+                if vision_result:
+                    meta["_vision_result"] = vision_result
+
                 message = AdapterMessage(
                     user_id=user_id,
                     content=content,
                     message_id=str(msg.message_id),
                     platform="wechat",
                     timestamp="",
-                    metadata={
-                        "context_token": getattr(msg, "context_token", ""),
-                        "from_user": msg.from_user,
-                        "raw_message": msg,
-                        "is_image": True,
-                        "image_path": image_path,
-                        "image_text": text,
-                    },
+                    metadata=meta,
                 )
                 reply = await self._handler(message)
                 if reply:
@@ -352,10 +387,7 @@ class WeChatAdapter(BaseAdapter):
                 else:
                     await loop.run_in_executor(None, lambda: msg.reply_text("收到啦~"))
             else:
-                await loop.run_in_executor(
-                    None, lambda: msg.reply_text(f"[收到图片]")
-                )
-
+                await loop.run_in_executor(None, lambda: msg.reply_text("[收到图片]"))
         except Exception as e:
             logger.error(f"WeChat image process failed: {e}")
             try:
@@ -417,13 +449,13 @@ class WeChatAdapter(BaseAdapter):
         loop = asyncio.get_running_loop()
         raw_user = msg.from_user
 
-        # 检查是否有待合并的图片（图片+文字合并发送场景）
-        pending = self._pending_images.pop(raw_user, None)
-        raw_img_msg = self._pending_raw_msgs.pop(raw_user, None) if hasattr(self, '_pending_raw_msgs') else None
-        if pending and raw_img_msg:
-            image_path, _ = pending
-            logger.info(f"WeChat: merging text with pending image from {raw_user}")
-            await self._process_image_with_text(raw_img_msg, image_path, msg.text)
+        # 检查是否有正在识别中的图片（图片+文字合并发送场景）
+        pending_vis = self._pending_vision.get(raw_user) if hasattr(self, '_pending_vision') else None
+        if pending_vis:
+            # 把文字注入到视觉任务的 buffer 里，触发 text_event
+            pending_vis["text_buffer"][0] = msg.text
+            pending_vis["text_event"].set()
+            logger.info(f"WeChat: text merged with pending vision for {raw_user}")
             return
 
         # 显示"正在输入"状态
