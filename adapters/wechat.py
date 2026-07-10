@@ -308,9 +308,9 @@ class WeChatAdapter(BaseAdapter):
             self._pending_raw_msgs = {}
         self._pending_raw_msgs[raw_user] = msg
 
-        # 3. 2 秒超时：如果文字还没到，按纯图片处理
+        # 3. 10 秒超时：如果文字还没到，按纯图片处理
         async def _timeout_process():
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(10.0)
             pending = self._pending_images.pop(raw_user, None)
             raw = self._pending_raw_msgs.pop(raw_user, None)
             if pending and raw:
