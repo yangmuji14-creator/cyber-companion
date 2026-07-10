@@ -191,6 +191,20 @@ class ComponentBuilder:
         unified_storage = self.build_unified_storage()
         proactive = self.build_proactive(persona_loader, memory_mgr, unified_storage, mood_manager)
 
+        # 注入 LLM 生成器到 ProactiveMessenger（用于主动消息的实时生成）
+        if registry.available_models:
+            _llm = registry.get()
+            async def _generate(system_prompt: str, user_prompt: str,
+                                max_tokens: int = 200, temperature: float = 0.95) -> str:
+                response = await _llm.chat(
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=system_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                return response.content
+            proactive.set_llm_generator(_generate)
+
         # 大脑模块
         brain = self.build_brain(
             memory_mgr=memory_mgr,
@@ -301,16 +315,22 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
             image_path = message.metadata.get("image_path", "")
             if image_path and app.vision_manager:
                 try:
+                    # 取得图片附文（用户发送图片时附带的话）
+                    image_text = message.metadata.get("image_text", "") or ""
+                    # 优化后的视觉识别 prompt：让视觉模型用聊天式的口语化描述
+                    vision_prompt = (
+                        "请用自然的口语描述这张图片的内容，像跟朋友聊天分享照片一样。"
+                        "描述画面主题、氛围和有趣的细节，不要用「图片中」「图中显示」等书面语。"
+                    )
                     vision_result = await app.vision_manager.process(
-                        image_path, "请描述这张图片的内容"
+                        image_path, vision_prompt
                     )
                     if app.vision_manager.main_is_multimodal:
-                        # 多模态模型直接回复
                         return vision_result
                     else:
-                        # 降级模式：视觉描述 + 发给主模型
+                        # 降级模式：视觉描述 + 用户文字 → 主模型生成回复
                         enhanced = app.vision_manager.build_enhanced_message(
-                            vision_result, ""
+                            vision_result, image_text
                         )
                         reply, _ = await pipeline.process(
                             message.user_id, enhanced, DEFAULT_PERSONA_ID,
@@ -318,8 +338,8 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
                         return reply
                 except Exception as e:
                     logger.error(f"Vision processing failed: {e}")
-                    return "图片识别失败，请稍后再试~"
-            return "收到图片，但视觉识别未配置~"
+                    return "图片识别失败了，请稍后再试~"
+            return "收到图片了，但视觉识别还没配置~"
 
         # 普通消息：加入去抖队列
         await debounce.add_message(message.platform, message.user_id, message.content)

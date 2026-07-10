@@ -258,9 +258,18 @@ class WeChatAdapter(BaseAdapter):
             bot_thread.join(timeout=5)
 
     async def _on_image_message(self, msg) -> None:
-        """处理微信图片消息：下载 → 视觉识别 → 回复"""
+        """处理微信图片消息：下载 → 视觉识别 → 回复
+
+        支持：
+        - 纯图片：识别后用自然语言回复
+        - 图片+文字：识别图片后结合文字一起理解
+        - 回复分段：长回复自动分段发送，模拟真人聊天节奏
+        """
         user_id = f"wechat_{msg.from_user}"
         logger.info(f"WeChat image from {msg.from_user}")
+
+        # 提取可能的附文（图片+文字一起发送的情况）
+        image_text = getattr(msg, "text", "") or getattr(msg, "caption", "") or ""
 
         # 1. 下载图片到本地
         image_dir = Path(__file__).resolve().parent.parent / "data" / "wechat_images"
@@ -269,7 +278,6 @@ class WeChatAdapter(BaseAdapter):
 
         try:
             loop = asyncio.get_running_loop()
-            # weixin-ilink: 尝试 msg.save() 或 msg.download()
             if hasattr(msg, "save"):
                 await loop.run_in_executor(None, lambda: msg.save(image_path))
             elif hasattr(msg, "download"):
@@ -292,18 +300,18 @@ class WeChatAdapter(BaseAdapter):
                 pass
             return
 
-        # 2. 视觉识别（使用 VisionManager）
+        # 2. 视觉识别 + 回复
         try:
-            # 从 app 全局获取 VisionManager（通过 handler 回调链路）
-            from core.multimodal.vision import VisionManager, is_multimodal_model
-
-            description = f"[收到图片，已保存至 {image_path}]"
-            # 尝试通过 message handler 获取 app 引用
             if self._handler:
-                # 构建消息，让主流程通过 pipeline 处理
+                # 将图片路径和文字一起传给 handler
+                content_parts = [f"/img {image_path}"]
+                if image_text:
+                    content_parts.append(image_text)
+                content = " ".join(content_parts)
+
                 message = AdapterMessage(
                     user_id=user_id,
-                    content=f"/img {image_path}",
+                    content=content,
                     message_id=str(msg.message_id),
                     platform="wechat",
                     timestamp="",
@@ -313,16 +321,22 @@ class WeChatAdapter(BaseAdapter):
                         "raw_message": msg,
                         "is_image": True,
                         "image_path": image_path,
+                        "image_text": image_text,  # 图片附文
                     },
                 )
                 reply = await self._handler(message)
                 if reply:
-                    await loop.run_in_executor(None, lambda: msg.reply_text(reply))
+                    # 分段发送长回复
+                    await self._send_segmented(loop, msg, reply)
                     logger.info(f"WeChat image reply to {msg.from_user}")
                 else:
-                    await loop.run_in_executor(None, lambda: msg.reply_text(description))
+                    await loop.run_in_executor(
+                        None, lambda: msg.reply_text("收到啦~")
+                    )
             else:
-                await loop.run_in_executor(None, lambda: msg.reply_text(description))
+                await loop.run_in_executor(
+                    None, lambda: msg.reply_text(f"[收到图片，已保存至 {image_path}]")
+                )
 
         except Exception as e:
             logger.error(f"WeChat image vision failed: {e}")
@@ -330,6 +344,47 @@ class WeChatAdapter(BaseAdapter):
                 await loop.run_in_executor(None, lambda: msg.reply_text("图片识别失败了，请稍后再试~"))
             except Exception:
                 pass
+
+    async def _send_segmented(self, loop, msg, reply: str) -> None:
+        """分段发送长回复，模拟真人聊天节奏
+
+        分段长度从 config/settings.json 读取（默认 16 字）。
+        """
+        # 读取配置的分段长度
+        max_len = 16  # 默认
+        try:
+            import json
+            from pathlib import Path
+            settings_path = Path(__file__).resolve().parent.parent / "config" / "settings.json"
+            if settings_path.exists():
+                settings = json.loads(settings_path.read_text(encoding="utf-8"))
+                max_len = settings.get("advanced", {}).get("segment_max_length", 16)
+        except Exception:
+            pass
+
+        # 短消息直接发
+        if len(reply) <= max_len:
+            await loop.run_in_executor(None, lambda: msg.reply_text(reply))
+            return
+
+        # 使用 MessageSegmenter 分段
+        try:
+            from core.emotion.expression import MessageSegmenter
+            segmented = MessageSegmenter.segment(reply, max_segment_length=max_len)
+
+            for i, seg in enumerate(segmented.segments):
+                if i == 0:
+                    await loop.run_in_executor(None, lambda s=seg: msg.reply_text(s))
+                else:
+                    try:
+                        delay = MessageSegmenter.get_typing_delay(i, segmented.total_segments)
+                    except AttributeError:
+                        delay = 1.5
+                    await asyncio.sleep(min(delay, 3.0))
+                    await loop.run_in_executor(None, lambda s=seg: msg.reply_text(s))
+        except Exception:
+            # 分段失败 → 直接发
+            await loop.run_in_executor(None, lambda: msg.reply_text(reply))
 
     async def _on_inbound_message(self, msg) -> None:
         """将 weixin-ilink 消息转换为 AdapterMessage 并回调
@@ -365,8 +420,8 @@ class WeChatAdapter(BaseAdapter):
         try:
             reply = await self._handler(message)
             if reply:
-                # 使用 SDK 的 reply_text 方法，自动处理 context_token
-                await loop.run_in_executor(None, lambda: msg.reply_text(reply))
+                # 分段发送长回复
+                await self._send_segmented(loop, msg, reply)
                 logger.info(f"WeChat reply to {msg.from_user}: {reply[:40]}...")
         except Exception as e:
             logger.error(f"WeChat handler error: {e}")

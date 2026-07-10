@@ -232,7 +232,7 @@ class VisionManager:
         messages = [{
             "role": "user",
             "content": [
-                {"type": "text", "text": user_text or "请详细描述这张图片的内容"},
+                {"type": "text", "text": user_text or "请用自然的口语描述这张图片的内容，像跟朋友聊天分享照片一样"},
                 {"type": "image_url", "image_url": {"url": data_url}},
             ],
         }]
@@ -321,22 +321,22 @@ class VisionManager:
 
         Args:
             vision_result: 视觉模型返回的图片描述
-            user_text: 用户的原始文字输入
+            user_text: 用户发送图片时附带的文字
 
         Returns:
             组合后的消息文本
         """
+        # 用户附文作为聊天上下文
+        user_part = ""
         if user_text:
-            return (
-                f"[用户发来了一张图片，以下是图片的详细描述：]\n"
-                f"{vision_result}\n\n"
-                f"[用户对这张图片的附加说明：]\n"
-                f"{user_text}\n\n"
-                f"请根据以上图片描述和用户的问题，自然地回复用户。"
-            )
-        else:
-            return (
-                f"[用户发来了一张图片，以下是图片的详细描述：]\n"
-                f"{vision_result}\n\n"
-                f"请根据以上图片描述，自然地与用户讨论这张图片。"
-            )
+            user_part = f'用户同时说：「{user_text}」\n\n'
+
+        return (
+            f'{user_part}'
+            f'用户刚刚分享了一张图片。图片内容如下：\n'
+            f'{vision_result}\n\n'
+            f'请用你的角色身份自然地回应这张图片——'
+            f'像一个真人在聊微信时看到朋友发的照片一样，'
+            f'可以评论画面内容、表达感受、或者开玩笑。'
+            f'说人话，别像机器人一样分析图片。'
+        )

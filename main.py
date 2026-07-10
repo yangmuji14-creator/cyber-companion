@@ -15,6 +15,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import sys
 
 if sys.platform == "win32":
@@ -78,9 +80,25 @@ def _check_dependencies() -> bool:
 # ========== 微信配置检测 ==========
 
 def _has_wechat_config() -> bool:
-    """检查是否已配置微信"""
+    """检查是否已配置微信且允许自动启动"""
     credentials_file = ROOT / "data" / "credentials" / "wechat.json"
-    return credentials_file.exists()
+    if not credentials_file.exists():
+        return False
+
+    # 检查 settings.json 中的 auto_start 配置（默认允许自启）
+    settings_path = CONFIG_DIR / "settings.json"
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            adapters = settings.get("advanced", {}).get("adapters", {})
+            wechat = adapters.get("wechat", {})
+            # auto_start 未设置时默认允许，兼容旧版无此配置的情况
+            if wechat.get("auto_start") is False:
+                return False
+        except Exception:
+            pass
+
+    return True
 
 
 # ========== CLI 入口 ==========
@@ -184,37 +202,9 @@ def main():
 # ========== 微信配置 ==========
 
 def _setup_wechat():
-    """配置微信"""
-    print("\n" + "=" * 40)
-    print("  微信配置向导")
-    print("=" * 40)
-    print("\n  1. 确保你已安装微信 ClawBot 插件")
-    print("  2. 准备好微信手机客户端")
-    print("\n  按回车键开始扫码登录...")
-    try:
-        input()
-    except (EOFError, KeyboardInterrupt):
-        print("\n\n  已取消\n")
-        return
-
-    try:
-        from adapters.wechat import WeChatAdapter
-        from adapters.base import AdapterConfig
-        import asyncio
-
-        adapter = WeChatAdapter()
-        asyncio.run(adapter.start())
-
-        print("\n" + "=" * 40)
-        print("  微信配置完成！")
-        print("=" * 40)
-        print("\n  以后运行 'python main.py' 会自动启动微信")
-        print("\n  按回车键退出...")
-        input()
-    except Exception as e:
-        print(f"\n  配置失败: {e}")
-        print("\n  按回车键退出...")
-        input()
+    """配置微信 — 委托给 setup_wechat.py 统一入口"""
+    from setup_wechat import run_wechat_setup
+    run_wechat_setup()
 
 
 # ========== 导入 ex-skill 人设 ==========

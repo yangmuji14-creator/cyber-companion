@@ -208,15 +208,20 @@ class ChatHandler:
 
                     # 超时 — 检查主动消息或发送累积消息
                     if not message_queue:
-                        proactive_msg = self._proactive.check_proactive_messages(
+                        trigger_type = self._proactive.check_proactive_messages(
                             user_id, self.current_persona_id
                         )
-                        if proactive_msg:
+                        if trigger_type:
                             persona_obj = self.persona_loader.get(self.current_persona_id)
                             p_name = persona_obj.name if persona_obj else "AI"
-                            print(f"\n{Colors.YELLOW}💌 {p_name} 主动找你：{Colors.RESET}")
-                            print(f"{Colors.MAGENTA}{p_name}:{Colors.RESET} {proactive_msg}")
-                            print(f"{Colors.DIM}（AI 主动消息，无需回复~）{Colors.RESET}\n")
+                            # LLM 异步生成消息内容
+                            proactive_msg = await self._proactive.generate_message(
+                                trigger_type, user_id, self.current_persona_id
+                            )
+                            if proactive_msg:
+                                print(f"\n{Colors.YELLOW}💌 {p_name} 主动找你：{Colors.RESET}")
+                                print(f"{Colors.MAGENTA}{p_name}:{Colors.RESET} {proactive_msg}")
+                                print(f"{Colors.DIM}（AI 主动消息，无需回复~）{Colors.RESET}\n")
                         continue
 
                     # 发送累积消息

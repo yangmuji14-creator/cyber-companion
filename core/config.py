@@ -18,14 +18,16 @@ def load_advanced() -> dict:
     """从 settings.json 读取高级参数，缺失项使用默认值"""
     path = CONFIG_DIR / "settings.json"
     defaults = {
-        "segment_max_length": 50,
+        "segment_max_length": 16,
         "debounce_seconds": 3,
         "summarize_threshold": 15,
         "max_retries": 2,
         "max_messages": 50,
         "proactive_enabled": True,
-        "proactive_morning": True,
-        "proactive_evening": True,
+        "proactive_active_start": 7,
+        "proactive_active_end": 23,
+        "proactive_interval_min": 30,
+        "proactive_interval_max": 180,
         "proactive_missing_days": 2,
         "proactive_min_level": 20,
         "brain_enabled": True,

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -277,7 +278,7 @@ def step_llm() -> tuple[str, str, str]:
 
     返回: (provider_key, api_key, model_id)
     """
-    _section("📡 大模型配置", 1, 3)
+    _section("📡 大模型配置", 1, 4)
 
     print("  可选的模型提供商：\n")
     keys = list(PROVIDERS.keys())
@@ -402,7 +403,7 @@ def _load_tag_translation() -> dict:
 
 
 def step_persona() -> dict:
-    _section("👤 人设配置", 2, 3)
+    _section("👤 人设配置", 2, 4)
 
     print("  填写人设信息（直接回车使用默认值）：\n")
 
@@ -505,25 +506,48 @@ def step_persona() -> dict:
 # ========== 步骤 3：高级参数 ==========
 
 def step_advanced() -> dict:
-    _section("⚙️ 高级参数", 3, 3)
+    _section("⚙️ 高级参数", 3, 4)
 
     print("  直接回车使用默认值\n")
 
     relationship = _prompt_int("初始亲密度", 50, "0-100，50=朋友，80=恋人")
-    segment_len = _prompt_int("消息分段长度（字）", 50, "超过此长度自动分段")
+    segment_len = _prompt_int("消息分段长度（字）", 16, "超过此长度自动分段发送")
     debounce = _prompt_int("去抖延迟（秒）", 3, "连续消息合并等待时间")
     summarize_threshold = _prompt_int("记忆总结阈值（组）", 15, "多少组对话后自动总结")
     brain = _prompt_yes_no("启用大脑系统（内心独白）", True)
-    proactive = _prompt_yes_no("启用主动消息（AI 主动找你聊天）", True)
 
-    return {
+    result = {
         "relationship_level": max(0, min(100, relationship)),
-        "segment_max_length": max(20, segment_len),
+        "segment_max_length": max(10, segment_len),
         "debounce_seconds": max(1, debounce),
         "summarize_threshold": max(3, summarize_threshold),
         "brain_enabled": brain,
-        "proactive_enabled": proactive,
     }
+
+    # ── 主动消息 ──
+    proactive = _prompt_yes_no("启用主动消息（AI 主动找你聊天）", True)
+    result["proactive_enabled"] = proactive
+    if proactive:
+        print()
+        start_h = _prompt_int("  活跃起始时间（点）", 7, "0-23，7=早上7点开始")
+        end_h = _prompt_int("  活跃结束时间（点）", 23, "0-24，23=晚上11点结束")
+        interval_min = _prompt_int("  最小间隔（分钟）", 30, "最少隔多久发一次")
+        interval_max = _prompt_int("  最大间隔（分钟）", 180, "最多隔多久发一次")
+        result.update({
+            "proactive_active_start": max(0, min(23, start_h)),
+            "proactive_active_end": max(1, min(24, end_h)),
+            "proactive_interval_min": max(5, interval_min),
+            "proactive_interval_max": max(interval_min, interval_max),
+        })
+    else:
+        result.update({
+            "proactive_active_start": 7,
+            "proactive_active_end": 23,
+            "proactive_interval_min": 30,
+            "proactive_interval_max": 180,
+        })
+
+    return result
 
 
 # ========== 主流程 ==========
@@ -774,7 +798,9 @@ def run_setup():
 
     adv = settings.get("advanced", {})
     for key in ["segment_max_length", "debounce_seconds", "summarize_threshold",
-                "brain_enabled", "proactive_enabled"]:
+                "brain_enabled", "proactive_enabled",
+                "proactive_active_start", "proactive_active_end",
+                "proactive_interval_min", "proactive_interval_max"]:
         if key in advanced:
             adv[key] = advanced[key]
     adv["vision_model"] = vision_model
@@ -783,6 +809,12 @@ def run_setup():
 
     # personas.json
     _save_persona(persona)
+
+    # ── 微信配置引导 ──
+    print()
+    if _prompt_yes_no("是否配置微信 Bot？（扫码登录后可通过微信聊天）", default=True):
+        from setup_wechat import run_wechat_setup
+        run_wechat_setup()
 
     # 完成
     print()
