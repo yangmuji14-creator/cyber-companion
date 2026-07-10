@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent
 
 # ---- 聊天记录解析 ----
 
-# 微信导出格式
+# 微信导出格式（两种变体）
 WECHAT_PATTERN = re.compile(
     r"^(\d{4}[-/年]\d{1,2}[-/月]\d{1,2}[日]?)\s+"
     r"(\d{1,2}:\d{2}(?::\d{2})?)\s+"
@@ -44,8 +44,33 @@ WECHAT_PATTERN = re.compile(
     r"(.+)$"
 )
 
+# 微信连续格式（每行一个发言人）
+WECHAT_LINE_PATTERN = re.compile(
+    r"^(\d{4}[-/]\d{1,2}[-/]\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)$"
+)
+
 # 简单格式
 SIMPLE_PATTERN = re.compile(r"^(.+?)[:：]\s*(.+)$")
+
+# 系统消息过滤
+SYSTEM_PATTERNS = [
+    r"^\[图片\]", r"^\[文件\]", r"^\[语音\]", r"^\[视频\]",
+    r"^\[表情\]", r"^\[位置\]", r"^\[名片\]", r"^\[链接\]",
+    r"^\[红包\]", r"^\[转账\]", r"^\[小程序\]", r"^\[动画表情\]",
+    r"^\[撤回了一条消息\]", r"^\[你撤回了一条消息\]",
+    r"^<msg>", r"^<img", r"^<video", r"^<audio",
+    r"^\[聊天记录\]", r"^\[分享\]", r"^\[引用\]",
+    r"^以上是打招呼的内容", r"^你已添加了",
+    r"^\d{4}年\d{1,2}月\d{1,2}日",  # 日期分隔线
+]
+
+
+def _is_system_message(content: str) -> bool:
+    """判断是否为系统消息/媒体占位符"""
+    for pattern in SYSTEM_PATTERNS:
+        if re.match(pattern, content.strip()):
+            return True
+    return False
 
 
 def parse_chat_file(file_path: str | Path) -> list[dict]:
@@ -73,26 +98,37 @@ def _parse_lines(text: str) -> list[dict]:
         try:
             data = json.loads(text)
             if isinstance(data, list):
-                return [
-                    {
+                result = []
+                for m in data:
+                    content = m.get("content", m.get("text", ""))
+                    if _is_system_message(content):
+                        continue
+                    result.append({
                         "speaker": m.get("role", m.get("speaker", m.get("name", "?"))),
-                        "content": m.get("content", m.get("text", "")),
+                        "content": content,
                         "time": m.get("timestamp", m.get("time", "")),
-                    }
-                    for m in data
-                ]
+                    })
+                return result
         except json.JSONDecodeError:
             pass
 
+    # 检测格式：试匹配第一行看是哪种
+    is_wechat_colon = bool(WECHAT_PATTERN.match(lines[0])) if lines else False
+    is_wechat_line = bool(WECHAT_LINE_PATTERN.match(lines[0])) if lines else False
+    is_simple = not is_wechat_colon and not is_wechat_line
+
     messages = []
     current_msg = None
+    current_speaker = None  # 用于微信连续格式
 
     for line in lines:
         line = line.strip()
-        if not line:
+        if not line or _is_system_message(line):
             continue
 
-        # 尝试微信格式
+        matched = False
+
+        # 微信格式：时间 + 发送者: 内容
         m = WECHAT_PATTERN.match(line)
         if m:
             if current_msg:
@@ -102,22 +138,40 @@ def _parse_lines(text: str) -> list[dict]:
                 "content": m.group(4).strip(),
                 "time": f"{m.group(1)} {m.group(2)}",
             }
-            continue
+            matched = True
 
-        # 尝试简单格式
-        m = SIMPLE_PATTERN.match(line)
-        if m:
-            if current_msg:
-                messages.append(current_msg)
+        # 微信连续格式：时间 + 发送者名（消息在下一行）
+        if not matched:
+            m = WECHAT_LINE_PATTERN.match(line)
+            if m:
+                current_speaker = m.group(2).strip()
+                matched = True
+                continue
+
+        # 简单格式：名字: 消息
+        if not matched:
+            m = SIMPLE_PATTERN.match(line)
+            if m:
+                if current_msg:
+                    messages.append(current_msg)
+                current_msg = {
+                    "speaker": m.group(1).strip(),
+                    "content": m.group(2).strip(),
+                    "time": "",
+                }
+                matched = True
+
+        # 续行（多行消息）：微信连续格式中，跟在时间行后面的内容
+        if not matched and current_speaker:
             current_msg = {
-                "speaker": m.group(1).strip(),
-                "content": m.group(2).strip(),
+                "speaker": current_speaker,
+                "content": line,
                 "time": "",
             }
-            continue
+            matched = True
 
-        # 续行（多行消息）
-        if current_msg:
+        # 其他续行
+        if not matched and current_msg and not is_wechat_line:
             current_msg["content"] += "\n" + line
 
     if current_msg:
@@ -194,12 +248,28 @@ async def extract_persona(
         f"{target_text[:8000]}\n\n"
         f"=== 对话中其他人的消息（{len(sample_other)} 条样本，提供上下文）===\n"
         f"{other_text[:4000]}\n\n"
-        f"请以 JSON 格式返回分析结果：\n"
-        f'{{"name": "名字", "gender": "男/女/未知", "age_estimate": "年龄段描述", '
-        f'"personality": ["特质1", "特质2"], "mbti_guess": "推测的MBTI", '
-        f'"occupation_hints": "职业线索", "interests": ["兴趣1"], '
-        f'"background": "一句话背景描述", '
-        f'"speaking_style_base": "总体说话风格的一句话描述"}}\n\n'
+        f"请以 JSON 格式返回分析结果：\n\n"
+        f'{{\n'
+        f'  "name": "名字",\n'
+        f'  "gender": "男/女/未知",\n'
+        f'  "age_estimate": "年龄段描述",\n'
+        f'  "personality": ["特质1", "特质2"],\n'
+        f'  "mbti_guess": "推测的MBTI",\n'
+        f'  "occupation_hints": "职业线索",\n'
+        f'  "interests": ["兴趣1"],\n'
+        f'  "background": "一句话背景描述",\n'
+        f'  "speaking_style_base": "总体说话风格描述",\n'
+        f'  "hard_rules": ["不可违背的行为规则1", "规则2"],\n'
+        f'  "emotional_patterns": {{"依恋类型": "安全型/焦虑型/回避型/混乱型",\n'
+        f'                        "压力反应": "压力大时的表现",\n'
+        f'                        "爱的语言": "如何表达爱意"}},\n'
+        f'  "relationship_behavior": {{"冲突模式": "生气时的表现",\n'
+        f'                          "边界需求": "需要什么边界"}}\n'
+        f'}}\n\n'
+        f'重要：hard_rules 必须是具体行为规则而非形容词。\n'
+        f'  ❌ 错误："很敏感"\n'
+        f'  ✅ 正确："回消息慢了会反复看手机，超过30分钟会发\'你在干嘛？\'"\n'
+        f'所有字段尽量从聊天记录中推断，缺失的填空值。\n'
         f"只输出 JSON。"
     )
 
@@ -268,12 +338,21 @@ async def extract_style(
         f"- 省略号使用比例：{ellipsis_count}/{total}\n"
         f"- 常用 emoji：{', '.join(top_emojis[:8]) if top_emojis else '无'}\n\n"
         f"以 JSON 格式返回：\n"
-        f'{{"catchphrases": ["口头禅1", "口头禅2"], '
-        f'"filler_words": ["语气词1", "呢", "啦"], '
-        f'"emoji_habits": "emoji使用习惯描述", '
-        f'"message_style": "消息风格（短句/长句/混合）", '
-        f'"punctuation_habits": "标点习惯描述", '
-        f'"speech_rhythm": "说话节奏描述（快/慢/分段多）"}}\n\n'
+        f'{{\n'
+        f'  "catchphrases": ["口头禅1", "口头禅2"],\n'
+        f'  "filler_words": ["语气词1", "呢", "啦"],\n'
+        f'  "emoji_habits": "emoji使用习惯描述",\n'
+        f'  "message_style": "消息风格（短句/长句/混合）",\n'
+        f'  "punctuation_habits": "标点习惯描述",\n'
+        f'  "speech_rhythm": "说话节奏描述（快/慢/分段多）",\n'
+        f'  "example_dialogs": [\n'
+        f'    {{"scenario": "有人问她今天过得怎么样", "reply": ["她可能的回复1", "回复2"]}},\n'
+        f'    {{"scenario": "有人很久没回消息", "reply": ["她可能的回复"]}},\n'
+        f'    {{"scenario": "有人惹她生气了", "reply": ["她可能的回复"]}}\n'
+        f'  ]\n'
+        f'}}\n\n'
+        f'example_dialogs 是三层示范对话：有人问她日常/有人冷落她/有人惹她生气。'
+        f'每个场景给 2-4 条她可能会发的消息，要像她的真实口吻。\n'
         f"只输出 JSON。"
     )
 
@@ -561,6 +640,12 @@ def _apply_persona(persona: dict):
                 target["hobbies"].append({"name": interest})
     if persona.get("background"):
         target["background"] = persona["background"]
+    if persona.get("hard_rules"):
+        target["hard_rules"] = persona["hard_rules"]
+    if persona.get("emotional_patterns"):
+        target["emotional_patterns"] = persona["emotional_patterns"]
+    if persona.get("relationship_behavior"):
+        target["relationship_behavior"] = persona["relationship_behavior"]
 
     current["personas"] = personas
     atomic_write_json(path, current)
@@ -584,6 +669,8 @@ def _apply_style(style: dict, target_name: str):
                 p["emoji_habits"] = style["emoji_habits"]
             if style.get("speech_rhythm"):
                 p["speech_rhythm"] = style["speech_rhythm"]
+            if style.get("example_dialogs"):
+                p["example_dialogs"] = style["example_dialogs"]
 
             # 更新 speaking_style
             speaking = p.get("speaking_style", {})

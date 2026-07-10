@@ -82,6 +82,7 @@ class Persona:
     speaking_style: dict = field(default_factory=dict)               # L2: catchphrases, filler_words, example_dialogues
     emotional_patterns: dict = field(default_factory=dict)           # L3: 依恋类型, love_language, triggers
     relationship_behavior: dict = field(default_factory=dict)        # L4: quarrel_pattern, boundaries
+    example_dialogs: list[dict] = field(default_factory=list)        # L2+: 示例对话 [{scenario, reply}]
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -120,6 +121,7 @@ class Persona:
             "speaking_style": self.speaking_style,
             "emotional_patterns": self.emotional_patterns,
             "relationship_behavior": self.relationship_behavior,
+            "example_dialogs": self.example_dialogs,
         }
         for key, value in new_fields.items():
             if isinstance(value, list):
@@ -182,4 +184,5 @@ class Persona:
             speaking_style=speaking_style,
             emotional_patterns=data.get("emotional_patterns", {}),
             relationship_behavior=data.get("relationship_behavior", {}),
+            example_dialogs=data.get("example_dialogs", []),
         )

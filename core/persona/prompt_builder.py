@@ -48,8 +48,19 @@ class PromptBuilder:
         if rel:
             parts.append(rel)
 
-        # 3. 核心行为准则（精简到 4 条）
+        # 3. 核心行为准则
         parts.append(PromptBuilder._build_core_rules(persona))
+
+        # 3.5 示例对话（如果有的话 — 来自聊天记录导入）
+        example_dialogs = getattr(persona, "example_dialogs", None)
+        if example_dialogs:
+            lines = ["以下是你的说话示范："]
+            for ex in example_dialogs[:3]:
+                scenario = ex.get("scenario", "")
+                replies = ex.get("reply", [])
+                if scenario and replies:
+                    lines.append(f"· {scenario} → {' / '.join(replies[:3])}")
+            parts.append("\n".join(lines))
 
         # 4. 记忆上下文
         if persona.core_memories:
