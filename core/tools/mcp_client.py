@@ -184,7 +184,7 @@ class MCPClient:
             return True
 
         except Exception as e:
-            logger.error(f"MCP [{self.config.name}]: connect failed: {e}")
+            logger.warning(f"MCP [{self.config.name}]: connect failed: {e}")
             self.state = MCPState.ERROR
             self._cleanup()
             if self.config.auto_reconnect:
@@ -515,7 +515,6 @@ class MCPClient:
                         continue
                     empty_body = 0
                     body_bytes += chunk
-                    body_bytes += chunk
 
                 if len(body_bytes) < cl:
                     break
@@ -525,8 +524,14 @@ class MCPClient:
                 try:
                     message = json.loads(body_bytes.decode("utf-8", errors="replace"))
                     self._dispatch_message(message)
-                except json.JSONDecodeError as e:
-                    logger.warning(f"MCP [{self.config.name}]: JSON: {e}")
+                except json.JSONDecodeError:
+                    # 尝试 raw_decode（处理尾部多余数据）
+                    try:
+                        decoder = json.JSONDecoder()
+                        message, _ = decoder.raw_decode(body_bytes.decode("utf-8", errors="replace"))
+                        self._dispatch_message(message)
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"MCP [{self.config.name}]: JSON: {e}")
 
             except asyncio.CancelledError:
                 break
