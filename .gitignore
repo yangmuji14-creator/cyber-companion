@@ -24,6 +24,7 @@ build/
 # Data (runtime generated)
 data/
 logs/
+*.db
 
 # User config (personalized — use .example files as template)
 config/settings.json

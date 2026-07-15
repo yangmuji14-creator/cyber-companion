@@ -187,9 +187,13 @@ cyber-companion/
 │   ├── system_tools.py     #   系统工具（日期/文件/随机数）
 │   ├── web_fetch.py        #   网页抓取+搜索（SSRF 防护）
 │   └── weather.py          #   天气查询（wttr.in）
+├── webui/                  # 网页端（v4.1.5）
+│   ├── server.py           #   aiohttp 服务（SSE对话/图片/语音/设置）
+│   ├── schema.py           #   参数 schema（前后端单一数据源）
+│   └── static/             #   前端页面（HTML/CSS/JS）
 ├── plugins/                # 插件系统
 ├── tools/                  # 开发工具
-├── tests/                  # 测试（418 tests, v4.1.3）
+├── tests/                  # 测试（418 tests, v4.1.5）
 ├── setup_wizard.py         # 配置向导
 ├── install.py              # 环境安装
 └── config/                 # 用户配置（不进 git）
