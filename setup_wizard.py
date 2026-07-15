@@ -141,7 +141,7 @@ PROVIDERS = {
 def _banner():
     print()
     print("=" * 50)
-    print("  🎀 赛博伴侣 v3.4 — 设置向导")
+    print("  🎀 赛博伴侣 v4.1.3 — 设置向导")
     print("=" * 50)
     print()
 
@@ -198,6 +198,20 @@ def _prompt_yes_no(msg: str, default: bool = True) -> bool:
     if not val:
         return default
     return val.lower() in ("y", "yes", "是")
+
+
+def _prompt_float(msg: str, default: float, lo: float, hi: float, desc: str = "") -> float:
+    """浮点数输入，带范围钳制"""
+    hint = f"（{desc}）" if desc else ""
+    while True:
+        val = _prompt(f"{msg}{hint}", str(default))
+        if not val or val == str(default):
+            return default
+        try:
+            num = float(val)
+            return max(lo, min(hi, num))
+        except ValueError:
+            print(f"  ⚠ 请输入数字")
 
 
 def _prompt_choice(msg: str, options: list[str], default: str = "") -> str:
@@ -601,12 +615,19 @@ def step_advanced() -> dict:
     summarize_threshold = _prompt_int("记忆总结阈值（组）", 15, "多少组对话后自动总结")
     brain = _prompt_yes_no("启用大脑系统（内心独白）", True)
 
+    # ── 模型回复风格（影响体验走向）──
+    print()
+    temperature = _prompt_float("回复温度", 1.0, 0.0, 2.0, "0.0-2.0，越高越活泼随机，越低越稳定")
+    max_tokens = _prompt_int("单次回复最大长度（token）", 4096, "越大回复可越长，越费额度")
+
     result = {
         "relationship_level": max(0, min(100, relationship)),
         "segment_max_length": max(10, segment_len),
         "debounce_seconds": max(1, debounce),
         "summarize_threshold": max(3, summarize_threshold),
         "brain_enabled": brain,
+        "model_temperature": temperature,
+        "model_max_tokens": max(256, max_tokens),
     }
 
     # ── 主动消息 ──
@@ -877,8 +898,8 @@ def run_setup():
         "provider": provider_type,
         "model_name": model_id,
         "base_url": info.get("base_url", ""),
-        "max_tokens": 4096,
-                "temperature": 1.0,
+        "max_tokens": advanced.get("model_max_tokens", 4096),
+        "temperature": advanced.get("model_temperature", 1.0),
     }
 
     adv = settings.get("advanced", {})

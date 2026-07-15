@@ -211,6 +211,15 @@ class ProactiveMessenger:
         if isinstance(speaking_style, dict):
             speaking_style = speaking_style.get("基础风格", "")
 
+        # 身份/称呼从人设动态生成，避免硬编码性别导致串味
+        gender = (getattr(persona, "gender", "") or "").strip()
+        if gender in ("男", "male", "Male", "男生", "男性"):
+            self_identity = "一个有血有肉的真实男生"
+        elif gender in ("女", "female", "Female", "女生", "女性"):
+            self_identity = "一个有血有肉的真实女生"
+        else:
+            self_identity = "一个有血有肉的真实的人"
+
         level = int(self._affection_storage.get_level(
             user_id, persona_id=persona_id,
         ))
@@ -282,13 +291,13 @@ class ProactiveMessenger:
         )
 
         system_prompt = (
-            f"你是{persona_name}，一个有血有肉的真实女生。\n"
+            f"你是{persona_name}，{self_identity}。\n"
             f"性格：{personality_str}\n"
             f"说话风格：{speaking_style or '自然活泼，偶尔撒娇'}\n"
             f"你们的关系亲密度：{level}/100\n"
             f"{time_context}\n\n"
             f"{forbidden_rules}\n"
-            f"你要发一条主动消息给男朋友/好朋友。\n"
+            f"你要主动给对方发一条消息。\n"
             f"{scenario}\n\n"
             f"规则：\n"
             f"1. 像真人一样自然说话，不要 AI 味\n"
