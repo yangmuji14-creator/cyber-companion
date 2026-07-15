@@ -51,7 +51,6 @@ class DebounceState:
         if not self.queue:
             return
         combined = "\n".join(self.queue)
-        self.queue = []
         self._timer_task = None
         try:
             from core.config import DEFAULT_PERSONA_ID
@@ -60,12 +59,14 @@ class DebounceState:
             )
             adapter = self.manager.get(self.platform)
             if adapter:
-                _send_segments(adapter, self.user_id, reply)
+                await _send_segments(adapter, self.user_id, reply)
         except Exception as e:
             logger.error(f"Debounce flush error ({self.platform}/{self.user_id}): {e}")
+        finally:
+            self.queue = []
 
 
-def _send_segments(adapter, user_id: str, reply: str) -> None:
+async def _send_segments(adapter, user_id: str, reply: str) -> None:
     """将回复分段发送，自动控制总段数不超过6段"""
     raw = re.split(r'(。|！|？|，|\n|\.|\!|\?|,)', reply)
     sentences = []
@@ -94,19 +95,13 @@ def _send_segments(adapter, user_id: str, reply: str) -> None:
     if not segments:
         segments = [reply]
 
-    async def _send():
-        try:
-            for idx, seg in enumerate(segments):
-                await adapter.send(user_id, seg)
-                if idx < len(segments) - 1:
-                    await asyncio.sleep(0.8)
-        except Exception as e:
-            logger.error(f"Debounce segment send failed: {e}")
-
-    task = asyncio.create_task(_send())
-    task.add_done_callback(
-        lambda t: logger.error(f"Debounce send task crashed: {t.exception()}") if t.exception() else None
-    )
+    try:
+        for idx, seg in enumerate(segments):
+            await adapter.send(user_id, seg)
+            if idx < len(segments) - 1:
+                await asyncio.sleep(0.8)
+    except Exception as e:
+        logger.error(f"Debounce segment send failed: {e}")
 
 
 class DebounceManager:

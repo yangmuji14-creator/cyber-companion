@@ -16,6 +16,19 @@ class PromptBuilder:
 
     @staticmethod
     def build(persona, memory_context="", extra_instructions="", relationship_level=None):
+        """构建兼容旧调用方的完整提示词。"""
+        stable_prompt = PromptBuilder.build_stable(persona)
+        dynamic_context = PromptBuilder.build_dynamic_context(
+            persona,
+            memory_context=memory_context,
+            extra_instructions=extra_instructions,
+            relationship_level=relationship_level,
+        )
+        return "\n\n".join(part for part in (stable_prompt, dynamic_context) if part)
+
+    @staticmethod
+    def build_stable(persona):
+        """构建跨轮保持不变的人设提示词前缀。"""
         parts = []
 
         # ═══════════════════════════════════════════════════════
@@ -31,33 +44,42 @@ class PromptBuilder:
             parts.append(identity)
 
         # ═══════════════════════════════════════════════════════
-        # LAYER 2: 你与对方的关系
-        # ═══════════════════════════════════════════════════════
-        rel = _build_relationship(persona, relationship_level)
-        if rel:
-            parts.append(rel)
-
-        # ═══════════════════════════════════════════════════════
-        # LAYER 3: 说话示范（如果有）
+        # LAYER 2: 说话示范（如果有）
         # ═══════════════════════════════════════════════════════
         examples = _build_examples(persona)
         if examples:
             parts.append(examples)
 
         # ═══════════════════════════════════════════════════════
-        # LAYER 4: 记忆与当前上下文
+        # LAYER 3: 稳定记忆与用户自定义
         # ═══════════════════════════════════════════════════════
         if persona.core_memories:
             mems = "、".join(persona.core_memories[:5])
             parts.append(f"关于你们的共同记忆：{mems}。")
-        if memory_context:
-            parts.append(memory_context)
-
-        # ═══════════════════════════════════════════════════════
-        # LAYER 5: 用户自定义 + 系统注入
-        # ═══════════════════════════════════════════════════════
         if persona.system_prompt:
             parts.append(persona.system_prompt)
+
+        # ═══════════════════════════════════════════════════════
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def build_dynamic_context(
+        persona,
+        memory_context="",
+        extra_instructions="",
+        relationship_level=None,
+    ):
+        """构建仅参与当前请求的动态 system 上下文。"""
+        parts = []
+
+        # ═══════════════════════════════════════════════════════
+        # LAYER 4: 当前关系、检索与系统注入
+        # ═══════════════════════════════════════════════════════
+        relationship = _build_relationship(persona, relationship_level)
+        if relationship:
+            parts.append(relationship)
+        if memory_context:
+            parts.append(memory_context)
         if extra_instructions:
             parts.append(extra_instructions)
 

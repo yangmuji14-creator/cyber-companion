@@ -82,6 +82,26 @@ def get_llm_error_message(error: Exception) -> str:
         return "哎呀，出了点小问题，再试一次？"
 
 
+def insert_dynamic_context(
+    messages: list[dict[str, str]],
+    dynamic_context: str,
+) -> list[dict[str, str]]:
+    """在当前用户消息前插入本轮动态 system 上下文。"""
+    request_messages = [dict(message) for message in messages]
+    if not dynamic_context:
+        return request_messages
+
+    for index in range(len(request_messages) - 1, -1, -1):
+        if request_messages[index].get("role") == "user":
+            return [
+                *request_messages[:index],
+                {"role": "system", "content": dynamic_context},
+                *request_messages[index:],
+            ]
+
+    return [*request_messages, {"role": "system", "content": dynamic_context}]
+
+
 # ========== ChatPipeline ==========
 
 class ChatPipeline:
@@ -177,13 +197,16 @@ class ChatPipeline:
             time_context = get_time_context()
             memory_context = self._memory_mgr.get_context_prompt(user_id, limit=8, query=content)
             current_level = int(self._affection_storage.get_level(user_id, persona_id)) if self._affection_storage else 50
-            system_prompt = PromptBuilder.build(
+            stable_prompt = PromptBuilder.build_stable(persona)
+            dynamic_context = PromptBuilder.build_dynamic_context(
                 persona,
                 memory_context=memory_context,
                 extra_instructions=f"时间：{time_context}",
                 relationship_level=current_level,
             )
-            reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
+            request_messages = insert_dynamic_context(messages, dynamic_context)
+            self._last_system_prompt = "\n\n".join((stable_prompt, dynamic_context))
+            reply = await self._llm_call_with_tools(request_messages, stable_prompt, on_token)
             return reply, current_level
 
         # 首次使用初始化 LLM 情感分析器
@@ -347,18 +370,20 @@ class ChatPipeline:
 
         extra_combined = "\n\n".join(filter(None, extra_parts))
 
-        # 构建 system prompt
-        system_prompt = PromptBuilder.build(
+        # 稳定人设与本轮动态上下文分离，扩大跨轮前缀缓存。
+        stable_prompt = PromptBuilder.build_stable(persona)
+        dynamic_context = PromptBuilder.build_dynamic_context(
             persona,
             memory_context=memory_context + relevant_context,
             extra_instructions=extra_combined,
             relationship_level=rel_level,
         )
-        self._last_system_prompt = system_prompt
+        request_messages = insert_dynamic_context(messages, dynamic_context)
+        self._last_system_prompt = "\n\n".join((stable_prompt, dynamic_context))
 
         # LLM 调用（含工具循环 + 错误隔离）
         try:
-            reply = await self._llm_call_with_tools(messages, system_prompt, on_token)
+            reply = await self._llm_call_with_tools(request_messages, stable_prompt, on_token)
         except Exception as e:
             logger.error(f"Main LLM call failed: {e}")
             reply = get_llm_error_message(e)

@@ -1,4 +1,4 @@
-# 🎀 赛博伴侣 — Cyber Companion v4.1
+# 🎀 赛博伴侣 — Cyber Companion v4.1.3
 
 纯终端 AI 伴侣聊天机器人。支持 **MCP 工具扩展**、**双路径图片识别**、语义记忆、情感分析、30+ 字段人设、动态亲密度、持续性情绪系统、内心独白大脑、多平台接入。
 
@@ -40,14 +40,14 @@ python main.py
 
 | Server | 功能 |
 |---|---|
-| `system_tools` | 日期时间 / 字数统计 / 随机数 / 文件读取（安全白名单） |
+| `system_tools` | 日期时间 / 字数统计 / 随机数 / 文件读取（data/logs 真实路径白名单） |
 | `web_fetch` | 网页抓取（SSRF 防护）+ Bing 搜索 |
 | `weather` | 天气查询 + 预报（wttr.in，免费无需 API Key） |
 
 - **协议兼容** — JSON-RPC 2.0 over stdio，支持 initialize / tools/list / tools/call
-- **稳定可靠** — 指数退避重连、分级超时、心跳监控、16MB 缓冲区保护
+- **稳定可靠** — 指数退避重连、分级超时、心跳监控、读取无活动截止（阻塞管道也能触发重连）、帧大小上限保护
 - **冲突处理** — 多 Server 同名工具自动加命名空间前缀
-- **安全加固（v4.1）** — 文件读取路径白名单 + SSRF 内网防护
+- **安全加固（v4.1.3）** — 文件读取限定 data/logs 真实路径（realpath 防符号链接）+ SSRF 内网防护 + 拒绝重定向
 - 配置：`config/mcp_servers.json`
 
 ### 📷 图片识别
@@ -186,7 +186,7 @@ cyber-companion/
 │   └── weather.py          #   天气查询（wttr.in）
 ├── plugins/                # 插件系统
 ├── tools/                  # 开发工具
-├── tests/                  # 测试（395 tests, v4.1）
+├── tests/                  # 测试（418 tests, v4.1.3）
 ├── setup_wizard.py         # 配置向导
 ├── install.py              # 环境安装
 └── config/                 # 用户配置（不进 git）
@@ -226,7 +226,7 @@ cyber-companion/
 ## 测试
 
 ```bash
-# 全部测试（395 tests）
+# 全部测试（418 tests）
 pytest tests -v
 
 # 集成连通性
@@ -242,7 +242,7 @@ pytest tests/test_stress_300_conversations.py -v
 python tools/brain_self_test.py
 ```
 
-当前测试状态：**395/395 全部通过**
+当前测试状态：**418/418 全部通过**
 
 ---
 

@@ -159,6 +159,7 @@ class MCPClient:
     MAX_BUFFER_SIZE = 16 * 1024 * 1024   # 16MB 缓冲区上限
     PROTOCOL_VERSION = "2024-11-05"
     HEARTBEAT_INTERVAL = 15.0            # 心跳间隔（ping）
+    READ_INACTIVITY_TIMEOUT = 30.0       # stdout 单次读取最长等待时间
 
     def __init__(self, config: MCPConfig):
         self.config = config
@@ -304,9 +305,9 @@ class MCPClient:
         except Exception as e:
             raise MCPConnectionError(str(e), self.config.name)
 
-    def _cleanup(self) -> None:
+    def _cleanup(self, cancel_reconnect: bool = False) -> None:
         """彻底清理进程资源"""
-        self._cancel_tasks()
+        self._cancel_tasks(cancel_reconnect=cancel_reconnect)
 
         # 取消所有 pending 请求
         for fut in self._pending.values():
@@ -338,13 +339,18 @@ class MCPClient:
             except Exception:
                 pass
 
-    def _cancel_tasks(self) -> None:
+    def _cancel_tasks(self, cancel_reconnect: bool = True) -> None:
         """取消后台任务"""
-        for task in (self._reader_task, self._heartbeat_task, self._reconnect_task):
+        tasks = [self._reader_task, self._heartbeat_task]
+        if cancel_reconnect:
+            tasks.append(self._reconnect_task)
+        for task in tasks:
             if task and not task.done():
                 task.cancel()
         self._reader_task = None
         self._heartbeat_task = None
+        if cancel_reconnect:
+            self._reconnect_task = None
 
     # ── 重连逻辑 ──
 
@@ -495,28 +501,42 @@ class MCPClient:
 
         stdout = self._process.stdout
         loop = asyncio.get_running_loop()
-        _read = lambda n: loop.run_in_executor(None, stdout.read, n)
+        async def _read(n: int) -> bytes:
+            """Read one pipe chunk without allowing a hung server to block forever."""
+            read_future = loop.run_in_executor(None, stdout.read, n)
+            return await asyncio.wait_for(
+                asyncio.shield(read_future),
+                timeout=self.READ_INACTIVITY_TIMEOUT,
+            )
 
         while self.state not in (MCPState.DISCONNECTED,):
             try:
-                # 1. 逐字节读 header（64KB 上限，空读 100 次判定 EOF）
+                # 1. 逐字节读 header（64KB 上限，30 秒无数据判定 EOF）
                 header_bytes = b""
-                empty_hdr = 0
+                header_activity = time.monotonic()
                 while not header_bytes.endswith(b"\r\n\r\n"):
-                    ch = await _read(1)
+                    try:
+                        ch = await _read(1)
+                    except asyncio.TimeoutError:
+                        logger.warning(f"MCP [{self.config.name}]: header read timed out")
+                        break
                     if not ch:
-                        empty_hdr += 1
-                        if empty_hdr > 100 or (self._process and self._process.poll() is not None):
+                        if (
+                            self._process and self._process.poll() is not None
+                        ):
                             break
                         await asyncio.sleep(0.01)
                         continue
-                    empty_hdr = 0
+                    header_activity = time.monotonic()
                     header_bytes += ch
                     if len(header_bytes) > 65536:
                         logger.warning(f"MCP [{self.config.name}]: header too large")
                         break
 
-                if empty_hdr > 100 or (self._process and self._process.poll() is not None):
+                if (
+                    not header_bytes.endswith(b"\r\n\r\n")
+                    or (self._process and self._process.poll() is not None)
+                ):
                     break
 
                 # 2. 解析 Content-Length（保护异常）
@@ -531,19 +551,24 @@ class MCPClient:
                 if cl <= 0 or cl > self.MAX_MESSAGE_SIZE:
                     continue
 
-                # 3. 读 body（空读 200 次判定 EOF）
+                # 3. 读 body（30 秒无数据判定 EOF）
                 body_bytes = b""
-                empty_body = 0
+                body_activity = time.monotonic()
                 while len(body_bytes) < cl:
                     need = min(cl - len(body_bytes), 65536)
-                    chunk = await _read(need)
+                    try:
+                        chunk = await _read(need)
+                    except asyncio.TimeoutError:
+                        logger.warning(f"MCP [{self.config.name}]: body read timed out")
+                        break
                     if not chunk:
-                        empty_body += 1
-                        if empty_body > 200 or (self._process and self._process.poll() is not None):
+                        if (
+                            self._process and self._process.poll() is not None
+                        ):
                             break
                         await asyncio.sleep(0.01)
                         continue
-                    empty_body = 0
+                    body_activity = time.monotonic()
                     body_bytes += chunk
 
                 if len(body_bytes) < cl:

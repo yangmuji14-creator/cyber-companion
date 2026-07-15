@@ -150,10 +150,25 @@ class BaseLLM(ABC):
                 "completion_tokens": response.usage.completion_tokens if response.usage else 0,
                 "total_tokens": response.usage.total_tokens if response.usage else 0,
             }
+            if response.usage:
+                for field_name in (
+                    "cache_creation_input_tokens",
+                    "cache_read_input_tokens",
+                ):
+                    field_value = getattr(response.usage, field_name, None)
+                    if field_value is not None:
+                        usage[field_name] = field_value
+
+                prompt_details = getattr(response.usage, "prompt_tokens_details", None)
+                cached_tokens = getattr(prompt_details, "cached_tokens", None)
+                if cached_tokens is not None:
+                    usage["cached_tokens"] = cached_tokens
 
             logger.info(
                 f"{model_id} responded: {len(content)} chars, "
-                f"{usage['total_tokens']} tokens"
+                f"{usage['total_tokens']} tokens, "
+                f"cache read/hit: {usage.get('cache_read_input_tokens', 0)}/"
+                f"{usage.get('cached_tokens', 0)} tokens"
             )
 
             return LLMResponse(
@@ -197,6 +212,7 @@ class BaseLLM(ABC):
         logger.debug(f"Calling {model_id} (stream) with {len(full_messages)} messages")
 
         last_error = None
+        yielded_any = False
         for attempt in range(self.max_retries + 1):
             try:
                 # 每次调用重新读 env
@@ -213,10 +229,13 @@ class BaseLLM(ABC):
                 async for chunk in response:
                     delta = chunk.choices[0].delta
                     if delta.content:
+                        yielded_any = True
                         yield delta.content
                 return  # 成功完成，直接返回
 
             except Exception as e:
+                if yielded_any:
+                    raise
                 last_error = e
                 if attempt < self.max_retries and self._is_retryable(e):
                     delay = 1.0 * (2 ** attempt)

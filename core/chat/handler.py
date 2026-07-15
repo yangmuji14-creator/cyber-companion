@@ -269,6 +269,7 @@ class ChatHandler:
             if last_reply[0]:
                 self.chat_history.add_message(user_id, "assistant", last_reply[0])
                 print(f"\n{Colors.DIM}（已保存部分回复）{Colors.RESET}")
+            raise
         finally:
             input_q.put(None)
 

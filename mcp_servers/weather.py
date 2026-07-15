@@ -1,36 +1,20 @@
 """MCP Weather Server — 天气查询 (via wttr.in, 免费无需API key)"""
-import json, sys, time, urllib.request, urllib.parse
+import json, sys, urllib.request, urllib.parse
+
+if __package__:
+    from .framing import FrameReader
+else:
+    from framing import FrameReader
 
 def _send(msg):
     body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
     sys.stdout.buffer.write(f"Content-Length: {len(body)}\r\n\r\n".encode("utf-8") + body)
     sys.stdout.buffer.flush()
 
+_reader = FrameReader(sys.stdin.buffer)
+
 def _read():
-    h = b""; eh = 0
-    while not h.endswith(b"\r\n\r\n"):
-        c = sys.stdin.buffer.read(4096)
-        if not c: eh += 1
-        if not c and eh > 100: return None
-        if not c: time.sleep(0.01); continue
-        eh = 0; h += c
-        if b"\r\n\r\n" in h:
-            h, lo = h.split(b"\r\n\r\n", 1); h += b"\r\n\r\n"; break
-        lo = b""
-    cl = 0
-    for ln in h.decode(errors="replace").split("\r\n"):
-        if "content-length:" in ln.lower():
-            try: cl = int(ln.split(":")[1].strip())
-            except (ValueError, IndexError): pass
-    if cl <= 0: return None
-    b = lo if lo else b""; eb = 0
-    while len(b) < cl:
-        c = sys.stdin.buffer.read(min(cl - len(b), 65536))
-        if not c: eb += 1
-        if not c and eb > 200: return None
-        if not c: time.sleep(0.01); continue
-        eb = 0; b += c
-    return json.loads(b.decode(errors="replace"))
+    return _reader.read()
 
 def ok(rid, res): _send({"jsonrpc": "2.0", "id": rid, "result": res})
 def err(rid, code, msg): _send({"jsonrpc": "2.0", "id": rid, "error": {"code": code, "message": msg}})
@@ -77,21 +61,29 @@ T = [
      "inputSchema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}},
 ]
 
-while True:
-    try:
-        m = _read()
-        if m is None: break
-        rid, method = m.get("id"), m.get("method", "")
-        if method == "initialize":
-            ok(rid, {"protocolVersion": "2024-11-05", "serverInfo": {"name": "weather", "version": "1.0"}, "capabilities": {"tools": {}}})
-        elif method == "tools/list":
-            ok(rid, {"tools": T})
-        elif method == "tools/call":
-            p = m["params"]; h = H.get(p["name"])
-            if h: ok(rid, {"content": [{"type": "text", "text": h(p.get("arguments", {}))}]})
-            else: err(rid, -32601, f"unknown tool: {p['name']}")
-        elif method == "notifications/initialized": pass
-        else: err(rid, -32601, f"unknown method: {method}")
-    except KeyboardInterrupt: break
-    except Exception as e:
-        sys.stderr.write(f"E: {e}\n"); sys.stderr.flush()
+def main():
+    """Run the local weather MCP server over standard input/output."""
+    while True:
+        rid = None
+        try:
+            m = _read()
+            if m is None: break
+            rid, method = m.get("id"), m.get("method", "")
+            if method == "initialize":
+                ok(rid, {"protocolVersion": "2024-11-05", "serverInfo": {"name": "weather", "version": "1.0"}, "capabilities": {"tools": {}}})
+            elif method == "tools/list":
+                ok(rid, {"tools": T})
+            elif method == "tools/call":
+                p = m["params"]; h = H.get(p["name"])
+                if h: ok(rid, {"content": [{"type": "text", "text": h(p.get("arguments", {}))}]})
+                else: err(rid, -32601, f"unknown tool: {p['name']}")
+            elif method == "notifications/initialized": pass
+            else: err(rid, -32601, f"unknown method: {method}")
+        except KeyboardInterrupt: break
+        except Exception as e:
+            err(rid, -32603, "Internal error")
+            sys.stderr.write(f"E: {e}\n"); sys.stderr.flush()
+
+
+if __name__ == "__main__":
+    main()

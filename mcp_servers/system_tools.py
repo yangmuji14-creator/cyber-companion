@@ -1,6 +1,11 @@
 """MCP System Tools Server"""
-import json, sys, os, random, time
+import json, sys, os, random
 from datetime import datetime
+
+if __package__:
+    from .framing import FrameReader
+else:
+    from framing import FrameReader
 
 def _send(msg):
     body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
@@ -8,43 +13,10 @@ def _send(msg):
     sys.stdout.buffer.write(hdr + body)
     sys.stdout.buffer.flush()
 
+_reader = FrameReader(sys.stdin.buffer)
+
 def _read():
-    """读取一条 JSON-RPC 消息 — Windows pipe 兼容"""
-    header = b""
-    empty_header = 0
-    while not header.endswith(b"\r\n\r\n"):
-        chunk = sys.stdin.buffer.read(4096)
-        if not chunk:
-            empty_header += 1
-            if empty_header > 100: return None
-            time.sleep(0.01); continue
-        empty_header = 0; header += chunk
-        if b"\r\n\r\n" in header:
-            header, leftover = header.split(b"\r\n\r\n", 1)
-            header += b"\r\n\r\n"
-            break
-        leftover = b""
-
-    cl = 0
-    for ln in header.decode("utf-8", errors="replace").split("\r\n"):
-        if ln.lower().startswith("content-length:"):
-            try: cl = int(ln.split(":")[1].strip())
-            except (ValueError, IndexError): pass
-
-    if cl <= 0: return None
-
-    body = leftover if leftover else b""
-    empty_body = 0
-    while len(body) < cl:
-        need = cl - len(body)
-        chunk = sys.stdin.buffer.read(min(need, 65536))
-        if not chunk:
-            empty_body += 1
-            if empty_body > 200: return None
-            time.sleep(0.01); continue
-        empty_body = 0; body += chunk
-
-    return json.loads(body.decode("utf-8", errors="replace"))
+    return _reader.read()
 
 def ok(rid, res):
     _send({"jsonrpc": "2.0", "id": rid, "result": res})
@@ -71,9 +43,8 @@ def rn(args):
 
 # 文件读取安全白名单
 _SAFE_READ_DIRS = [
-    os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")),
-    os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")),
-    os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config")),
+    os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")),
+    os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")),
 ]
 _ALLOWED_EXTENSIONS = {".txt", ".md", ".json", ".log", ".csv", ".yaml", ".yml", ".cfg", ".ini"}
 _MAX_READ_SIZE = 2000
@@ -81,7 +52,7 @@ _MAX_READ_SIZE = 2000
 def _is_path_safe(filepath: str) -> bool:
     """检查路径是否在安全目录内、扩展名合法、无路径遍历"""
     try:
-        norm = os.path.normpath(os.path.abspath(filepath))
+        norm = os.path.realpath(filepath)
     except Exception:
         return False
     # 扩展名白名单
@@ -125,21 +96,29 @@ T = [
      "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
 ]
 
-while True:
-    try:
-        m = _read()
-        if m is None: break
-        rid, method = m.get("id"), m.get("method", "")
-        if method == "initialize":
-            ok(rid, {"protocolVersion": "2024-11-05", "serverInfo": {"name": "system-tools", "version": "1.0"}, "capabilities": {"tools": {}}})
-        elif method == "tools/list":
-            ok(rid, {"tools": T})
-        elif method == "tools/call":
-            p = m["params"]; h = H.get(p["name"])
-            if h: ok(rid, {"content": [{"type": "text", "text": h(p.get("arguments", {}))}]})
-            else: err(rid, -32601, f"unknown: {p['name']}")
-        elif method == "notifications/initialized": pass
-        else: err(rid, -32601, f"unknown: {method}")
-    except KeyboardInterrupt: break
-    except Exception as e:
-        sys.stderr.write(f"E: {e}\n"); sys.stderr.flush()
+def main():
+    """Run the local system-tools MCP server over standard input/output."""
+    while True:
+        rid = None
+        try:
+            m = _read()
+            if m is None: break
+            rid, method = m.get("id"), m.get("method", "")
+            if method == "initialize":
+                ok(rid, {"protocolVersion": "2024-11-05", "serverInfo": {"name": "system-tools", "version": "1.0"}, "capabilities": {"tools": {}}})
+            elif method == "tools/list":
+                ok(rid, {"tools": T})
+            elif method == "tools/call":
+                p = m["params"]; h = H.get(p["name"])
+                if h: ok(rid, {"content": [{"type": "text", "text": h(p.get("arguments", {}))}]})
+                else: err(rid, -32601, f"unknown: {p['name']}")
+            elif method == "notifications/initialized": pass
+            else: err(rid, -32601, f"unknown: {method}")
+        except KeyboardInterrupt: break
+        except Exception as e:
+            err(rid, -32603, "Internal error")
+            sys.stderr.write(f"E: {e}\n"); sys.stderr.flush()
+
+
+if __name__ == "__main__":
+    main()

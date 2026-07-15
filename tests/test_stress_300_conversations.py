@@ -327,7 +327,7 @@ async def test_mcp_system_tools_security():
     from mcp_servers.system_tools import _is_path_safe, _SAFE_READ_DIRS
 
     # 安全路径应该通过
-    data_files = ["data/test.txt", "logs/app.log", "config/settings.json"]
+    data_files = ["data/test.txt", "logs/app.log"]
     for f in data_files:
         full = os.path.normpath(os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "..", f
@@ -347,10 +347,11 @@ async def test_mcp_system_tools_security():
     # 危险路径应该拒绝
     dangerous = [
         r"C:\Windows\System32\config\SAM",
-        r"C:\Users\30216\.env",
+        str(Path.home() / ".env"),
         "/etc/passwd",
         "../../.env",
         "data/../../../.env",
+        "config/settings.json",
         "config/settings.py",  # .py 不在白名单
     ]
     for path in dangerous:
