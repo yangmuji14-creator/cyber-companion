@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-07-16（v4.1.5）
+
+### 🌐 网页端（新增）
+
+- **`python main.py web`** — 本地网页服务（aiohttp），复用现有 ChatPipeline，不改核心逻辑
+- **流式对话** — `POST /api/chat` 走 SSE 逐 token 推送
+- **图片上传** — `POST /api/upload/image`，多模态直传 / 纯文本经视觉降级
+- **语音发送** — `POST /api/upload/voice`，有 faster-whisper 则转写，否则优雅降级不崩溃
+- **实时调参** — `webui/schema.py` 13 字段单一数据源；`GET/POST /api/settings` 读写 settings.json 并热更新到运行中实例（温度/长度/重复抑制/重试 + 分段/去抖/主动消息），无需重启
+- **界面** — 暖色伴侣风、移动优先、侧滑设置面板、语音录制浮层
+- **参数扩展** — setup 新增「重复抑制强度」+「网络重试次数」
+
+### 🧪 测试
+
+- 418 tests 全过；网页端端点冒烟（静态页 + schema + settings）全部可达
+
 ## 2026-07-15（下午 · v4.1.4）
 
 ### 💬 提示词拟人化

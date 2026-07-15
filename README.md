@@ -1,4 +1,4 @@
-# 🎀 赛博伴侣 — Cyber Companion v4.1.4
+# 🎀 赛博伴侣 — Cyber Companion v4.1.5
 
 纯终端 AI 伴侣聊天机器人。支持 **MCP 工具扩展**、**双路径图片识别**、语义记忆、情感分析、30+ 字段人设、动态亲密度、持续性情绪系统、内心独白大脑、多平台接入。
 
@@ -15,8 +15,11 @@ python install.py
 # 配置向导（模型选择 + 人设 + 参数）
 python main.py setup
 
-# 开始聊天
+# 开始聊天（终端）
 python main.py
+
+# 网页端（对话 + 图片 + 语音 + 随时调参，浏览器打开 http://127.0.0.1:8000）
+python main.py web
 ```
 
 ---

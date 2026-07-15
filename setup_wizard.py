@@ -619,6 +619,8 @@ def step_advanced() -> dict:
     print()
     temperature = _prompt_float("回复温度", 1.0, 0.0, 2.0, "0.0-2.0，越高越活泼随机，越低越稳定")
     max_tokens = _prompt_int("单次回复最大长度（token）", 4096, "越大回复可越长，越费额度")
+    repetition = _prompt_float("重复抑制强度", 0.3, 0.0, 2.0, "0.0-2.0，越高越少重复口癖/机械句式，更像真人")
+    retries = _prompt_int("网络重试次数", 2, "API 失败时重试几次")
 
     result = {
         "relationship_level": max(0, min(100, relationship)),
@@ -628,6 +630,8 @@ def step_advanced() -> dict:
         "brain_enabled": brain,
         "model_temperature": temperature,
         "model_max_tokens": max(256, max_tokens),
+        "model_repetition_penalty": repetition,
+        "max_retries": max(0, retries),
     }
 
     # ── 主动消息 ──
@@ -900,11 +904,13 @@ def run_setup():
         "base_url": info.get("base_url", ""),
         "max_tokens": advanced.get("model_max_tokens", 4096),
         "temperature": advanced.get("model_temperature", 1.0),
+        "presence_penalty": advanced.get("model_repetition_penalty", 0.3),
+        "frequency_penalty": advanced.get("model_repetition_penalty", 0.3),
     }
 
     adv = settings.get("advanced", {})
     for key in ["segment_max_length", "debounce_seconds", "summarize_threshold",
-                "brain_enabled", "proactive_enabled",
+                "brain_enabled", "proactive_enabled", "max_retries",
                 "proactive_active_start", "proactive_active_end",
                 "proactive_interval_min", "proactive_interval_max"]:
         if key in advanced:

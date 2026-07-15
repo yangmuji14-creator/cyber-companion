@@ -134,8 +134,8 @@ def main():
     parser = argparse.ArgumentParser(description="Cyber Girlfriend")
     parser.add_argument(
         "command", nargs="?", default="run",
-        choices=["setup", "run", "wechat", "import-skill", "import-chat"],
-        help="setup=配置向导, run=启动（默认）, wechat=配置微信, import-skill=导入人设, import-chat=导入聊天记录",
+        choices=["setup", "run", "web", "wechat", "import-skill", "import-chat"],
+        help="setup=配置向导, run=启动（默认）, web=网页端, wechat=配置微信, import-skill=导入人设, import-chat=导入聊天记录",
     )
     parser.add_argument(
         "path", nargs="?",
@@ -153,6 +153,10 @@ def main():
             run_setup()
         except KeyboardInterrupt:
             print("\n\n  设置已取消\n")
+        return
+
+    if args.command == "web":
+        _run_web()
         return
 
     if args.command == "wechat":
@@ -205,6 +209,38 @@ def main():
         except KeyboardInterrupt:
             print()
             logger.info("拜拜~")
+
+
+# ========== 网页端 ==========
+
+def _run_web():
+    """启动网页端（对话 + 参数配置）"""
+    if not _check_dependencies():
+        return
+
+    if not (ROOT / ".env").exists():
+        print("\n" + "=" * 40)
+        print("  首次使用，请先运行设置向导")
+        print("=" * 40)
+        print("\n  命令: python main.py setup")
+        return
+
+    try:
+        import aiohttp  # noqa: F401
+    except ImportError:
+        print("\n  ❌ 网页端需要 aiohttp，请先安装：")
+        print("    pip install aiohttp\n")
+        return
+
+    logger.info("网页端启动中...")
+    app: AppComponents = create_components()
+
+    from webui.server import run_web
+    try:
+        asyncio.run(run_web(app))
+    except KeyboardInterrupt:
+        print()
+        logger.info("网页端已停止")
 
 
 # ========== 微信配置 ==========

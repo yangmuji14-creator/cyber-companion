@@ -1,5 +1,26 @@
 # Changelog
 
+## v4.1.5 — 2026-07-16（🌐 网页端：对话 + 图片 + 语音 + 实时调参）
+
+### 🌐 网页端（新增）
+
+- **`python main.py web` 启动本地网页** — 复用现有 ChatPipeline，浏览器直接对话，不改核心逻辑
+- **流式对话** — `POST /api/chat` 走 SSE 逐 token 推送，体验与 CLI 一致
+- **图片上传** — `POST /api/upload/image`，多模态主模型直传 / 纯文本模型经视觉降级
+- **语音发送** — `POST /api/upload/voice`，检测到 faster-whisper 则转写，否则优雅提示未配置（绝不崩溃）
+- **随时调参且实时生效** — `webui/schema.py` 13 字段作为前后端单一数据源；`GET/POST /api/settings` 读写 `settings.json` 并热更新到运行中的 LLM 实例（温度/长度/重复抑制/重试）与共享 config（分段/去抖/主动消息），无需重启
+- **界面** — 暖色伴侣聊天风、移动优先、侧滑设置面板、语音录制浮层；`webui/static/{index.html,style.css,app.js}`
+
+### 🔧 配置可调扩展
+
+- setup 向导新增「重复抑制强度」（合并 presence/frequency_penalty）+「网络重试次数」
+- 网页端设置面板由 schema 动态渲染，与 setup 参数打通
+
+### 🧪 测试
+
+- **418 tests** 全部通过，网页端为新增模块未引入回归
+- 网页端端点冒烟：静态页 + schema + settings 全部可达
+
 ## v4.1.4 — 2026-07-15（💬 提示词拟人化 + ⚙️ 模型参数可调）
 
 ### 💬 提示词拟人化（针对现代大模型）
