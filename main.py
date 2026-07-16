@@ -18,10 +18,62 @@ import asyncio
 import json
 import os
 import sys
+from pathlib import Path
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
+
+
+# ========== 自动切换虚拟环境（必须在第三方 import 之前）==========
+# 必须在 import dotenv/loguru 等第三方依赖之前调用，否则系统 Python
+# 加载 main.py 时会因找不到依赖而崩溃，永远到不了 main() 里的调用。
+# 注意：Windows 上 os.execv 会 spawn 新进程并让原进程退出，导致 cmd
+# 提示符立刻回来、新进程 stdin 与终端断开，交互式 input() 失效。
+# 因此 Windows 下必须用 subprocess.run 同步等待子进程结束再退出。
+
+def _ensure_venv():
+    """检测并使用 .venv 虚拟环境（如有）。
+
+    必须在 import dotenv/loguru 等第三方依赖之前调用，
+    否则系统 Python 加载 main.py 时会因找不到依赖而崩溃，
+    永远到不了 main() 里的 _ensure_venv() 调用。
+
+    注意：Windows 上 os.execv 行为与 Unix 不同 —— 它会 spawn 新进程
+    然后让原进程退出，导致 cmd 提示符立刻回来、新进程的 stdin 与
+    cmd 终端断开，交互式输入（input()）会被 cmd 当成命令解析。因此
+    Windows 下必须用 subprocess.run 同步等待子进程结束，再退出。
+    """
+    if sys.prefix != sys.base_prefix:
+        return  # 已在 venv 中
+
+    venv_dir = Path(__file__).parent / ".venv"
+    if not venv_dir.exists():
+        return  # 没有 .venv，用系统 Python
+
+    if sys.platform == "win32":
+        venv_python = venv_dir / "Scripts" / "python.exe"
+    else:
+        venv_python = venv_dir / "bin" / "python"
+
+    if not venv_python.exists():
+        return
+
+    # 用 venv 的 Python 重新执行本脚本
+    print("\n  🔄 自动切换到虚拟环境...\n")
+
+    if sys.platform == "win32":
+        # Windows: os.execv 会让原进程立即退出，新进程的 stdin 与
+        # cmd 终端断开，交互式 input() 失效。必须用 subprocess 同步等待。
+        import subprocess
+        result = subprocess.run([str(venv_python)] + sys.argv)
+        sys.exit(result.returncode)
+    else:
+        # Unix: os.execv 真正替换当前进程，stdio 完整继承
+        os.execv(str(venv_python), [str(venv_python)] + sys.argv)
+
+
+_ensure_venv()
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -103,33 +155,8 @@ def _has_wechat_config() -> bool:
 
 # ========== CLI 入口 ==========
 
-def _ensure_venv():
-    """自动检测并使用 .venv 虚拟环境"""
-    if sys.prefix != sys.base_prefix:
-        return  # 已在 venv 中
-
-    venv_dir = ROOT / ".venv"
-    if not venv_dir.exists():
-        return  # 没有 .venv，用系统 Python
-
-    if sys.platform == "win32":
-        venv_python = venv_dir / "Scripts" / "python.exe"
-    else:
-        venv_python = venv_dir / "bin" / "python"
-
-    if not venv_python.exists():
-        return
-
-    # 用 venv 的 Python 重新执行
-    print(f"\n  🔄 自动切换到虚拟环境...\n")
-    os.execv(str(venv_python), [str(venv_python)] + sys.argv)
-
-
 def main():
     import argparse
-
-    # 自动检测并使用 .venv
-    _ensure_venv()
 
     parser = argparse.ArgumentParser(description="Cyber Girlfriend")
     parser.add_argument(
