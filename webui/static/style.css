@@ -1,4 +1,9 @@
 /* ===== 赛博伴侣 Web UI ===== */
+/* 兜底：任何带 hidden 属性的元素强制隐藏，防止后续 .voice-overlay 等规则
+   用 display:grid/flex 覆盖 HTML hidden 的默认 display:none，导致浮层
+   在页面加载时就盖住整个界面、点啥都点不动。 */
+[hidden] { display: none !important; }
+
 :root {
   --bg: #f4ede7;
   --bg-grad-1: #fbeee6;
