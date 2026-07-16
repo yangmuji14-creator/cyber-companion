@@ -62,7 +62,7 @@ class LLMRegistry:
             "qwen": "TONGYI_API_KEY",
             "kimi": "KIMI_API_KEY",
             "zhipu": "ZHIPU_API_KEY",
-            "mimo": "OPENAI_API_KEY",
+            "mimo": "MIMO_API_KEY",
             "doubao": "OPENAI_API_KEY",
             "baichuan": "OPENAI_API_KEY",
             "minimax": "OPENAI_API_KEY",

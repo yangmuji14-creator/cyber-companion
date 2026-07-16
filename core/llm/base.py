@@ -96,13 +96,19 @@ class BaseLLM(ABC):
         return os.environ.get(f"{prefix}_API_KEY", "")
 
     def _litellm_kwargs(self, kwargs: dict) -> dict:
-        """构建 litellm 参数，用 get() 避免 pop() 副作用"""
+        """构建 litellm 参数，从 kwargs 中取出已知键（pop 避免重复传参）。
+
+        注意：必须用 pop() 而非 get()，否则调用方再展开 **kwargs 时
+        会把同一个参数（如 max_tokens）传两次，导致 litellm 报
+        "got multiple values for keyword argument 'max_tokens'"。
+        pop 后，调用方用 **kwargs 透传剩余的未知参数（如 stream、tools）。
+        """
         return {
-            "max_tokens": kwargs.get("max_tokens", self.max_tokens),
-            "temperature": kwargs.get("temperature", self.temperature),
-            "presence_penalty": kwargs.get("presence_penalty", self.presence_penalty),
-            "frequency_penalty": kwargs.get("frequency_penalty", self.frequency_penalty),
-            "timeout": kwargs.get("timeout", 120),  # 默认 120s 超时
+            "max_tokens": kwargs.pop("max_tokens", self.max_tokens),
+            "temperature": kwargs.pop("temperature", self.temperature),
+            "presence_penalty": kwargs.pop("presence_penalty", self.presence_penalty),
+            "frequency_penalty": kwargs.pop("frequency_penalty", self.frequency_penalty),
+            "timeout": kwargs.pop("timeout", 120),  # 默认 120s 超时
         }
 
     @abstractmethod
