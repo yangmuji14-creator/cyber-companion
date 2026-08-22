@@ -86,3 +86,12 @@ webui_server.log
 .pytest-*/
 .tmp*/.pytest-cache/.pytest/backups/
 build-wheel-audit*/
+
+# Release repo: keep GitHub clean (source only). Tests & debug tooling stay local.
+tests/
+auto_test.py
+test_cli_automation.py
+vitest.config.js
+package-lock.json
+.github/workflows/tests.yml
+DEEPSEEK_FLASH_IMPLEMENTATION_PLAN.md
