@@ -1,7 +1,7 @@
 """VectorStore — SQLite 向量存储 + 余弦相似度 Top-K 搜索
 
 结构：
-  memories(user_id, memory_id, content, embedding_blob, created_at)
+  memory_vectors(user_id, memory_id, content, embedding_blob, created_at)
 
 embedding 以 numpy float32 数组的二进制形式存入 SQLite，
 检索时全量加载后用 numpy 矩阵运算算余弦相似度（500 条以内约 1-2ms）。
@@ -41,7 +41,7 @@ class VectorStore:
         from core.storage.db import open_db
         with open_db(self._db_path) as conn:
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS memories (
+                CREATE TABLE IF NOT EXISTS memory_vectors (
                     user_id    TEXT NOT NULL,
                     memory_id  TEXT NOT NULL,
                     content    TEXT NOT NULL,
@@ -61,7 +61,7 @@ class VectorStore:
         if created_at is None:
             created_at = datetime.now().isoformat()
         self._conn.execute(
-            "INSERT OR REPLACE INTO memories (user_id, memory_id, content, embedding, created_at) "
+            "INSERT OR REPLACE INTO memory_vectors (user_id, memory_id, content, embedding, created_at) "
             "VALUES (?, ?, ?, ?, ?)",
             (user_id, memory_id, content, blob, created_at),
         )
@@ -70,7 +70,7 @@ class VectorStore:
     def delete(self, user_id: str, memory_id: str) -> bool:
         """删除一条向量记忆"""
         cur = self._conn.execute(
-            "DELETE FROM memories WHERE user_id=? AND memory_id=?",
+            "DELETE FROM memory_vectors WHERE user_id=? AND memory_id=?",
             (user_id, memory_id),
         )
         self._conn.commit()
@@ -79,7 +79,7 @@ class VectorStore:
     def delete_all(self, user_id: str) -> int:
         """清空用户的所有向量记忆"""
         cur = self._conn.execute(
-            "DELETE FROM memories WHERE user_id=?", (user_id,)
+            "DELETE FROM memory_vectors WHERE user_id=?", (user_id,)
         )
         self._conn.commit()
         return cur.rowcount
@@ -87,7 +87,7 @@ class VectorStore:
     def count(self, user_id: str) -> int:
         """用户记忆数量"""
         cur = self._conn.execute(
-            "SELECT COUNT(*) FROM memories WHERE user_id=?", (user_id,)
+            "SELECT COUNT(*) FROM memory_vectors WHERE user_id=?", (user_id,)
         )
         return cur.fetchone()[0]
 
@@ -100,7 +100,7 @@ class VectorStore:
         """
         cur = self._conn.execute(
             "SELECT memory_id, content, embedding, created_at "
-            "FROM memories WHERE user_id=?", (user_id,)
+            "FROM memory_vectors WHERE user_id=?", (user_id,)
         )
         rows = cur.fetchall()
         if not rows:
@@ -136,7 +136,7 @@ class VectorStore:
     def list_all(self, user_id: str) -> list[dict]:
         """列出用户的所有向量记忆（不含 embedding 数据）"""
         cur = self._conn.execute(
-            "SELECT memory_id, content, created_at FROM memories WHERE user_id=? "
+            "SELECT memory_id, content, created_at FROM memory_vectors WHERE user_id=? "
             "ORDER BY created_at DESC",
             (user_id,),
         )

@@ -1,15 +1,23 @@
 """LLM 统一接口定义 — v4.1 hardened"""
 
 import asyncio
+import json
 import os
 import random
+from time import monotonic
+from contextvars import ContextVar
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import Any
 
+# LiteLLM defaults to recursively searching parent directories for a .env
+# file during import. The application already loads its exact runtime .env,
+# so disable that implicit search to keep portable bundles isolated.
+os.environ.setdefault("LITELLM_MODE", "PRODUCTION")
 import litellm
 from loguru import logger
+from core.runtime import runtime_metrics
 
 # 可重试的 HTTP 状态码
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -25,6 +33,41 @@ class LLMResponse:
     model: str
     usage: dict[str, int] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class LLMStreamEvent:
+    """A normalized content or native tool-call event from a streamed response."""
+
+    kind: str
+    content: str = ""
+    tool_call: dict[str, Any] | None = None
+    reasoning: str = ""
+    usage: dict[str, int] = field(default_factory=dict)
+
+
+def _field(value: Any, name: str, default: Any = None) -> Any:
+    if isinstance(value, dict):
+        return value.get(name, default)
+    return getattr(value, name, default)
+
+
+def _normalize_tool_call(tool_call: Any, fallback_index: int = 0) -> dict[str, Any]:
+    function = _field(tool_call, "function", {}) or {}
+    arguments = _field(function, "arguments", "{}") or "{}"
+    if isinstance(arguments, dict):
+        parsed_arguments = arguments
+    else:
+        try:
+            parsed_arguments = json.loads(arguments)
+        except (json.JSONDecodeError, TypeError):
+            parsed_arguments = {}
+    return {
+        "id": _field(tool_call, "id", "") or f"call_{fallback_index}",
+        "type": _field(tool_call, "type", "function") or "function",
+        "name": _field(function, "name", "") or "",
+        "arguments": parsed_arguments,
+    }
 
 
 class BaseLLM(ABC):
@@ -96,13 +139,19 @@ class BaseLLM(ABC):
         return os.environ.get(f"{prefix}_API_KEY", "")
 
     def _litellm_kwargs(self, kwargs: dict) -> dict:
-        """构建 litellm 参数，用 get() 避免 pop() 副作用"""
+        """构建 litellm 参数，从 kwargs 中取出已知键（pop 避免重复传参）。
+
+        注意：必须用 pop() 而非 get()，否则调用方再展开 **kwargs 时
+        会把同一个参数（如 max_tokens）传两次，导致 litellm 报
+        "got multiple values for keyword argument 'max_tokens'"。
+        pop 后，调用方用 **kwargs 透传剩余的未知参数（如 stream、tools）。
+        """
         return {
-            "max_tokens": kwargs.get("max_tokens", self.max_tokens),
-            "temperature": kwargs.get("temperature", self.temperature),
-            "presence_penalty": kwargs.get("presence_penalty", self.presence_penalty),
-            "frequency_penalty": kwargs.get("frequency_penalty", self.frequency_penalty),
-            "timeout": kwargs.get("timeout", 120),  # 默认 120s 超时
+            "max_tokens": kwargs.pop("max_tokens", self.max_tokens),
+            "temperature": kwargs.pop("temperature", self.temperature),
+            "presence_penalty": kwargs.pop("presence_penalty", self.presence_penalty),
+            "frequency_penalty": kwargs.pop("frequency_penalty", self.frequency_penalty),
+            "timeout": kwargs.pop("timeout", 120),  # 默认 120s 超时
         }
 
     @abstractmethod
@@ -135,6 +184,7 @@ class BaseLLM(ABC):
         logger.debug(f"Calling {model_id} with {len(full_messages)} messages")
 
         async def _do_call():
+            started = monotonic()
             response = await litellm.acompletion(
                 model=model_id,
                 messages=full_messages,
@@ -144,7 +194,13 @@ class BaseLLM(ABC):
                 **kwargs,  # 用户自定义覆盖参数
             )
 
-            content = response.choices[0].message.content or ""
+            message = response.choices[0].message
+            content = message.content or ""
+            raw_tool_calls = getattr(message, "tool_calls", None) or []
+            tool_calls = [
+                _normalize_tool_call(tool_call, index)
+                for index, tool_call in enumerate(raw_tool_calls)
+            ]
             usage = {
                 "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
                 "completion_tokens": response.usage.completion_tokens if response.usage else 0,
@@ -171,16 +227,22 @@ class BaseLLM(ABC):
                 f"{usage.get('cached_tokens', 0)} tokens"
             )
 
+            runtime_metrics.record(
+                "llm.chat", (monotonic() - started) * 1000, usage=usage,
+            )
             return LLMResponse(
                 content=content,
                 model=model_id,
                 usage=usage,
-                metadata={"finish_reason": response.choices[0].finish_reason},
+                metadata={
+                    "finish_reason": response.choices[0].finish_reason,
+                    "tool_calls": tool_calls,
+                },
             )
-
         try:
             return await self._retry(_do_call, f"chat({model_id})")
         except Exception as e:
+            runtime_metrics.record("llm.chat", 0, success=False)
             logger.error(f"LLM call failed for {model_id}: {e}")
             raise
 
@@ -213,7 +275,9 @@ class BaseLLM(ABC):
 
         last_error = None
         yielded_any = False
+        first_token_ms: float | None = None
         for attempt in range(self.max_retries + 1):
+            started = monotonic()
             try:
                 # 每次调用重新读 env
                 response = await litellm.acompletion(
@@ -229,8 +293,14 @@ class BaseLLM(ABC):
                 async for chunk in response:
                     delta = chunk.choices[0].delta
                     if delta.content:
+                        if first_token_ms is None:
+                            first_token_ms = (monotonic() - started) * 1000
                         yielded_any = True
                         yield delta.content
+                runtime_metrics.record(
+                    "llm.stream", (monotonic() - started) * 1000,
+                    first_token_ms=first_token_ms,
+                )
                 return  # 成功完成，直接返回
 
             except Exception as e:
@@ -248,4 +318,140 @@ class BaseLLM(ABC):
                     break
 
         logger.error(f"LLM stream call failed for {model_id}: {last_error}")
+        runtime_metrics.record("llm.stream", 0, success=False)
         raise last_error
+
+    async def chat_stream_events(
+        self,
+        messages: list[dict[str, Any]],
+        system_prompt: str | None = None,
+        **kwargs,
+    ) -> AsyncGenerator[LLMStreamEvent, None]:
+        """Stream normalized content and reconstructed native tool calls."""
+        full_messages: list[dict[str, Any]] = []
+        if system_prompt:
+            full_messages.append({"role": "system", "content": system_prompt})
+        full_messages.extend(messages)
+
+        model_id = self._build_model_id()
+        started = monotonic()
+        first_token_ms: float | None = None
+        usage: dict[str, int] = {}
+        request_kwargs = dict(kwargs)
+        added_usage_option = "stream_options" not in request_kwargs
+        if added_usage_option:
+            request_kwargs["stream_options"] = {"include_usage": True}
+        try:
+            common_kwargs = self._litellm_kwargs(request_kwargs)
+            response = await litellm.acompletion(
+                model=model_id,
+                messages=full_messages,
+                api_key=self._resolve_api_key(model_id),
+                base_url=self.base_url,
+                stream=True,
+                **common_kwargs,
+                **request_kwargs,
+            )
+        except Exception:
+            if not added_usage_option:
+                runtime_metrics.record("llm.stream", 0, success=False)
+                raise
+            # Older OpenAI-compatible servers reject stream_options. Retry
+            # once without it before exposing an error to the caller.
+            fallback_kwargs = dict(kwargs)
+            common_kwargs = self._litellm_kwargs(fallback_kwargs)
+            try:
+                response = await litellm.acompletion(
+                    model=model_id,
+                    messages=full_messages,
+                    api_key=self._resolve_api_key(model_id),
+                    base_url=self.base_url,
+                    stream=True,
+                    **common_kwargs,
+                    **fallback_kwargs,
+                )
+            except Exception:
+                runtime_metrics.record("llm.stream", 0, success=False)
+                raise
+        pending_calls: dict[int, dict[str, str]] = {}
+        async for chunk in response:
+            choices = getattr(chunk, "choices", None) or []
+            delta = choices[0].delta if choices else None
+            if delta is None:
+                raw_usage = getattr(chunk, "usage", None)
+                if raw_usage:
+                    for field_name in (
+                        "prompt_tokens", "completion_tokens", "total_tokens",
+                        "cache_creation_input_tokens", "cache_read_input_tokens",
+                    ):
+                        value = getattr(raw_usage, field_name, None)
+                        if value is not None:
+                            usage[field_name] = int(value)
+                    details = getattr(raw_usage, "prompt_tokens_details", None)
+                    cached = getattr(details, "cached_tokens", None)
+                    if cached is not None:
+                        usage["cached_tokens"] = int(cached)
+                continue
+            content = getattr(delta, "content", None)
+            if content:
+                if first_token_ms is None:
+                    first_token_ms = (monotonic() - started) * 1000
+                yield LLMStreamEvent(kind="content", content=content)
+            reasoning = (
+                getattr(delta, "reasoning_content", None)
+                or getattr(delta, "reasoning", None)
+                or ""
+            )
+            if reasoning:
+                if first_token_ms is None:
+                    first_token_ms = (monotonic() - started) * 1000
+                yield LLMStreamEvent(kind="reasoning", reasoning=str(reasoning))
+            for position, raw_call in enumerate(getattr(delta, "tool_calls", None) or []):
+                index = _field(raw_call, "index", position)
+                call = pending_calls.setdefault(index, {"id": "", "name": "", "arguments": ""})
+                call["id"] += _field(raw_call, "id", "") or ""
+                function = _field(raw_call, "function", {}) or {}
+                call["name"] += _field(function, "name", "") or ""
+                argument_chunk = _field(function, "arguments", "") or ""
+                if isinstance(argument_chunk, dict):
+                    argument_chunk = json.dumps(argument_chunk, ensure_ascii=False)
+                call["arguments"] += argument_chunk
+
+            raw_usage = getattr(chunk, "usage", None)
+            if raw_usage:
+                for field_name in (
+                    "prompt_tokens", "completion_tokens", "total_tokens",
+                    "cache_creation_input_tokens", "cache_read_input_tokens",
+                ):
+                    value = getattr(raw_usage, field_name, None)
+                    if value is not None:
+                        usage[field_name] = int(value)
+                details = getattr(raw_usage, "prompt_tokens_details", None)
+                cached = getattr(details, "cached_tokens", None)
+                if cached is not None:
+                    usage["cached_tokens"] = int(cached)
+
+        for index in sorted(pending_calls):
+            call = pending_calls[index]
+            normalized = _normalize_tool_call(
+                {
+                    "id": call["id"] or f"call_{index}",
+                    "type": "function",
+                    "function": {"name": call["name"], "arguments": call["arguments"]},
+                },
+                index,
+            )
+            yield LLMStreamEvent(kind="tool_call", tool_call=normalized)
+        runtime_metrics.record(
+            "llm.stream", (monotonic() - started) * 1000,
+            usage=usage, first_token_ms=first_token_ms,
+        )
+
+_pending_request_id: ContextVar[str] = ContextVar("llm_request_id", default="")
+
+def set_llm_request_id(request_id: str) -> ContextVar:
+    """Bind a request_id for the current async context (used in logs)."""
+    return _pending_request_id.set(request_id or "")
+
+def reset_llm_request_id(token) -> None:
+    _pending_request_id.reset(token)

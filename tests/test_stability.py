@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -96,6 +98,30 @@ async def test_mcp_client_disconnect_before_connect():
     client = MCPClient(cfg)
     await client.disconnect()
     assert client.state.value == "disconnected"
+
+
+@pytest.mark.asyncio
+async def test_mcp_client_stays_ready_while_idle():
+    """无请求的 stdio 服务是正常状态，不能因读取超时被强制重连。"""
+    from core.tools.mcp_client import MCPClient, MCPConfig, MCPState
+
+    server = Path(__file__).parent.parent / "mcp_servers" / "system_tools.py"
+    cfg = MCPConfig(
+        name="idle-server",
+        command=sys.executable,
+        args=["-u", str(server)],
+        startup_timeout=3.0,
+        auto_reconnect=False,
+    )
+    client = MCPClient(cfg)
+    # 旧实现会将这个值用于 stdout 空闲读取，并在下一次循环把连接置为 ERROR。
+    client.READ_INACTIVITY_TIMEOUT = 0.05
+    try:
+        assert await client.connect() is True
+        await asyncio.sleep(0.15)
+        assert client.state is MCPState.READY
+    finally:
+        await client.disconnect()
 
 
 @pytest.mark.asyncio
@@ -241,6 +267,13 @@ class TestToolHandlerStability:
         )
         assert len(result) == 2
 
+    def test_parse_structured_tool_call_preserves_types(self):
+        from core.chat.tool_handler import parse_tool_call
+        result = parse_tool_call(
+            '```tool\n{"name":"search","arguments":{"query":"天气, 北京","limit":5,"fresh":true}}\n```'
+        )
+        assert result == [("search", {"query": "天气, 北京", "limit": 5, "fresh": True})]
+
     def test_build_tools_prompt_no_tools(self):
         from core.chat.tool_handler import build_tools_prompt
         result = build_tools_prompt(None, None)
@@ -267,6 +300,60 @@ class TestStorageStability:
         from core.storage.db import get_db, get_db_path
         path = get_db_path()
         assert isinstance(path, Path)
+
+    def test_connection_cache_is_keyed_by_database_path(self, tmp_path):
+        from core.storage.db import close_db, get_connection
+
+        first = get_connection(tmp_path / "first.db")
+        second = get_connection(tmp_path / "second.db")
+        try:
+            assert first is not second
+        finally:
+            close_db()
+
+    def test_open_db_records_schema_version(self, tmp_path):
+        from core.storage.db import open_db
+        from core.storage.migrations import SCHEMA_VERSION
+
+        conn = open_db(tmp_path / "versioned.db")
+        try:
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+            assert conn.execute(
+                "SELECT version FROM schema_migrations"
+            ).fetchone()[0] == SCHEMA_VERSION
+        finally:
+            conn.close()
+
+    def test_backup_inspection_rejects_unsafe_archive(self, tmp_path):
+        from core.storage.backup import BackupValidationError, inspect_backup
+
+        archive_path = tmp_path / "unsafe.zip"
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("manifest.json", json.dumps({"format_version": 1}))
+            archive.writestr("../outside.txt", "blocked")
+        with pytest.raises(BackupValidationError, match="unsafe"):
+            inspect_backup(archive_path)
+
+    def test_backup_restore_round_trip(self, tmp_path):
+        from core.storage.backup import create_backup, restore_backup
+
+        data_dir = tmp_path / "data"
+        config_dir = tmp_path / "config"
+        data_dir.mkdir()
+        config_dir.mkdir()
+        conversation = data_dir / "conversations.json"
+        persona = config_dir / "personas.json"
+        conversation.write_text('{"value": "original"}', encoding="utf-8")
+        persona.write_text('{"personas": [{"id": "p", "name": "原始"}]}', encoding="utf-8")
+        archive = create_backup(data_dir, config_dir)
+
+        conversation.write_text('{"value": "changed"}', encoding="utf-8")
+        persona.write_text('{"personas": []}', encoding="utf-8")
+        result = restore_backup(archive, data_dir, config_dir)
+
+        assert "original" in conversation.read_text(encoding="utf-8")
+        assert "原始" in persona.read_text(encoding="utf-8")
+        assert Path(result["safety_backup"]).exists()
 
 
 # ══════════════════════════════════════════

@@ -455,8 +455,8 @@ async def test_debounce_module():
     mock_manager = MagicMock()
 
     db = DebounceManager(0.1, mock_pipeline, mock_app, mock_manager)
-    await db.add_message("test", "user1", "hello")
-    await db.add_message("test", "user1", "world")
+    await db.add_message("test", "user1", "hello", persona_id="girlfriend_001")
+    await db.add_message("test", "user1", "world", persona_id="girlfriend_001")
     await asyncio.sleep(0.3)  # 等待去抖触发
 
     # 两条消息应该合并为一条处理

@@ -28,6 +28,7 @@ TOKEN_RE = re.compile(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{2,}|\d+', re.UNICODE)
 
 
 class MemoryManager:
+    MIN_SEMANTIC_SIMILARITY = 0.35
     """记忆管理器
 
     同时管理 JSON 存储（元数据/重要度/CRUD/分类/冲突）和
@@ -377,7 +378,7 @@ class MemoryManager:
                     cand_vecs = self._embedder.embed_batch(candidate_texts)
                     if cand_vecs and len(cand_vecs) == len(candidates):
                         return self._hybrid_rank_prompt(
-                            candidates, cand_vecs, query_vec, limit
+                            candidates, cand_vecs, query_vec, limit, query
                         )
             except Exception as e:
                 logger.debug(f"Hybrid ranking failed, fallback to importance: {e}")
@@ -388,7 +389,7 @@ class MemoryManager:
 
     def _hybrid_rank_prompt(
         self, candidates: list[Memory], cand_vecs: list[list[float]],
-        query_vec: list[float], limit: int,
+        query_vec: list[float], limit: int, query: str,
     ) -> str:
         """混合评分排序 + 去重，返回格式化 prompt"""
         now = datetime.now()
@@ -398,6 +399,9 @@ class MemoryManager:
         for mem, vec in zip(candidates, cand_vecs):
             mem_np = np.array(vec, dtype=np.float32).reshape(1, -1)
             sim = float(np.dot(query_np, mem_np.T)[0, 0])
+            keyword_overlap = bool(set(TOKEN_RE.findall(query)) & set(TOKEN_RE.findall(mem.content)))
+            if sim < self.MIN_SEMANTIC_SIMILARITY and not keyword_overlap:
+                continue
 
             # 重要度归一化
             imp_norm = (mem.level - 1) / 4.0

@@ -1,4 +1,4 @@
-"""auto_test.py — 赛博伴侣全链路自动化测试
+"""auto_test.py — 慕全链路自动化测试
 
 直接使用内部 API（不经过 CLI），4 轮回归验证。
 """
@@ -234,7 +234,7 @@ class Tester:
         total = self.results["passed"] + self.results["failed"]
         health = "PASS" if self.results["failed"] == 0 else "FAIL"
 
-        report = f"""# 赛博伴侣 回归测试报告 — 第 {self.run_id}/4 轮
+        report = f"""# 慕 回归测试报告 — 第 {self.run_id}/4 轮
 
 **时间**: {datetime.now().isoformat()}
 **结果**: {health} ({self.results['passed']}/{total} 通过)
@@ -263,7 +263,7 @@ class Tester:
 
     def run(self):
         print(f"\n{'='*60}")
-        print(f"  赛博伴侣 回归测试 — 第 {self.run_id}/4 轮")
+        print(f"  慕 回归测试 — 第 {self.run_id}/4 轮")
         print(f"{'='*60}")
         start = time.time()
         try:

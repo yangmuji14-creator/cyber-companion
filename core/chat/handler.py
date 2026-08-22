@@ -9,13 +9,14 @@
 """
 
 import asyncio
+import inspect
 import queue
 import threading
 
 from loguru import logger
 
 from core.chat.commands import Colors, CommandHandler
-from core.config import DEFAULT_PERSONA_ID
+from core.config import DEFAULT_PERSONA_ID, build_memory_scope_uid
 from core.chat.pipeline import ChatPipeline
 from core.dialogue import DialogueThinker
 from core.dialogue.consistency import ConsistencyGuard
@@ -86,7 +87,50 @@ class ChatHandler:
         self.pipeline._mcp_manager = mcp_manager
         self.commands = CommandHandler(self)
 
+    def activate_default_model(self):
+        """Apply a newly configured registry default to live components."""
+        llm = self._registry.get()
+        self.pipeline.set_llm(llm)
+        if self._vision_manager is not None:
+            self._vision_manager._main_model = llm
+        if self._life_summary is not None and hasattr(self._life_summary, "configure_diary_generation"):
+            self._life_summary.configure_diary_generation(
+                llm=llm,
+                persona_loader=self.persona_loader,
+            )
+        if self._proactive is not None:
+            async def _generate(system_prompt: str, user_prompt: str,
+                                max_tokens: int = 200, temperature: float = 0.95) -> str:
+                response = await llm.chat(
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=system_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                return response.content
+            self._proactive.set_llm_generator(_generate)
+        return llm
+
     # ---- 内部 ----
+
+    def get_memory_scope_id(
+        self,
+        user_id: str,
+        persona_id: str | None = None,
+    ) -> str:
+        """Return the isolated state key for the current CLI conversation."""
+        return build_memory_scope_uid(
+            user_id, persona_id or self.current_persona_id, "cli",
+        )
+
+    def _scope_kwargs(self, user_id: str) -> dict:
+        """Return the CLI persona scope for compatible pipeline versions."""
+        scope_id = self.get_memory_scope_id(user_id)
+        try:
+            parameters = inspect.signature(self.pipeline.process).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        return {"scope_id": scope_id} if "scope_id" in parameters else {}
 
     async def _process_and_respond(
         self,
@@ -130,6 +174,7 @@ class ChatHandler:
         reply, rel_level = await self.pipeline.process(
             user_id, text, self.current_persona_id,
             on_token=_on_token,
+            **self._scope_kwargs(user_id),
         )
 
         if not spinner_stop.is_set():
@@ -161,7 +206,7 @@ class ChatHandler:
         # 会话统计
         stats = SessionStats()
         stats.start_level = int(self._affection_storage.get_level(
-            user_id, persona_id=self.current_persona_id,
+            self.get_memory_scope_id(user_id), persona_id=self.current_persona_id,
         )) if self._affection_storage else 50
         last_reply = [""]
 
@@ -207,15 +252,17 @@ class ChatHandler:
 
                     # 超时 — 检查主动消息或发送累积消息
                     if not message_queue:
+                        scope_id = self.get_memory_scope_id(user_id)
                         trigger_type = self._proactive.check_proactive_messages(
-                            user_id, self.current_persona_id
+                            user_id, self.current_persona_id, scope_id,
                         )
                         if trigger_type:
                             persona_obj = self.persona_loader.get(self.current_persona_id)
                             p_name = persona_obj.name if persona_obj else "AI"
                             # LLM 异步生成消息内容
                             proactive_msg = await self._proactive.generate_message(
-                                trigger_type, user_id, self.current_persona_id
+                                trigger_type, user_id, self.current_persona_id,
+                                scope_id,
                             )
                             if proactive_msg:
                                 print(f"\n{Colors.YELLOW}💌 {p_name} 主动找你：{Colors.RESET}")
@@ -241,12 +288,25 @@ class ChatHandler:
 
                 # 斜杠命令
                 if user_input.startswith("/"):
+                    previous_persona_id = self.current_persona_id
                     result = await self.commands.handle(
                         user_input, user_id, persona_name
                     )
                     if result == "quit":
                         break
                     if result is True:
+                        if self.current_persona_id != previous_persona_id:
+                            if message_queue:
+                                message_queue.clear()
+                                print(
+                                    f"  {Colors.DIM}已丢弃切换前尚未发送的消息，避免写入新角色会话{Colors.RESET}"
+                                )
+                            persona = self.persona_loader.get(self.current_persona_id)
+                            persona_name = persona.name if persona else "AI"
+                            stats.start_level = int(self._affection_storage.get_level(
+                                self.get_memory_scope_id(user_id),
+                                persona_id=self.current_persona_id,
+                            )) if self._affection_storage else 50
                         continue
 
                 # 不用去抖
@@ -267,7 +327,9 @@ class ChatHandler:
 
         except asyncio.CancelledError:
             if last_reply[0]:
-                self.chat_history.add_message(user_id, "assistant", last_reply[0])
+                self.chat_history.add_message(
+                    self.get_memory_scope_id(user_id), "assistant", last_reply[0],
+                )
                 print(f"\n{Colors.DIM}（已保存部分回复）{Colors.RESET}")
             raise
         finally:
@@ -275,6 +337,6 @@ class ChatHandler:
 
         # 退出总结
         stats.end_level = int(self._affection_storage.get_level(
-            user_id, persona_id=self.current_persona_id,
+            self.get_memory_scope_id(user_id), persona_id=self.current_persona_id,
         )) if self._affection_storage else 50
         print(stats.summary(persona_name))

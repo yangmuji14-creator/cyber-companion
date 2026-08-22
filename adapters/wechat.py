@@ -17,19 +17,24 @@
 import asyncio
 import json
 import os
+import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from loguru import logger
 
+from core.config import CONFIG_DIR, DATA_DIR
 from .base import BaseAdapter, AdapterMessage, AdapterConfig
 
 
-# 凭证存储路径
-_CREDENTIALS_DIR = Path(__file__).resolve().parent.parent / "data" / "credentials"
-_CREDENTIALS_FILE = _CREDENTIALS_DIR / "wechat.json"
-_SYNC_FILE = _CREDENTIALS_DIR / "wechat.json.sync"
+# 凭证存储目录（所有 WeChat 账号共享同一目录，文件名按 account_id 区分）
+_CREDENTIALS_DIR = DATA_DIR / "credentials"
+
+# account_id 校验规则：只允许字母/数字/下划线/连字符，"default" 豁免长度限制
+_ACCOUNT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_ACCOUNT_ID_MAX_LEN = 32
+_ACCOUNT_ID_MIN_LEN = 3
 
 
 def _qrcode_to_terminal(qr_url: str) -> None:
@@ -51,13 +56,78 @@ def _ensure_credentials_dir() -> None:
     _CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _load_credentials() -> dict[str, Any] | None:
-    if _CREDENTIALS_FILE.exists():
+def _load_credentials(path: Path) -> dict[str, Any] | None:
+    """从指定路径加载凭证（多账号：每个账号独立凭证文件）"""
+    if path.exists():
         try:
-            return json.loads(_CREDENTIALS_FILE.read_text(encoding="utf-8"))
+            return json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             return None
     return None
+
+
+def _validate_account_id(account_id: str) -> str:
+    """校验 account_id，防 path traversal 与非法字符
+
+    规则：
+    - "default" 豁免长度限制（向后兼容默认账号）
+    - 其他账号：3-32 字符，只允许 [A-Za-z0-9_-]
+    - 任何含 /、\\、.. 的输入一律 raise ValueError
+    """
+    if account_id == "default":
+        return account_id
+    if not account_id:
+        raise ValueError("account_id 不能为空")
+    # 显式拒绝 path traversal 字符（双保险，正则已经不允许 / \\）
+    if "/" in account_id or "\\" in account_id or ".." in account_id:
+        raise ValueError(
+            f"account_id 含非法路径字符: {account_id!r}"
+        )
+    if not _ACCOUNT_ID_PATTERN.match(account_id):
+        raise ValueError(
+            f"account_id 只允许字母/数字/下划线/连字符: {account_id!r}"
+        )
+    if not (_ACCOUNT_ID_MIN_LEN <= len(account_id) <= _ACCOUNT_ID_MAX_LEN):
+        raise ValueError(
+            f"account_id 长度必须在 {_ACCOUNT_ID_MIN_LEN}-{_ACCOUNT_ID_MAX_LEN} 之间: {account_id!r}"
+        )
+    return account_id
+
+
+def _credential_paths_for(account_id: str) -> tuple[Path, Path]:
+    """根据 account_id 计算凭证文件与 sync 文件路径
+
+    - account_id="default" → wechat.json / wechat.json.sync（向后兼容旧路径）
+    - 其他 → wechat_{account_id}.json / wechat_{account_id}.json.sync
+    """
+    if account_id == "default":
+        return _CREDENTIALS_DIR / "wechat.json", _CREDENTIALS_DIR / "wechat.json.sync"
+    return (
+        _CREDENTIALS_DIR / f"wechat_{account_id}.json",
+        _CREDENTIALS_DIR / f"wechat_{account_id}.json.sync",
+    )
+
+
+def _extract_raw_wechat_id(user_id: str) -> str:
+    """从 user_id 提取真实微信 from_user
+
+    支持两种格式（向后兼容）：
+    - 新格式: "wechat::{account_id}::{from_user}" → 取最后 :: 段
+    - 旧格式: "wechat_{from_user}" → 去 wechat_ 前缀
+    """
+    if user_id.startswith("wechat::"):
+        # 双冒号分隔：wechat :: account_id :: from_user
+        parts = user_id.split("::", 2)
+        # parts = ["wechat", account_id, from_user]；from_user 本身可能含 ::，取第 3 段起全部
+        return parts[2] if len(parts) >= 3 else ""
+    if user_id.startswith("wechat_"):
+        return user_id[len("wechat_"):]
+    return user_id
+
+
+class SessionExpiredError(Exception):
+    """微信 session 过期（SDK errcode=-14），需要重新扫码登录。"""
+    pass
 
 
 class WeChatAdapter(BaseAdapter):
@@ -70,12 +140,24 @@ class WeChatAdapter(BaseAdapter):
     - context_token 自动管理
     """
 
-    def __init__(self, config: AdapterConfig | None = None):
+    def __init__(
+        self,
+        config: AdapterConfig | None = None,
+        account_id: str = "default",
+        main_model: Any = None,
+    ):
+        account_id = _validate_account_id(account_id)
         if config is None:
-            config = AdapterConfig(platform="wechat", enabled=True)
+            config = AdapterConfig(platform="wechat", enabled=True, account_id=account_id)
+        else:
+            config.account_id = account_id
         super().__init__(config)
 
+        # 凭证 / sync 文件路径按 account_id 隔离
+        self._credentials_file, self._sync_file = _credential_paths_for(account_id)
+
         self._bot = None
+        self._main_model = main_model
         self._credentials: dict[str, Any] | None = None
         self._running = False
         self._task: asyncio.Task | None = None
@@ -83,17 +165,29 @@ class WeChatAdapter(BaseAdapter):
         # 图片识别状态：图片一到立刻启动视觉，文字到达后组合
         self._pending_vision: dict[str, dict] = {}
 
+        # Session 过期检测（watchdog 触发后置 True，WebUI 轮询读此标记弹 QR）
+        self.session_expired: bool = False
+        # 回调签名: (account_id: str) -> None。由 server.py 注入，触发后只记日志，
+        # 前端通过 GET /api/wechat/accounts 的 session_expired 字段轮询发现。
+        self.on_session_expired: Callable[[str], None] | None = None
+
+        # probe 期间（start() 主动探测 token）收到的消息暂存，
+        # _poll_messages 注册 handler 后立即 dispatch，避免丢失。
+        # 背景：client.poll() 是 long-poll，会拿走 pending 消息并推进 cursor，
+        # 若不暂存，probe 期间用户发的消息会被永久丢弃。
+        self._pending_probe_msgs: list[dict] = []
+
     # ---- 生命周期 ----
 
     async def start(self) -> None:
         """启动微信适配器
 
-        1. 尝试复用已有凭证
+        1. 尝试复用已有凭证（主动探测 token 有效性，过期则走重登）
         2. 否则启动二维码登录
         3. 启动长轮询消息接收
         """
         try:
-            from weixin_ilink import WeixinBot, login
+            from weixin_ilink import WeixinBot, login  # noqa: F811 -- login 由 _do_relogin 使用
         except ImportError as e:
             logger.error(f"weixin-ilink not installed: {e}")
             print("\n  [错误] 微信 SDK 未安装")
@@ -103,77 +197,136 @@ class WeChatAdapter(BaseAdapter):
         _ensure_credentials_dir()
 
         # 尝试复用已有凭证
-        self._credentials = _load_credentials()
+        self._credentials = _load_credentials(self._credentials_file)
 
         if self._credentials:
-            logger.info("WeChat: reusing existing credentials")
+            logger.info(f"WeChat[{self.account_id}]: reusing existing credentials")
             try:
                 self._bot = WeixinBot(
                     credentials=self._credentials,
-                    cursor_file=str(_SYNC_FILE),
+                    cursor_file=str(self._sync_file),
                     auto_save_cursor=True,
                 )
+                # 主动探测 token 有效性（WeixinBot.__init__ 不验证 token，只构造 ILinkClient）
+                # probe 的 poll() 可能更新 client.cursor，需立即持久化到 cursor_file
+                loop = asyncio.get_running_loop()
+                try:
+                    probe_resp = await loop.run_in_executor(None, self._bot.client.poll)
+                    errcode = probe_resp.get("errcode") or 0
+                    ret = probe_resp.get("ret") or 0
+                    if errcode == -14 or ret == -14:
+                        logger.warning(
+                            f"WeChat[{self.account_id}]: token expired (probe errcode=-14), will re-login"
+                        )
+                        self._persist_cursor()
+                        self._bot = None
+                        self._credentials = None
+                    else:
+                        # probe 成功，cursor 可能已更新，立即持久化
+                        self._persist_cursor()
+                        # 暂存 probe 期间收到的消息（long-poll 会拿走 pending 消息），
+                        # _poll_messages 注册 handler 后 dispatch，避免丢失
+                        probe_msgs = probe_resp.get("msgs") or []
+                        if probe_msgs:
+                            self._pending_probe_msgs = probe_msgs
+                            logger.info(
+                                f"WeChat[{self.account_id}]: probe captured {len(probe_msgs)} msg(s), "
+                                f"will dispatch after handlers registered"
+                            )
+                except Exception as e:
+                    logger.warning(
+                        f"WeChat[{self.account_id}]: probe poll failed: {e}, will re-login"
+                    )
+                    self._persist_cursor()
+                    self._bot = None
+                    self._credentials = None
             except Exception as e:
-                logger.warning(f"WeChat credentials expired: {e}")
+                logger.warning(f"WeChat credentials invalid: {e}")
                 self._credentials = None
 
         # 需要重新登录
         if not self._credentials:
-            logger.info("WeChat: starting QR code login...")
-            print("\n" + "=" * 50)
-            print("  微信登录")
-            print("=" * 50)
-            print("\n  步骤：")
-            print("  1. 确保手机上已安装微信 ClawBot 插件")
-            print("  2. 打开微信，准备扫码")
-            print("\n  正在获取二维码...")
-
-            loop = asyncio.get_running_loop()
-
-            def _on_qr(url: str) -> None:
-                print("\n  请使用微信扫描下方二维码:\n")
-                _qrcode_to_terminal(url)
-                print("\n  等待扫码...")
-                print("  （二维码 5 分钟后过期）")
-
-            def _on_status(status: str) -> None:
-                if status == "scaned":
-                    print("\n  已扫码，请在手机上确认登录...")
-                elif status == "confirmed":
-                    print("\n  登录成功！")
-                elif status == "expired":
-                    print("\n  二维码已过期，正在重新获取...")
-
-            try:
-                creds = await loop.run_in_executor(
-                    None,
-                    lambda: login(
-                        save_to=str(_CREDENTIALS_FILE),
-                        on_qrcode=_on_qr,
-                        on_status_change=_on_status,
-                    ),
-                )
-                self._credentials = creds
-                self._bot = WeixinBot(
-                    credentials=creds,
-                    cursor_file=str(_SYNC_FILE),
-                    auto_save_cursor=True,
-                )
-            except Exception as e:
-                logger.error(f"WeChat login failed: {e}")
-                print(f"\n  [错误] 登录失败: {e}")
-                print("  请检查：")
-                print("  - 是否已安装微信 ClawBot 插件")
-                print("  - 网络连接是否正常")
-                raise
+            await self._do_relogin()
 
         # 启动消息轮询
         self._running = True
         self._task = asyncio.create_task(self._poll_messages())
-        logger.info("WeChat adapter started")
+        logger.info(f"WeChat[{self.account_id}] adapter started")
         print("\n  微信 Bot 已启动")
+        print(f"  账号: {self.account_id}")
         print("  现在可以通过微信发送消息给 AI 了")
         print("=" * 50 + "\n")
+
+    def _persist_cursor(self) -> None:
+        """把 bot.client.cursor 持久化到 cursor_file（probe 后立即调用）。
+
+        SDK 在 messages() 迭代器里也会自动保存（auto_save_cursor=True），
+        但 probe poll 是绕过 messages() 的，需手动保存以保持向后兼容。
+        """
+        if self._bot and getattr(self._bot, "_cursor_file", None):
+            try:
+                self._bot._cursor_file.write_text(
+                    self._bot.client.cursor, encoding="utf-8"
+                )
+            except OSError as e:
+                logger.warning(f"WeChat[{self.account_id}]: persist cursor failed: {e}")
+
+    async def _do_relogin(self) -> None:
+        """走 QR 登录流程（终端打印 + SDK login），成功后构造新 WeixinBot。
+
+        供 start() 初次启动（无凭证 / probe 失败）和 trigger_relogin() 调用。
+        WebUI 模式下用户扫码的入口是 server.py 的 SSE 端点，不走这里；
+        本方法主要用于 CLI 模式 + 程序化重登场景。
+        """
+        from weixin_ilink import WeixinBot, login
+
+        logger.info(f"WeChat[{self.account_id}]: starting QR code login...")
+        print("\n" + "=" * 50)
+        print("  微信登录")
+        print("=" * 50)
+        print("\n  步骤：")
+        print("  1. 确保手机上已安装微信 ClawBot 插件")
+        print("  2. 打开微信，准备扫码")
+        print("\n  正在获取二维码...")
+
+        loop = asyncio.get_running_loop()
+
+        def _on_qr(url: str) -> None:
+            print("\n  请使用微信扫描下方二维码:\n")
+            _qrcode_to_terminal(url)
+            print("\n  等待扫码...")
+            print("  （二维码 5 分钟后过期）")
+
+        def _on_status(status: str) -> None:
+            if status == "scaned":
+                print("\n  已扫码，请在手机上确认登录...")
+            elif status == "confirmed":
+                print("\n  登录成功！")
+            elif status == "expired":
+                print("\n  二维码已过期，正在重新获取...")
+
+        try:
+            creds = await loop.run_in_executor(
+                None,
+                lambda: login(
+                    save_to=str(self._credentials_file),
+                    on_qrcode=_on_qr,
+                    on_status_change=_on_status,
+                ),
+            )
+            self._credentials = creds
+            self._bot = WeixinBot(
+                credentials=creds,
+                cursor_file=str(self._sync_file),
+                auto_save_cursor=True,
+            )
+        except Exception as e:
+            logger.error(f"WeChat login failed: {e}")
+            print(f"\n  [错误] 登录失败: {e}")
+            print("  请检查：")
+            print("  - 是否已安装微信 ClawBot 插件")
+            print("  - 网络连接是否正常")
+            raise
 
     async def stop(self) -> None:
         """停止微信适配器"""
@@ -189,7 +342,7 @@ class WeChatAdapter(BaseAdapter):
                 self._bot.stop()
             except Exception:
                 pass
-        logger.info("WeChat adapter stopped")
+        logger.info(f"WeChat[{self.account_id}] adapter stopped")
 
     # ---- 消息轮询 ----
 
@@ -233,6 +386,37 @@ class WeChatAdapter(BaseAdapter):
 
         self._bot.on_image(_handle_image)
 
+        # dispatch probe 期间暂存的消息（避免丢失）
+        # 必须在 on_text/on_image 注册之后、bot_thread 启动之前执行，
+        # 这样 handler 已就绪，且不会与 bot.run() 的 dispatch 竞争。
+        if self._pending_probe_msgs:
+            from weixin_ilink.bot import IncomingMessage
+            from weixin_ilink.types import MessageType as _MsgType
+            pending = self._pending_probe_msgs
+            self._pending_probe_msgs = []
+            dispatched = 0
+            for msg in pending:
+                if msg.get("message_type") != int(_MsgType.USER):
+                    continue
+                from_user = msg.get("from_user_id")
+                if not from_user:
+                    continue
+                if msg.get("context_token"):
+                    self._bot._ctx_cache[from_user] = msg["context_token"]
+                for item in msg.get("item_list") or []:
+                    im = IncomingMessage(raw_message=msg, raw_item=item, _bot=self._bot)
+                    try:
+                        self._bot._dispatch(im)
+                        dispatched += 1
+                    except Exception as e:
+                        logger.error(
+                            f"WeChat[{self.account_id}] probe msg dispatch failed: {e}"
+                        )
+            if dispatched:
+                logger.info(
+                    f"WeChat[{self.account_id}]: dispatched {dispatched} pending probe msg(s)"
+                )
+
         # 在独立守护线程中运行 bot.run()（不能用 run_in_executor，
         # 因为 bot.run() 内部使用 signal 模块，只能在主线程中设置信号）
         import threading
@@ -249,9 +433,54 @@ class WeChatAdapter(BaseAdapter):
         bot_thread = threading.Thread(target=_run_bot, daemon=True)
         bot_thread.start()
 
-        # 等待线程结束（或直到 self._running 变为 False）
+        # Watchdog：每 60s 检查 client.cursor 是否变化。
+        # SDK 的 messages() 迭代器遇到 errcode=-14 只 print + sleep(3600) + continue，
+        # 不抛异常、不通知外层。1h 内 cursor 无变化 + bot 线程仍 alive → 判定卡在 -14 死循环。
+        WATCHDOG_CHECK_INTERVAL = 60   # 每 60 次循环（~60s）检查一次
+        WATCHDOG_SILENCE_THRESHOLD = 3600  # 1h 无 cursor 变化 → 触发
+        last_cursor = self._bot.client.cursor
+        last_change_time = time.monotonic()
+        iteration = 0
+
         while self._running and bot_thread.is_alive():
             await asyncio.sleep(1)
+            iteration += 1
+            if iteration % WATCHDOG_CHECK_INTERVAL != 0:
+                continue
+            if not self._bot:
+                break
+            current_cursor = self._bot.client.cursor
+            if current_cursor != last_cursor:
+                last_cursor = current_cursor
+                last_change_time = time.monotonic()
+                continue
+            # cursor 未变化
+            silence_seconds = time.monotonic() - last_change_time
+            if silence_seconds >= WATCHDOG_SILENCE_THRESHOLD:
+                logger.error(
+                    f"WeChat[{self.account_id}]: bot silent >1h "
+                    f"({silence_seconds:.0f}s), likely session expired (-14 death loop)"
+                )
+                self.session_expired = True
+                # 停掉 bot 线程（stop() 设 _stop=True，但 sleep(3600) 不会立即响应；
+                # join 超时后 daemon 线程会在 sleep 结束后自然退出）
+                try:
+                    self._bot.stop()
+                except Exception as e:
+                    logger.warning(f"WeChat[{self.account_id}]: bot.stop() failed: {e}")
+                bot_thread.join(timeout=5)
+                # 通知 WebUI（回调由 server.py 注入，只记日志；
+                # 前端通过 GET /api/wechat/accounts 的 session_expired 字段轮询发现）
+                if self.on_session_expired:
+                    try:
+                        self.on_session_expired(self.account_id)
+                    except Exception as cb_err:
+                        logger.error(
+                            f"WeChat[{self.account_id}]: on_session_expired callback failed: {cb_err}"
+                        )
+                # 不自动重登 —— 等待 WebUI 用户扫码（SSE QR 流程）
+                self._running = False
+                return
 
         # 如果线程还在运行，说明需要停止
         if bot_thread.is_alive():
@@ -261,18 +490,50 @@ class WeChatAdapter(BaseAdapter):
                 pass
             bot_thread.join(timeout=5)
 
+    async def trigger_relogin(self) -> None:
+        """触发重新登录（程序化入口，主要用于 CLI 模式或未来扩展）。
+
+        流程：清状态 → 调 _do_relogin()（终端 QR 扫码）→ 启动 _poll_messages。
+        注意：trigger_relogin 已包含 start，外层不要重复调用 start()。
+
+        WebUI 模式下用户扫码的入口是 server.py 的 SSE 端点（/api/wechat/login/{id}/qrcode），
+        SSE 流程自己调 SDK login() 并保存凭证，随后构造新 WeChatAdapter + start()；
+        本方法不参与 WebUI SSE 流程。
+        """
+        logger.info(f"WeChat[{self.account_id}] trigger_relogin: clearing state + re-login")
+        self.session_expired = False
+        self._credentials = None
+        self._bot = None
+        self._running = False
+        # 停掉可能存在的旧 _poll_messages task
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self._task = None
+
+        # 重新走 QR 登录 + 构造新 bot
+        await self._do_relogin()
+
+        # 启动轮询
+        self._running = True
+        self._task = asyncio.create_task(self._poll_messages())
+        logger.info(f"WeChat[{self.account_id}] relogin: adapter restarted")
+
     async def _on_image_message(self, msg) -> None:
         """处理微信图片消息
 
         SDK 会把图片+文字拆成两个独立事件。此处暂存图片，
         等待 2 秒内是否有文字到达，有则合并处理。
         """
-        user_id = f"wechat_{msg.from_user}"
+        user_id = f"wechat::{self.account_id}::{msg.from_user}"
         raw_user = msg.from_user
-        logger.info(f"WeChat image from {raw_user}")
+        logger.info(f"WeChat[{self.account_id}] image from {raw_user}")
 
         # 1. 下载图片
-        image_dir = Path(__file__).resolve().parent.parent / "data" / "wechat_images"
+        image_dir = DATA_DIR / "wechat_images"
         image_dir.mkdir(parents=True, exist_ok=True)
         image_path = str(image_dir / f"{raw_user}_{msg.message_id}.jpg")
 
@@ -300,7 +561,29 @@ class WeChatAdapter(BaseAdapter):
                 pass
             return
 
-        # 2. 立刻启动视觉识别（不等文字），文字通过 _on_inbound_message 注入
+        # 多模态主模型直接处理图片，不进入图片+文字等待；后续文字是独立消息。
+        try:
+            from core.multimodal.vision import VisionManager
+            from core.config import load_vision_config
+            vm = VisionManager(main_model=self._main_model, vision_config=load_vision_config())
+            if vm.main_is_multimodal:
+                vision_result = await vm.process(
+                    image_path,
+                    "请自然地回应这张图片，先描述你看到的重点，再说说你的感受。",
+                )
+                await self._send_segmented(asyncio.get_running_loop(), msg, vision_result)
+                return
+        except Exception as e:
+            logger.error(f"WeChat direct multimodal processing failed: {e}")
+            try:
+                await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: msg.reply_text("图片识别失败了~")
+                )
+            except Exception:
+                pass
+            return
+
+        # 文本主模型：立刻启动视觉识别（不等文字），文字通过 _on_inbound_message 注入
         text_event = asyncio.Event()
         text_buffer = [""]
 
@@ -345,7 +628,7 @@ class WeChatAdapter(BaseAdapter):
             from core.config import load_vision_config
             vision_config = load_vision_config()
             if vision_config.get("model_name"):
-                vm = VisionManager(vision_config=vision_config)
+                vm = VisionManager(main_model=self._main_model, vision_config=vision_config)
                 prompt = "请客观描述图片内容：画面里有什么、什么场景、什么细节。只描述事实。"
                 return await vm.process(image_path, prompt)
         except Exception as e:
@@ -355,7 +638,7 @@ class WeChatAdapter(BaseAdapter):
     async def _process_image_with_text(self, msg, image_path: str, text: str,
                                         vision_result: str = "") -> None:
         """合并图片描述+文字，发给主 LLM"""
-        user_id = f"wechat_{msg.from_user}"
+        user_id = f"wechat::{self.account_id}::{msg.from_user}"
         loop = asyncio.get_running_loop()
 
         try:
@@ -386,7 +669,7 @@ class WeChatAdapter(BaseAdapter):
                 reply = await self._handler(message)
                 if reply:
                     await self._send_segmented(loop, msg, reply)
-                    logger.info(f"WeChat image+text reply to {msg.from_user}")
+                    logger.info(f"WeChat[{self.account_id}] image+text reply to {msg.from_user}")
                 else:
                     await loop.run_in_executor(None, lambda: msg.reply_text("收到啦~"))
             else:
@@ -408,7 +691,7 @@ class WeChatAdapter(BaseAdapter):
         try:
             import json
             from pathlib import Path
-            settings_path = Path(__file__).resolve().parent.parent / "config" / "settings.json"
+            settings_path = CONFIG_DIR / "settings.json"
             if settings_path.exists():
                 settings = json.loads(settings_path.read_text(encoding="utf-8"))
                 max_len = settings.get("advanced", {}).get("segment_max_length", 16)
@@ -458,7 +741,7 @@ class WeChatAdapter(BaseAdapter):
             # 把文字注入到视觉任务的 buffer 里，触发 text_event
             pending_vis["text_buffer"][0] = msg.text
             pending_vis["text_event"].set()
-            logger.info(f"WeChat: text merged with pending vision for {raw_user}")
+            logger.info(f"WeChat[{self.account_id}]: text merged with pending vision for {raw_user}")
             return
 
         # 显示"正在输入"状态
@@ -468,7 +751,7 @@ class WeChatAdapter(BaseAdapter):
             pass
 
         # 构建统一消息格式
-        user_id = f"wechat_{msg.from_user}"
+        user_id = f"wechat::{self.account_id}::{msg.from_user}"
         message = AdapterMessage(
             user_id=user_id,
             content=msg.text,
@@ -487,7 +770,7 @@ class WeChatAdapter(BaseAdapter):
             if reply:
                 # 分段发送长回复
                 await self._send_segmented(loop, msg, reply)
-                logger.info(f"WeChat reply to {msg.from_user}: {reply[:40]}...")
+                logger.info(f"WeChat[{self.account_id}] reply to {msg.from_user}: {reply[:40]}...")
         except Exception as e:
             logger.error(f"WeChat handler error: {e}")
             # 发送错误提示
@@ -504,7 +787,8 @@ class WeChatAdapter(BaseAdapter):
             return False
 
         # 提取真实微信用户 ID
-        raw_id = user_id.replace("wechat_", "")
+        # user_id 格式: wechat::{account_id}::{from_user}（双冒号分隔，T5 parse_uid 解析）
+        raw_id = _extract_raw_wechat_id(user_id)
         ctx_token = kwargs.get("context_token")
 
         try:
@@ -537,7 +821,7 @@ class WeChatAdapter(BaseAdapter):
         if not self._bot:
             return False
 
-        raw_id = user_id.replace("wechat_", "")
+        raw_id = _extract_raw_wechat_id(user_id)
         try:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
@@ -553,7 +837,7 @@ class WeChatAdapter(BaseAdapter):
         """获取适配器信息"""
         info = super().get_info()
         info.update({
-            "credentials_file": str(_CREDENTIALS_FILE),
-            "has_credentials": _CREDENTIALS_FILE.exists(),
+            "credentials_file": str(self._credentials_file),
+            "has_credentials": self._credentials_file.exists(),
         })
         return info

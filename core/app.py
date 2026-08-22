@@ -4,12 +4,24 @@
 """
 
 import asyncio
+import inspect
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
-from core.config import ROOT, CONFIG_DIR, load_advanced, DEFAULT_PERSONA_ID
+from core.config import (
+    ROOT,
+    CONFIG_DIR,
+    load_advanced,
+    DEFAULT_PERSONA_ID,
+    build_wechat_uid,
+    build_memory_scope_uid,
+    normalize_wechat_accounts,
+    parse_uid,
+    resolve_wechat_account_persona,
+)
 from core.llm import init_registry, LLMRegistry
 from core.memory import MemoryManager, ChatHistoryStorage
 from core.memory.open_loop import OpenLoopEngine
@@ -18,6 +30,7 @@ from core.memory.life_summary import LifeSummaryEngine
 from core.memory.embedder import SentenceTransformerEmbedder
 from core.memory.vector_store import VectorStore
 from core.persona import PersonaLoader
+from core.conversation import ConversationStore
 from core.personality import PersonalityEngine
 from core.emotion import LLMEmotionAnalyzer
 from core.proactive import ProactiveMessenger
@@ -28,6 +41,7 @@ from core.chat import ChatHandler
 from core.brain import BrainCoordinator, BrainConfig
 from core.tools.mcp_manager import MCPManager
 from core.multimodal.vision import VisionManager
+from core.storage import consolidate_legacy_databases, get_db_path
 
 
 @dataclass
@@ -36,6 +50,7 @@ class AppComponents:
     registry: LLMRegistry
     memory_mgr: MemoryManager
     persona_loader: PersonaLoader
+    conversation_store: ConversationStore
     personality_engine: PersonalityEngine
     chat_history: ChatHistoryStorage
     llm_emotion_analyzer: LLMEmotionAnalyzer
@@ -50,6 +65,9 @@ class AppComponents:
     brain: BrainCoordinator | None = None
     mcp_manager: MCPManager | None = None
     vision_manager: VisionManager | None = None
+    # AdapterManager 实例（由 run_with_adapters 或 run_web 注入）。
+    # 用 Any 避免顶层循环导入；webui/server.py 通过 getattr 访问。
+    adapter_manager: Any = None
 
 
 class ComponentBuilder:
@@ -65,7 +83,7 @@ class ComponentBuilder:
     def build_memory(self) -> tuple[MemoryManager, ChatHistoryStorage]:
         """创建记忆系统组件"""
         embedder = SentenceTransformerEmbedder()
-        vector_store = VectorStore(str(self.root / "data" / "vectors.db"))
+        vector_store = VectorStore(get_db_path(self.root / "data"))
         memory_mgr = MemoryManager(
             self._data_dir, embedder=embedder, vector_store=vector_store,
         )
@@ -91,6 +109,9 @@ class ComponentBuilder:
 
     def build_persona(self) -> PersonaLoader:
         return PersonaLoader(CONFIG_DIR / "personas.json")
+
+    def build_conversation_store(self) -> ConversationStore:
+        return ConversationStore(self.root / "data" / "conversations.json")
 
     def build_personality(self) -> PersonalityEngine:
         return PersonalityEngine(self._data_dir)
@@ -144,6 +165,7 @@ class ComponentBuilder:
         brain_config = BrainConfig(
             enabled=True,
             max_tokens=self.config.get("brain_max_tokens", 1000),
+            runtime_context_tokens=self.config.get("brain_runtime_tokens", 300),
             debug=self.config.get("brain_debug", False),
             checker_enabled=self.config.get("checker_enabled", True),
         )
@@ -182,18 +204,27 @@ class ComponentBuilder:
 
     def build_all(self) -> AppComponents:
         """创建所有组件并组装"""
+        consolidate_legacy_databases(self.root / "data")
         registry = init_registry(CONFIG_DIR / "settings.json")
         memory_mgr, chat_history = self.build_memory()
         persona_loader = self.build_persona()
+        conversation_store = self.build_conversation_store()
         personality_engine = self.build_personality()
         llm_emotion_analyzer, mood_manager = self.build_emotion()
         open_loop, identity, life_summary = self.build_loop_components()
         unified_storage = self.build_unified_storage()
         proactive = self.build_proactive(persona_loader, memory_mgr, unified_storage, mood_manager)
 
+        # The diary writer is independent from per-reply runtime state. It uses
+        # the configured model only at durable generation checkpoints.
+        _llm = registry.get() if registry.available_models else None
+        life_summary.configure_diary_generation(
+            llm=_llm,
+            persona_loader=persona_loader,
+        )
+
         # 注入 LLM 生成器到 ProactiveMessenger（用于主动消息的实时生成）
-        if registry.available_models:
-            _llm = registry.get()
+        if _llm is not None:
             async def _generate(system_prompt: str, user_prompt: str,
                                 max_tokens: int = 200, temperature: float = 0.95) -> str:
                 response = await _llm.chat(
@@ -241,6 +272,7 @@ class ComponentBuilder:
 
         return AppComponents(
             registry=registry, memory_mgr=memory_mgr, persona_loader=persona_loader,
+            conversation_store=conversation_store,
             personality_engine=personality_engine, chat_history=chat_history,
             llm_emotion_analyzer=llm_emotion_analyzer, mood_manager=mood_manager,
             proactive=proactive, open_loop=open_loop, identity=identity,
@@ -267,48 +299,117 @@ def create_components(data_dir: str | Path | None = None) -> AppComponents:
 from adapters.debounce import DebounceManager, DebounceState  # noqa: F401 — used in run_with_adapters
 
 
-async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
-    """启动多平台适配器模式
+def _build_wechat_adapters(advanced_config: dict) -> list["WeChatAdapter"]:
+    """根据 settings.json 的 advanced.adapters.wechat 配置构建 WeChatAdapter 列表
 
-    所有平台共享同一个 ChatPipeline，支持消息去抖合并。
-    CLI 保留流式输出、命令处理等完整体验。
+    支持两种格式（向后兼容）：
+    1. 新格式（数组）:
+       "wechat": {"accounts": [{"id": "acc1", "persona_id": "girlfriend_001",
+                                  "enabled": true, "auto_start": true}, ...]}
+    2. 旧格式（单对象，迁移为 default 账号）:
+       "wechat": {"enabled": true, "auto_start": true}
+       → 等价于 [{"id": "default", "enabled": true, "auto_start": true}]
+
+    若 wechat 配置完全缺失，返回单个 default 账号（向后兼容最旧调用方式）。
     """
-    from adapters import AdapterManager
-    from adapters.cli import CLIAdapter
     from adapters.wechat import WeChatAdapter
-    from adapters.api import APIAdapter
-    from adapters.base import AdapterConfig
-    from core.chat.commands import Colors, CommandHandler
-    from core.chat.display import (
-        spinner_task, print_reply_token, print_rel_change,
-        get_welcome_message, SessionStats,
-    )
 
-    manager = AdapterManager()
+    adapters_cfg = advanced_config.get("adapters", {}) or {}
+    wechat_cfg = adapters_cfg.get("wechat", {}) or {}
 
-    # 共享 pipeline（从 ChatHandler 复用）
-    pipeline = app.handler.pipeline
-    debounce_seconds = app.advanced_config.get("debounce_seconds", 3)
+    accounts = normalize_wechat_accounts(wechat_cfg)
 
-    # 统一去抖管理器
-    debounce = DebounceManager(debounce_seconds, pipeline, app, manager)
+    # 无任何账号配置 → 兼容最旧行为，注册单个 default
+    if not accounts:
+        accounts = [{"id": "default", "enabled": True, "auto_start": True}]
 
-    # 注册 CLI（始终启用）
-    cli = CLIAdapter()
-    manager.register(cli)
+    result: list[WeChatAdapter] = []
+    for acc in accounts:
+        if not isinstance(acc, dict):
+            continue
+        acc_id = acc.get("id", "default")
+        enabled = acc.get("enabled", True)
+        auto_start = acc.get("auto_start", True)
+        if not enabled:
+            continue
+        # auto_start=False 的账号不在启动时注册（用户需通过 Web UI 手动登录后注册）。
+        # 保留账号配置以便 Web UI 显示，但 run_with_adapters / run_web 不会启动它。
+        if not auto_start:
+            continue
+        result.append(WeChatAdapter(account_id=acc_id))
+    return result
 
-    # 注册指定平台
-    for platform in platforms:
-        if platform == "wechat":
-            manager.register(WeChatAdapter())
-        elif platform == "api":
-            manager.register(APIAdapter())
 
-    # 设置消息处理回调（给 WeChat 等外部平台使用）
+def make_message_handler(app, pipeline, debounce):
+    """构造外部平台消息处理闭包。
+
+    CLI 模式（run_with_adapters）和 Web 模式（run_web）共用此闭包，
+    避免 web 模式漏设 handler 导致消息静默丢弃。
+
+    依赖：
+      app         — AppComponents（conversation_store / vision_manager / handler.pipeline）
+      pipeline    — ChatPipeline（通常 app.handler.pipeline）
+      debounce    — DebounceManager 实例
+    """
     async def _handle_message(message):
         """外部平台消息处理"""
         if message.platform == "cli":
             return ""
+
+        # 防御式：若 wechat user_id 已是复合格式（T4 起由 WeChatAdapter 构造），
+        # 重建为 canonical 形式以确保格式一致。legacy user_id（无 ::）原样透传。
+        parsed = parse_uid(message.user_id)
+        # WeChat 角色由账号配置决定；contact binding 仅保留为内部隔离键。
+        # 未配置账号继续兼容旧 binding，避免升级后意外重置角色。
+        resolved_persona_id = DEFAULT_PERSONA_ID
+        scope_id = None
+        if message.platform == "wechat" and parsed["platform"] == "wechat":
+            account_id = getattr(message, "account_id", "") or parsed["account_id"]
+            wxid = parsed["raw_id"]
+            user_id = build_wechat_uid(account_id, wxid)
+            account_persona_id = resolve_wechat_account_persona(
+                getattr(app, "advanced_config", {}) or {}, account_id,
+            )
+            if account_persona_id:
+                loader = getattr(app, "persona_loader", None)
+                if loader is None or loader.get(account_persona_id) is not None:
+                    resolved_persona_id = account_persona_id
+                else:
+                    logger.warning(
+                        f"WeChat account {account_id!r} references missing persona "
+                        f"{account_persona_id!r}; using {DEFAULT_PERSONA_ID!r}"
+                    )
+            try:
+                binding = app.conversation_store.find("wechat", account_id, wxid)
+                if binding is None:
+                    try:
+                        binding = app.conversation_store.create(
+                            platform="wechat", account_id=account_id,
+                            contact_id=wxid, persona_id=resolved_persona_id,
+                        )
+                    except ValueError:
+                        # 并发场景：另一线程已创建，重新 find
+                        binding = app.conversation_store.find(
+                            "wechat", account_id, wxid,
+                        )
+                if binding is not None and account_persona_id is None:
+                    resolved_persona_id = binding.persona_id
+                elif binding is not None and binding.persona_id != resolved_persona_id:
+                    app.conversation_store.update_persona(
+                        binding.conversation_id, resolved_persona_id,
+                    )
+                if binding is not None:
+                    scope_id = build_memory_scope_uid(
+                        user_id, resolved_persona_id, binding.conversation_id,
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"ConversationStore lookup failed for "
+                    f"wechat/{account_id}/{wxid}, "
+                    f"falling back to DEFAULT_PERSONA_ID: {e}"
+                )
+        else:
+            user_id = message.user_id
 
         # 图片消息：直接走 Vision Pipeline，不走去抖
         if message.metadata.get("is_image"):
@@ -332,8 +433,19 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
                         enhanced = app.vision_manager.build_enhanced_message(
                             vision_result, image_text
                         )
+                        pipeline_kwargs = {}
+                        if scope_id:
+                            try:
+                                pipeline_parameters = inspect.signature(
+                                    pipeline.process
+                                ).parameters
+                            except (TypeError, ValueError):
+                                pipeline_parameters = {}
+                            if "scope_id" in pipeline_parameters:
+                                pipeline_kwargs["scope_id"] = scope_id
                         reply, _ = await pipeline.process(
-                            message.user_id, enhanced, DEFAULT_PERSONA_ID,
+                            user_id, enhanced, resolved_persona_id,
+                            **pipeline_kwargs,
                         )
                         return reply
                 except Exception as e:
@@ -342,10 +454,68 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
             return "收到图片了，但视觉识别还没配置~"
 
         # 普通消息：加入去抖队列
-        await debounce.add_message(message.platform, message.user_id, message.content)
+        debounce_kwargs = {"persona_id": resolved_persona_id}
+        try:
+            debounce_parameters = inspect.signature(debounce.add_message).parameters
+        except (TypeError, ValueError):
+            debounce_parameters = {}
+        if scope_id and "scope_id" in debounce_parameters:
+            debounce_kwargs["scope_id"] = scope_id
+        await debounce.add_message(
+            message.platform, user_id, message.content, **debounce_kwargs,
+        )
         return ""
 
-    manager.set_message_handler(_handle_message)
+    return _handle_message
+
+
+async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
+    """启动多平台适配器模式
+
+    所有平台共享同一个 ChatPipeline，支持消息去抖合并。
+    CLI 保留流式输出、命令处理等完整体验。
+    """
+    from adapters import AdapterManager
+    from adapters.cli import CLIAdapter
+    from adapters.wechat import WeChatAdapter
+    from adapters.api import APIAdapter
+    from adapters.base import AdapterConfig
+    from core.chat.commands import Colors, CommandHandler
+    from core.chat.display import (
+        spinner_task, print_reply_token, print_rel_change,
+        get_welcome_message, SessionStats,
+    )
+
+    manager = AdapterManager()
+    # 注入到 AppComponents，供 webui/server.py 的 /api/wechat/* 路由查询真实运行状态
+    app.adapter_manager = manager
+
+    # 共享 pipeline（从 ChatHandler 复用）
+    pipeline = app.handler.pipeline
+    debounce_seconds = app.advanced_config.get("debounce_seconds", 3)
+
+    # 统一去抖管理器
+    debounce = DebounceManager(debounce_seconds, pipeline, app, manager)
+
+    # 注册 CLI（始终启用）
+    cli = CLIAdapter()
+    manager.register(cli)
+
+    # 注册指定平台
+    for platform in platforms:
+        if platform == "wechat":
+            for adapter in _build_wechat_adapters(app.advanced_config):
+                try:
+                    adapter._main_model = app.registry.get()
+                except Exception:
+                    pass
+                manager.register(adapter, account_id=adapter.account_id)
+        elif platform == "api":
+            manager.register(APIAdapter())
+
+    # 设置消息处理回调（给 WeChat 等外部平台使用）
+    # make_message_handler 是模块级工厂函数（见上方），CLI/Web 模式共用
+    manager.set_message_handler(make_message_handler(app, pipeline, debounce))
 
     # 启动所有适配器
     await manager.start_all()
@@ -359,13 +529,17 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
 
     # ---- CLI 用户信息 ----
     user_id = "local_user"
-    persona = app.persona_loader.get(DEFAULT_PERSONA_ID)
+    cli_persona_id = getattr(
+        app.handler, "current_persona_id", DEFAULT_PERSONA_ID,
+    )
+    cli_scope_id = build_memory_scope_uid(user_id, cli_persona_id, "cli")
+    persona = app.persona_loader.get(cli_persona_id)
     persona_name = persona.name if persona else "小雨"
 
     # 会话统计
     stats = SessionStats()
     stats.start_level = int(app.unified_storage.get_level(
-        user_id, persona_id=DEFAULT_PERSONA_ID,
+        cli_scope_id, persona_id=cli_persona_id,
     ))
     last_reply = [""]
 
@@ -395,18 +569,38 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
             user_input = await cli.get_input(timeout=0.5)
 
             if user_input is not None:
+                cli_persona_id = getattr(
+                    app.handler, "current_persona_id", DEFAULT_PERSONA_ID,
+                )
+                cli_scope_id = build_memory_scope_uid(
+                    user_id, cli_persona_id, "cli",
+                )
+                persona = app.persona_loader.get(cli_persona_id)
+                persona_name = persona.name if persona else "AI"
                 if user_input.strip().lower() in ("/quit", "quit"):
                     logger.info("用户请求退出")
                     break
 
                 # 斜杠命令
                 if user_input.startswith("/"):
+                    previous_persona_id = getattr(
+                        app.handler, "current_persona_id", DEFAULT_PERSONA_ID,
+                    )
                     result = await cli_commands.handle(
                         user_input, user_id, persona_name
                     )
                     if result == "quit":
                         break
                     if result is True:
+                        current_persona_id = getattr(
+                            app.handler, "current_persona_id", DEFAULT_PERSONA_ID,
+                        )
+                        if current_persona_id != previous_persona_id:
+                            if cli_message_queue:
+                                cli_message_queue.clear()
+                                print(
+                                    f"  {Colors.DIM}已丢弃切换前尚未发送的消息，避免写入新角色会话{Colors.RESET}"
+                                )
                         continue
 
                 # 不用去抖
@@ -430,8 +624,9 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
                     )
 
                     reply, rel_level = await pipeline.process(
-                        user_id, user_input, DEFAULT_PERSONA_ID,
+                        user_id, user_input, cli_persona_id,
                         on_token=_on_token,
+                        scope_id=cli_scope_id,
                     )
 
                     if not spinner_stop.is_set():
@@ -482,8 +677,9 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
                     )
 
                     reply, rel_level = await pipeline.process(
-                        user_id, combined, DEFAULT_PERSONA_ID,
+                        user_id, combined, cli_persona_id,
                         on_token=_on_token,
+                        scope_id=cli_scope_id,
                     )
 
                     if not spinner_stop.is_set():
@@ -507,7 +703,7 @@ async def run_with_adapters(app: AppComponents, platforms: list[str]) -> None:
 
         # 退出总结
         stats.end_level = int(app.unified_storage.get_level(
-            user_id, persona_id=DEFAULT_PERSONA_ID,
+            cli_scope_id, persona_id=cli_persona_id,
         ))
         print(stats.summary(persona_name))
         logger.info("所有适配器已停止")

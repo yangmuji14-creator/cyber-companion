@@ -159,7 +159,6 @@ class MCPClient:
     MAX_BUFFER_SIZE = 16 * 1024 * 1024   # 16MB 缓冲区上限
     PROTOCOL_VERSION = "2024-11-05"
     HEARTBEAT_INTERVAL = 15.0            # 心跳间隔（ping）
-    READ_INACTIVITY_TIMEOUT = 30.0       # stdout 单次读取最长等待时间
 
     def __init__(self, config: MCPConfig):
         self.config = config
@@ -277,7 +276,7 @@ class MCPClient:
                 self._send_request("initialize", {
                     "protocolVersion": self.PROTOCOL_VERSION,
                     "clientInfo": {
-                        "name": "cyber-companion",
+                        "name": "mu",
                         "version": "3.3.0",
                     },
                     "capabilities": {
@@ -502,24 +501,16 @@ class MCPClient:
         stdout = self._process.stdout
         loop = asyncio.get_running_loop()
         async def _read(n: int) -> bytes:
-            """Read one pipe chunk without allowing a hung server to block forever."""
-            read_future = loop.run_in_executor(None, stdout.read, n)
-            return await asyncio.wait_for(
-                asyncio.shield(read_future),
-                timeout=self.READ_INACTIVITY_TIMEOUT,
-            )
+            """Read one pipe chunk; a quiet stdio server is still healthy."""
+            return await loop.run_in_executor(None, stdout.read, n)
 
         while self.state not in (MCPState.DISCONNECTED,):
             try:
-                # 1. 逐字节读 header（64KB 上限，30 秒无数据判定 EOF）
+                # 1. 逐字节读 header（64KB 上限）。空闲时阻塞等待下一帧，
+                #    真实请求的超时由 _send_request() 负责。
                 header_bytes = b""
-                header_activity = time.monotonic()
                 while not header_bytes.endswith(b"\r\n\r\n"):
-                    try:
-                        ch = await _read(1)
-                    except asyncio.TimeoutError:
-                        logger.warning(f"MCP [{self.config.name}]: header read timed out")
-                        break
+                    ch = await _read(1)
                     if not ch:
                         if (
                             self._process and self._process.poll() is not None
@@ -527,7 +518,6 @@ class MCPClient:
                             break
                         await asyncio.sleep(0.01)
                         continue
-                    header_activity = time.monotonic()
                     header_bytes += ch
                     if len(header_bytes) > 65536:
                         logger.warning(f"MCP [{self.config.name}]: header too large")
@@ -551,16 +541,11 @@ class MCPClient:
                 if cl <= 0 or cl > self.MAX_MESSAGE_SIZE:
                     continue
 
-                # 3. 读 body（30 秒无数据判定 EOF）
+                # 3. 读 body。请求级超时由 _send_request() 负责。
                 body_bytes = b""
-                body_activity = time.monotonic()
                 while len(body_bytes) < cl:
                     need = min(cl - len(body_bytes), 65536)
-                    try:
-                        chunk = await _read(need)
-                    except asyncio.TimeoutError:
-                        logger.warning(f"MCP [{self.config.name}]: body read timed out")
-                        break
+                    chunk = await _read(need)
                     if not chunk:
                         if (
                             self._process and self._process.poll() is not None
@@ -568,7 +553,6 @@ class MCPClient:
                             break
                         await asyncio.sleep(0.01)
                         continue
-                    body_activity = time.monotonic()
                     body_bytes += chunk
 
                 if len(body_bytes) < cl:

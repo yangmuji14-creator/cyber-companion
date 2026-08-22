@@ -1,7 +1,7 @@
 """UnifiedAffectionStorage — 线程安全的 SQLite 亲密度存储后端
 
 实现 AffectionStorage 协议中定义的所有方法。支持：
-- 文件模式：data/unified.db（默认）
+- 文件模式：data/companion.db（默认）
 - 内存模式：:memory:（用于测试）
 - 直接传入 sqlite3.Connection（测试注入）
 """
@@ -59,7 +59,8 @@ class UnifiedAffectionStorage:
             else:
                 data_dir = Path(data_dir_or_conn)
                 data_dir.mkdir(parents=True, exist_ok=True)
-                db_path = str(data_dir / "unified.db")
+                from core.storage.db import get_db_path
+                db_path = str(get_db_path(data_dir))
 
             self._conn = open_db(db_path)
             self._conn.execute(CREATE_TABLE_SQL)

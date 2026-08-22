@@ -73,6 +73,19 @@ def test_prompt_with_full_persona():
     # 叙事化prompt不再逐项列出情绪反应和价值观，但核心身份信息都有
 
 
+def test_prompt_includes_beginner_core_fields_in_stable_prompt():
+    p = Persona(
+        id="t", name="小测试",
+        system_prompt="始终先回应情绪",
+        persona_prompt="你是住在杭州的独立摄影师。",
+        output_examples="对方说：早\n你说：早呀，今天阳光很好。",
+    )
+    prompt = PromptBuilder.build_stable(p)
+    assert "始终先回应情绪" in prompt
+    assert "独立摄影师" in prompt
+    assert "今天阳光很好" in prompt
+
+
 def test_prompt_empty_fields():
     p = Persona(id="t", name="T", personality=[])
     prompt = PromptBuilder.build(p)

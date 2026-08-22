@@ -6,17 +6,18 @@ from core.memory.stats import ChatStats, format_dashboard
 
 async def cmd_stats(handler, cmd: str, user_id: str) -> None:
     """处理 /stats 命令"""
+    memory_user_id = handler.memory_user_id(user_id)
     parts = cmd.split(maxsplit=1)
     sub = parts[1].strip() if len(parts) > 1 else ""
 
     if sub == "dashboard":
-        msgs = handler._h.chat_history.get_messages(user_id)
+        msgs = handler._h.chat_history.get_messages(memory_user_id)
         stats = ChatStats(msgs)
         print(f"\n{Colors.YELLOW}{format_dashboard(stats)}{Colors.RESET}\n")
         return
 
     rel_stats = handler._h._affection_storage.get_stats(
-        user_id, persona_id=handler._h.current_persona_id
+        memory_user_id, persona_id=handler._h.current_persona_id
     )
     days = rel_stats.days_known
     level = int(rel_stats.level)
@@ -86,7 +87,7 @@ async def cmd_stats(handler, cmd: str, user_id: str) -> None:
         print(f"  认识你 {years} 年{remainder} 天了，时间见证了这一切。")
 
     # 最近情感理解（从最近用户消息中提取）
-    msgs_list = handler._h.chat_history.get_messages(user_id)
+    msgs_list = handler._h.chat_history.get_messages(memory_user_id)
     for m in reversed(msgs_list):
         if m["role"] == "user" and "emotion_understanding" in m:
             snippet = m["emotion_understanding"]

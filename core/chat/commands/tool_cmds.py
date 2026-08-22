@@ -46,6 +46,7 @@ def cmd_tools(handler) -> None:
 
 async def cmd_img(handler, user_id: str, cmd: str) -> None:
     """处理 /img 命令：发送图片给 AI 识别（双路径）"""
+    memory_user_id = handler.memory_user_id(user_id)
     img_handler = ImageHandler()
     image_path, user_text = img_handler.parse_img_command(cmd)
     if not image_path:
@@ -114,7 +115,7 @@ async def cmd_img(handler, user_id: str, cmd: str) -> None:
 
         enhanced = vm.build_enhanced_message(result, user_text or "")
         handler._h.chat_history.add_message(
-            user_id, "user",
+            memory_user_id, "user",
             f"[图片] {user_text}" if user_text else "[图片]",
         )
         # 作为 pipeline 消息发送
@@ -136,6 +137,7 @@ async def cmd_img(handler, user_id: str, cmd: str) -> None:
         reply, rel_level = await handler._h.pipeline.process(
             user_id, enhanced, handler._h.current_persona_id,
             on_token=_on_token, skip_user_message=True,
+            **handler.pipeline_scope_kwargs(user_id),
         )
         if not spinner_stop.is_set():
             spinner_stop.set()
@@ -151,10 +153,10 @@ async def cmd_img(handler, user_id: str, cmd: str) -> None:
 
     # 多模态直传路径：结果就是最终回复
     handler._h.chat_history.add_message(
-        user_id, "user",
+        memory_user_id, "user",
         f"[图片] {user_text}" if user_text else "[图片]",
     )
-    handler._h.chat_history.add_message(user_id, "assistant", result)
+    handler._h.chat_history.add_message(memory_user_id, "assistant", result)
     persona = handler._h.persona_loader.get(handler._h.current_persona_id)
     p_name = persona.name if persona else "AI"
     print(f"\n{Colors.MAGENTA}{p_name}:{Colors.RESET} {result}\n")
@@ -162,7 +164,8 @@ async def cmd_img(handler, user_id: str, cmd: str) -> None:
 
 async def cmd_export(handler, user_id: str, fmt: str) -> None:
     """导出聊天记录"""
-    msgs = handler._h.chat_history.get_messages(user_id)
+    memory_user_id = handler.memory_user_id(user_id)
+    msgs = handler._h.chat_history.get_messages(memory_user_id)
     if not msgs:
         print(f"\n{Colors.DIM}  没有可导出的聊天记录{Colors.RESET}\n")
         return
@@ -180,7 +183,9 @@ async def cmd_export(handler, user_id: str, fmt: str) -> None:
     else:
         filename = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         filepath = export_dir / filename
-        md_content = handler._h.chat_history.export_markdown(user_id, persona_name)
+        md_content = handler._h.chat_history.export_markdown(
+            memory_user_id, persona_name,
+        )
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(md_content)
 
@@ -190,7 +195,8 @@ async def cmd_export(handler, user_id: str, fmt: str) -> None:
 
 async def cmd_regen(handler, user_id: str, persona_name: str) -> None:
     """让 AI 重新生成上一条回复"""
-    msgs = handler._h.chat_history.get_messages(user_id)
+    memory_user_id = handler.memory_user_id(user_id)
+    msgs = handler._h.chat_history.get_messages(memory_user_id)
     if not msgs:
         print(f"\n{Colors.DIM}  还没有对话记录{Colors.RESET}\n")
         return
@@ -198,7 +204,7 @@ async def cmd_regen(handler, user_id: str, persona_name: str) -> None:
         print(f"\n{Colors.YELLOW}⚠ 最后一条消息不是 AI 回复，无法重新生成{Colors.RESET}\n")
         return
 
-    handler._h.chat_history.delete_last_messages(user_id, 1)
+    handler._h.chat_history.delete_last_messages(memory_user_id, 1)
     user_msgs = [m for m in msgs if m["role"] == "user"]
     if not user_msgs:
         print(f"\n{Colors.YELLOW}⚠ 找不到对应的用户消息{Colors.RESET}\n")
@@ -209,6 +215,7 @@ async def cmd_regen(handler, user_id: str, persona_name: str) -> None:
 
     reply, rel_level = await handler._h.pipeline.process(
         user_id, last_user, handler._h.current_persona_id, skip_user_message=True,
+        **handler.pipeline_scope_kwargs(user_id),
     )
     p = handler._h.persona_loader.get(handler._h.current_persona_id)
     name = p.name if p else persona_name

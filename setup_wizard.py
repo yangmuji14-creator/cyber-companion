@@ -20,10 +20,16 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-ROOT = Path(__file__).resolve().parent
+from core.config import CONFIG_DIR, RESOURCE_DIR, ROOT
+from core.security import (
+    get_secret_manager,
+    model_secret_ref,
+    protect_config_secret,
+    vision_secret_ref,
+)
+
 ENV_FILE = ROOT / ".env"
-ENV_EXAMPLE = ROOT / ".env.example"
-CONFIG_DIR = ROOT / "config"
+ENV_EXAMPLE = RESOURCE_DIR / ".env.example"
 TAGS_PATH = CONFIG_DIR / "persona_tags.json"
 
 # ========== 模型提供商信息 ==========
@@ -141,7 +147,7 @@ PROVIDERS = {
 def _banner():
     print()
     print("=" * 50)
-    print("  🎀 赛博伴侣 v4.1.5 — 设置向导")
+    print("  慕 v4.3.0 — 设置向导")
     print("=" * 50)
     print()
 
@@ -668,7 +674,7 @@ def _check_venv():
     if in_venv:
         return  # 已在 venv 中
 
-    venv_dir = ROOT / ".venv"
+    venv_dir = RESOURCE_DIR / ".venv"
     if not venv_dir.exists():
         print("\n  ❌ 未找到虚拟环境，请先运行安装脚本：")
         print("    python install.py\n")
@@ -877,7 +883,13 @@ def run_setup():
     # .env
     env = _load_env()
     info = PROVIDERS[provider]
-    env[info["env_key"]] = api_key
+    secret_manager = get_secret_manager(CONFIG_DIR)
+    main_secret_ref = model_secret_ref(provider)
+    main_protected = secret_manager.set(main_secret_ref, api_key)
+    if main_protected:
+        env.pop(info["env_key"], None)
+    else:
+        env[info["env_key"]] = api_key
     if info.get("base_url_env") and info.get("base_url"):
         env[info["base_url_env"]] = info["base_url"]
 
@@ -898,15 +910,20 @@ def run_setup():
     # 注册 model 到 settings.json（LLMRegistry 需要）
     provider_type = "deepseek" if provider == "deepseek" else "openai"
     settings.setdefault("models", {})
-    settings["models"][provider] = {
+    model_config = {
         "provider": provider_type,
         "model_name": model_id,
         "base_url": info.get("base_url", ""),
+        "api_key": api_key,
         "max_tokens": advanced.get("model_max_tokens", 4096),
         "temperature": advanced.get("model_temperature", 1.0),
         "presence_penalty": advanced.get("model_repetition_penalty", 0.3),
         "frequency_penalty": advanced.get("model_repetition_penalty", 0.3),
     }
+    model_config, _ = protect_config_secret(
+        model_config, main_secret_ref, manager=secret_manager
+    )
+    settings["models"][provider] = model_config
 
     adv = settings.get("advanced", {})
     for key in ["segment_max_length", "debounce_seconds", "summarize_threshold",
@@ -915,6 +932,9 @@ def run_setup():
                 "proactive_interval_min", "proactive_interval_max"]:
         if key in advanced:
             adv[key] = advanced[key]
+    vision_model, _ = protect_config_secret(
+        vision_model, vision_secret_ref(), manager=secret_manager
+    )
     adv["vision_model"] = vision_model
     settings["advanced"] = adv
     path.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")

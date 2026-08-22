@@ -17,6 +17,7 @@ class AdapterConfig:
     enabled: bool = True
     token: str = ""         # 平台 token（如需要）
     webhook_url: str = ""   # Webhook URL（如需要）
+    account_id: str = "default"  # 账号 ID（同平台多账号隔离）
     settings: dict[str, Any] = field(default_factory=dict)  # 平台特定设置
 
 
@@ -28,6 +29,7 @@ class AdapterMessage:
     message_id: str = ""    # 消息 ID（用于回复）
     platform: str = ""      # 来源平台
     timestamp: str = ""     # 时间戳
+    account_id: str = ""    # 账号 ID（同平台多账号隔离，T5 起由适配器填充）
     metadata: dict[str, Any] = field(default_factory=dict)  # 平台特定数据
 
 
@@ -46,6 +48,11 @@ class BaseAdapter(ABC):
     def set_handler(self, handler: MessageHandler) -> None:
         """设置消息处理回调"""
         self._handler = handler
+
+    @property
+    def account_id(self) -> str:
+        """账号 ID（来自 config）"""
+        return self.config.account_id
 
     @abstractmethod
     async def start(self) -> None:

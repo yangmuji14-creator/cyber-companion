@@ -5,6 +5,7 @@
 模型不存在时优雅降级（调用方回退关键词搜索）。
 """
 
+import os
 from abc import ABC, abstractmethod
 
 from loguru import logger
@@ -70,7 +71,13 @@ class SentenceTransformerEmbedder(BaseEmbedder):
         try:
             from sentence_transformers import SentenceTransformer
             logger.info(f"Loading embedding model: {self._model_name} ...")
-            self._model = SentenceTransformer(self._model_name)
+            allow_download = os.getenv("CC_EMBEDDING_ALLOW_DOWNLOAD", "").lower() in {
+                "1", "true", "yes", "on",
+            }
+            self._model = SentenceTransformer(
+                self._model_name,
+                local_files_only=not allow_download,
+            )
             self._dim = self._model.get_sentence_embedding_dimension()
             self._ready = True
             logger.info(f"Embedder ready (dim={self._dim})")

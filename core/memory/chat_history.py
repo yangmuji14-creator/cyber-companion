@@ -11,6 +11,7 @@ from typing import Any
 
 from loguru import logger
 
+from core.config import parse_uid
 from core.utils import atomic_write_json
 
 
@@ -39,8 +40,60 @@ class ChatHistoryStorage:
         """公开数据目录路径"""
         return self._data_dir
 
+    # 路径穿越防护：account_id / persona_id / wxid / api user_id 只允许
+    # ``[a-zA-Z0-9_-.@]``，不含 ``..`` / ``/`` / ``\``。复合 user_id 的磁盘
+    # 路径由 parse_uid 解析后按平台分目录，规避 Windows 文件名禁止冒号问题。
+    # 注：iLink 协议的 wxid 格式为 ``xxx@im.wechat``（含 @ 和 .），这两个字符
+    # 在 Windows/Linux 文件名中均合法、无路径穿越风险，故允许。
+    _SAFE_SEGMENT_RE = re.compile(r"^[a-zA-Z0-9_\-\.@]+$")
+
+    @classmethod
+    def _validate_segment(cls, value: str, label: str) -> None:
+        if ".." in value or not cls._SAFE_SEGMENT_RE.fullmatch(value):
+            raise ValueError(f"Invalid {label}: {value!r}")
+
     def _get_user_file(self, user_id: str) -> Path:
-        """获取用户历史文件路径（带路径穿越防护）"""
+        """获取用户历史文件路径（子目录结构 + 路径穿越防护）。
+
+        - wechat: ``data/chat_history/wechat/{account_id}/{wxid}.json``
+        - web:    ``data/chat_history/web/{persona_id}.json``
+        - cli:    ``data/chat_history/cli/local.json``
+        - api:    ``data/chat_history/api/{user_id}.json``
+        - legacy（无 ``::`` 分隔）: ``data/chat_history/{safe_id}.json``
+          （保留旧 sanitize 逻辑向后兼容现有 ``web_user.json`` 等文件）
+        """
+        parsed = parse_uid(user_id)
+        platform = parsed["platform"]
+
+        if platform == "wechat":
+            account_id = parsed["account_id"]
+            raw_id = parsed["raw_id"]
+            self._validate_segment(account_id, "account_id")
+            self._validate_segment(raw_id, "wxid")
+            sub_dir = self._data_dir / "wechat" / account_id
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            return (sub_dir / f"{raw_id}.json").resolve()
+
+        if platform == "web":
+            persona_id = parsed["persona_id"]
+            self._validate_segment(persona_id, "persona_id")
+            sub_dir = self._data_dir / "web"
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            return (sub_dir / f"{persona_id}.json").resolve()
+
+        if platform == "cli":
+            sub_dir = self._data_dir / "cli"
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            return (sub_dir / "local.json").resolve()
+
+        if platform == "api":
+            raw_id = parsed["raw_id"]
+            self._validate_segment(raw_id, "api user_id")
+            sub_dir = self._data_dir / "api"
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            return (sub_dir / f"{raw_id}.json").resolve()
+
+        # legacy: 旧 user_id 无 `::` 分隔，保留原 sanitize 逻辑
         safe_id = re.sub(r"[^a-zA-Z0-9_\-.]", "_", user_id)
         path = (self._data_dir / f"{safe_id}.json").resolve()
         if not path.is_relative_to(self._data_dir.resolve()):
@@ -103,6 +156,10 @@ class ChatHistoryStorage:
         emotion: str | None = None,
         emotion_intensity: float | None = None,
         emotion_understanding: str | None = None,
+        platform: str = "",
+        persona_id: str = "",
+        account_id: str = "",
+        sticker: dict[str, Any] | None = None,
     ) -> None:
         """添加一条消息并持久化
 
@@ -113,6 +170,9 @@ class ChatHistoryStorage:
             emotion: 情感类型（可选，如 "happy", "sad" 等）
             emotion_intensity: 情感强度 0.0-1.0（可选）
             emotion_understanding: 情感理解文本（可选）
+            platform: 来源平台（"wechat"/"web"/"cli"/"api"，可选，空字符串=legacy）
+            persona_id: 人设 ID（可选）
+            account_id: 账号 ID（wechat 多账号隔离用，可选）
         """
         data = self.load(user_id)
         msg: dict[str, Any] = {
@@ -120,12 +180,24 @@ class ChatHistoryStorage:
             "content": content,
             "timestamp": datetime.now().isoformat(),
         }
+        if platform:
+            msg["platform"] = platform
+        if persona_id:
+            msg["persona_id"] = persona_id
+        if account_id:
+            msg["account_id"] = account_id
         if emotion is not None:
             msg["emotion"] = emotion
         if emotion_intensity is not None:
             msg["emotion_intensity"] = round(emotion_intensity, 3)
         if emotion_understanding is not None:
             msg["emotion_understanding"] = emotion_understanding
+        if sticker:
+            # Metadata only: the actual image remains in a sticker pack.
+            msg["sticker"] = {
+                key: sticker[key] for key in ("pack", "emotion", "filename", "url")
+                if sticker.get(key) is not None
+            }
         data["messages"].append(msg)
 
         # 裁剪到最大长度

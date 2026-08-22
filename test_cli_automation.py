@@ -1,4 +1,4 @@
-"""test_cli_automation.py — Cyber Girlfriend CLI automated test helper
+"""test_cli_automation.py — 慕 CLI automated test helper
 
 Provides the ``CyberCLI`` class that wraps the CLI subprocess for automated
 testing: sending messages, capturing replies, parsing affection values and
@@ -44,7 +44,7 @@ _PROJECT_DIR = r"C:\Users\Administrator\Desktop\cyber-girlfriend"
 
 
 class CyberCLI:
-    """Automated CLI test helper for Cyber Girlfriend.
+    """Automated CLI test helper for 慕.
 
     Wraps ``main.py`` in a ``subprocess.Popen`` with piped stdin/stdout,
     reads output asynchronously via a daemon thread + thread-safe queue,

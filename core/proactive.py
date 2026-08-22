@@ -128,6 +128,7 @@ class ProactiveMessenger:
         self,
         user_id: str,
         persona_id: str,
+        scope_id: str | None = None,
     ) -> str | None:
         """检查是否应该发送主动消息（同步，不阻塞）
 
@@ -137,6 +138,8 @@ class ProactiveMessenger:
         if not self.enabled:
             return None
 
+        memory_user_id = scope_id or user_id
+
         self._cleanup_old_markers()
 
         persona = self._persona_loader.get(persona_id)
@@ -144,7 +147,7 @@ class ProactiveMessenger:
             return None
 
         level = int(self._affection_storage.get_level(
-            user_id, persona_id=persona_id,
+            memory_user_id, persona_id=persona_id,
         ))
         if level < self.min_relationship_level:
             return None
@@ -158,12 +161,12 @@ class ProactiveMessenger:
             return "scheduled"
 
         # 2) 长时间未联系（独立逻辑，不受间隔限制）
-        stats = self._affection_storage.get_stats(user_id, persona_id=persona_id)
+        stats = self._affection_storage.get_stats(memory_user_id, persona_id=persona_id)
         days_known = stats.days_known
         msg_count = stats.message_count
         if msg_count > 0 and days_known > self.missing_days:
             if not self._already_fired("missing"):
-                last = self._affection_storage.get_last_interaction(user_id, persona_id)
+                last = self._affection_storage.get_last_interaction(memory_user_id, persona_id)
                 if last:
                     try:
                         last_dt = datetime.fromisoformat(last)
@@ -177,14 +180,14 @@ class ProactiveMessenger:
 
         # 3) 记忆追问
         if self.memory_recall_enabled and level >= 40:
-            recall_msg = self._check_memory_recall(user_id, persona, level)
+            recall_msg = self._check_memory_recall(memory_user_id, persona, level)
             if recall_msg:
                 self._last_proactive_at = now
                 return recall_msg
 
         # 4) 持续关怀
         if level >= 50:
-            care_msg = self._check_continuous_care(user_id, persona, level)
+            care_msg = self._check_continuous_care(memory_user_id, persona, level)
             if care_msg:
                 self._last_proactive_at = now
                 return care_msg
@@ -198,11 +201,14 @@ class ProactiveMessenger:
         trigger_type: str,
         user_id: str,
         persona_id: str,
+        scope_id: str | None = None,
     ) -> str | None:
         """由 LLM 生成主动消息（异步）"""
         persona = self._persona_loader.get(persona_id)
         if not persona:
             return None
+
+        memory_user_id = scope_id or user_id
 
         persona_name = persona.name
         personality = getattr(persona, "personality", [])
@@ -221,14 +227,14 @@ class ProactiveMessenger:
             self_identity = "一个有血有肉的真实的人"
 
         level = int(self._affection_storage.get_level(
-            user_id, persona_id=persona_id,
+            memory_user_id, persona_id=persona_id,
         ))
 
         # 最近聊天上下文
         recent_chat = ""
         if self._chat_history:
             try:
-                msgs = self._chat_history.get_messages(user_id)
+                msgs = self._chat_history.get_messages(memory_user_id)
                 recent = msgs[-4:] if len(msgs) >= 4 else msgs[-2:] if msgs else []
                 if recent:
                     lines = []

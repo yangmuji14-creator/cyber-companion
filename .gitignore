@@ -10,6 +10,8 @@ venv/
 *.egg-info/
 dist/
 build/
+node_modules/
+coverage/
 
 # Environment
 .env
@@ -64,5 +66,23 @@ config/platforms.json
 # OpenCode evidence files
 .omo/evidence/
 
+# Security: local credential stores (encrypted keys) — never upload
+config/secrets.dpapi
+*.dpapi
+
+# Local runtime config (template in .example.json)
+config/mcp_servers.json
+config/persona_tags.json
+
+# Logs & temp artifacts
+*.log
+webui_server.log
+.tmp-*/
+
 # OpenCode config and skills
 /.opencode/
+
+# Test/backup sandboxes
+.pytest-*/
+.tmp*/.pytest-cache/.pytest/backups/
+build-wheel-audit*/

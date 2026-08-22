@@ -323,6 +323,96 @@ class TestPipelineIntegration:
         # 命令应返回当前亲密度
         assert level == 50
 
+    @pytest.mark.asyncio
+    async def test_main_reply_does_not_wait_for_auxiliary_analysis(self):
+        """Slow emotion/intent analysis must not delay the visible reply."""
+        pipeline, mocks = make_mock_pipeline()
+        emotion_started = asyncio.Event()
+        thought_started = asyncio.Event()
+        release_analysis = asyncio.Event()
+        main_started = asyncio.Event()
+
+        emotion_result = EmotionResult(
+            emotion=EmotionType.HAPPY, intensity=0.8, keywords=["开心"],
+        )
+        enriched = {
+            "emotion_understanding": "用户很开心",
+            "emotional_needs": [],
+            "affection_impact": {
+                "direction": "positive", "level": "medium", "reason": "开心",
+            },
+            "personality_shift": {},
+            "response_guidance": {},
+        }
+
+        async def slow_emotion(_content):
+            emotion_started.set()
+            await release_analysis.wait()
+            return emotion_result, enriched
+
+        async def slow_thought(_content, **_kwargs):
+            thought_started.set()
+            await release_analysis.wait()
+            return {"intent": "分享"}
+
+        async def fast_reply(**_kwargs):
+            main_started.set()
+            return MagicMock(content="先回复用户。", metadata={})
+
+        mocks["emotion_analyzer"].analyze.side_effect = slow_emotion
+        mocks["dialogue_thinker"].think.side_effect = slow_thought
+        mocks["llm"].chat.side_effect = fast_reply
+
+        process_task = asyncio.create_task(pipeline.process(
+            user_id="test_user",
+            content="今天好开心！",
+            persona_id="test_persona",
+        ))
+        await asyncio.wait_for(emotion_started.wait(), timeout=1)
+        await asyncio.wait_for(thought_started.wait(), timeout=1)
+        await asyncio.wait_for(main_started.wait(), timeout=1)
+
+        reply, level = await asyncio.wait_for(process_task, timeout=1)
+        assert reply.startswith("先回复用户。")
+        assert level == 50
+        mocks["affection_storage"].update.assert_not_called()
+
+        release_analysis.set()
+        for _ in range(20):
+            if mocks["affection_storage"].update.called:
+                break
+            await asyncio.sleep(0)
+        mocks["affection_storage"].update.assert_called_once()
+        await pipeline.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_cancels_unfinished_auxiliary_analysis(self):
+        pipeline, mocks = make_mock_pipeline()
+        analysis_started = asyncio.Event()
+        analysis_cancelled = asyncio.Event()
+
+        async def never_finishes(_content):
+            analysis_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                analysis_cancelled.set()
+
+        mocks["emotion_analyzer"].analyze.side_effect = never_finishes
+
+        reply, _level = await pipeline.process(
+            user_id="test_user",
+            content="测试关闭",
+            persona_id="test_persona",
+        )
+        assert reply
+        await asyncio.wait_for(analysis_started.wait(), timeout=1)
+
+        await pipeline.shutdown()
+        await asyncio.wait_for(analysis_cancelled.wait(), timeout=1)
+        assert pipeline._tasks.active_count == 0
+        mocks["affection_storage"].update.assert_not_called()
+
 
 # =============================================================================
 # TestPipelineEdgeCases

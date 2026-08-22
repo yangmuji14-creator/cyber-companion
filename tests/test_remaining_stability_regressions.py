@@ -153,7 +153,11 @@ async def test_chat_handler_persists_partial_reply_before_reraising_cancellation
     # When / Then
     with pytest.raises(asyncio.CancelledError):
         await handler.run()
-    assert saved_messages == [("local_user", "assistant", "[partial_reply]")]
+    assert saved_messages == [(
+        handler.get_memory_scope_id("local_user"),
+        "assistant",
+        "[partial_reply]",
+    )]
 
 
 def test_frame_reader_rejects_header_over_64_kib() -> None:

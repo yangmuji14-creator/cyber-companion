@@ -15,6 +15,8 @@ from typing import Any
 
 from loguru import logger
 
+from core.config import RESOURCE_DIR
+from core.runtime import resolve_runtime_command
 from core.tools.mcp_client import MCPClient, MCPConfig, MCPTool
 
 
@@ -44,9 +46,18 @@ class MCPManager:
 
         tasks = []
         for srv in servers:
+            configured_cwd = str(srv.get("cwd") or "").strip()
+            if configured_cwd:
+                cwd_path = Path(configured_cwd)
+                cwd = str(cwd_path if cwd_path.is_absolute() else (RESOURCE_DIR / cwd_path).resolve())
+            else:
+                # Built-in server scripts use relative paths and should resolve
+                # against packaged resources, never the user's shell cwd.
+                cwd = str(RESOURCE_DIR)
             config = MCPConfig(
-                name=srv["name"], command=srv["command"],
+                name=srv["name"], command=resolve_runtime_command(srv["command"]),
                 args=srv.get("args", []), env=srv.get("env", {}),
+                cwd=cwd,
                 auto_reconnect=srv.get("auto_reconnect", True),
                 max_reconnect_attempts=srv.get("max_reconnect_attempts", 10),
                 reconnect_base_delay=srv.get("reconnect_base_delay", 1.0),

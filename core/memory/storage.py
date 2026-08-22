@@ -34,7 +34,8 @@ class MemoryStorage:
     def __init__(self, data_dir: str | Path):
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
-        self._db_path = self._data_dir / "memories.db"
+        from core.storage.db import get_db_path
+        self._db_path = get_db_path(self._data_dir)
         self._local = threading.local()
         self._write_counter = 0
         self._init_db()
@@ -282,6 +283,11 @@ class MemoryStorage:
             except Exception:
                 pass
             self._local.conn = None
+
+    @property
+    def data_dir(self) -> Path:
+        """Directory containing the consolidated application database."""
+        return self._data_dir
 
     def __enter__(self):
         return self

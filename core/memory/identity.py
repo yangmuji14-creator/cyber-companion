@@ -296,7 +296,8 @@ class IdentityStorage:
     """
 
     def __init__(self, data_dir: str | Path):
-        self._db_path = Path(data_dir) / "identity.db"
+        from core.storage.db import get_db_path
+        self._db_path = get_db_path(data_dir)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
         self._init_db()

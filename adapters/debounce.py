@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import inspect
 import re
 from typing import TYPE_CHECKING
 
@@ -16,16 +17,19 @@ if TYPE_CHECKING:
 
 
 class DebounceState:
-    """消息去抖状态（按平台 + 用户隔离）"""
+    """消息去抖状态（按 user_id 隔离，user_id 已含 platform/account_id）"""
 
     def __init__(self, platform: str, user_id: str, timeout: float,
-                 pipeline: "ChatPipeline", app: "AppComponents", manager: "AdapterManager"):
+                 pipeline: "ChatPipeline", app: "AppComponents", manager: "AdapterManager",
+                 persona_id: str, scope_id: str | None = None):
         self.platform = platform
         self.user_id = user_id
         self.timeout = timeout
         self.pipeline = pipeline
         self.app = app
         self.manager = manager
+        self.persona_id = persona_id
+        self.scope_id = scope_id
         self.queue: list[str] = []
         self._timer_task: asyncio.Task | None = None
 
@@ -53,9 +57,15 @@ class DebounceState:
         combined = "\n".join(self.queue)
         self._timer_task = None
         try:
-            from core.config import DEFAULT_PERSONA_ID
+            kwargs = {}
+            try:
+                parameters = inspect.signature(self.pipeline.process).parameters
+            except (TypeError, ValueError):
+                parameters = {}
+            if self.scope_id and "scope_id" in parameters:
+                kwargs["scope_id"] = self.scope_id
             reply, _ = await self.pipeline.process(
-                self.user_id, combined, DEFAULT_PERSONA_ID,
+                self.user_id, combined, self.persona_id, **kwargs,
             )
             adapter = self.manager.get(self.platform)
             if adapter:
@@ -114,18 +124,29 @@ class DebounceManager:
         self.manager = manager
         self._states: dict[str, DebounceState] = {}
 
-    def _key(self, platform: str, user_id: str) -> str:
-        return f"{platform}:{user_id}"
+    async def add_message(self, platform: str, user_id: str, text: str,
+                          persona_id: str, scope_id: str | None = None) -> None:
+        """添加消息到去抖队列
 
-    async def add_message(self, platform: str, user_id: str, text: str) -> None:
-        """添加消息到去抖队列"""
-        key = self._key(platform, user_id)
-        if key not in self._states:
-            self._states[key] = DebounceState(
+        Args:
+            platform: 来源平台（用于 flush 时查找 adapter）
+            user_id: 复合 user_id（含 platform/account_id 信息，如 ``wechat::acc1::wxid``）
+            text: 消息文本
+            persona_id: 人设 ID（T7 起由 conversation binding 提供，必传）
+            scope_id: 绑定会话的人设记忆作用域
+        """
+        state_key = scope_id or user_id
+        if state_key not in self._states:
+            self._states[state_key] = DebounceState(
                 platform, user_id, self.timeout,
                 self.pipeline, self.app, self.manager,
+                persona_id=persona_id, scope_id=scope_id,
             )
-        await self._states[key].add(text)
+        else:
+            state = self._states[state_key]
+            state.persona_id = persona_id
+            state.scope_id = scope_id
+        await self._states[state_key].add(text)
 
     async def flush_all(self) -> None:
         """立即刷新所有队列"""

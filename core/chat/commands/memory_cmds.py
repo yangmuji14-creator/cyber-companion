@@ -138,7 +138,7 @@ async def cmd_memories(handler, user_id: str, sub: str) -> None:
 
     action_handler = _MEMORY_DISPATCH.get(action)
     if action_handler:
-        action_handler(handler, user_id, parts)
+        action_handler(handler, handler.memory_user_id(user_id), parts)
     else:
         print(f"\n{Colors.DIM}  未知操作：{action}，输入 /memories help 查看帮助{Colors.RESET}\n")
 
@@ -149,7 +149,9 @@ def cmd_search(handler, user_id: str, keyword: str) -> None:
         print(f"\n{Colors.YELLOW}用法：/search <关键词>{Colors.RESET}")
         print(f"  {Colors.DIM}示例：/search 生日{Colors.RESET}\n")
         return
-    results = handler._h.chat_history.search_messages(user_id, keyword)
+    results = handler._h.chat_history.search_messages(
+        handler.memory_user_id(user_id), keyword,
+    )
     if not results:
         print(f"\n{Colors.DIM}  未找到包含「{keyword}」的消息{Colors.RESET}\n")
         return

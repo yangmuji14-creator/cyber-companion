@@ -16,9 +16,17 @@ from .base import BaseAdapter, AdapterMessage, AdapterConfig
 class APIAdapter(BaseAdapter):
     """REST API 适配器"""
 
-    def __init__(self, config: AdapterConfig | None = None, host: str = "0.0.0.0", port: int = 8080):
+    def __init__(
+        self,
+        config: AdapterConfig | None = None,
+        host: str = "0.0.0.0",
+        port: int = 8080,
+        account_id: str = "default",
+    ):
         if config is None:
-            config = AdapterConfig(platform="api")
+            config = AdapterConfig(platform="api", account_id=account_id)
+        else:
+            config.account_id = account_id
         super().__init__(config)
 
         self._host = host

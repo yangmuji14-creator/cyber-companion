@@ -20,6 +20,7 @@ from .checker import CharacterBreakDetector
 from .collector import StateCollector
 from .models import BrainConfig, BrainDisabledError, BrainOutput, MonologueThought
 from .organizer import ThoughtOrganizer
+from .runtime_context import RuntimeStateFormatter
 from .triggers import MemoryTrigger
 from .weaver import MonologueWeaver
 from core.config import DEFAULT_PERSONA_ID
@@ -99,6 +100,12 @@ class BrainCoordinator:
         # 3. MonologueWeaver — 内心独白编织器
         self.weaver = MonologueWeaver(max_tokens=config.max_tokens)
 
+        # Model-facing state is compact and structured. The literary monologue
+        # remains available for diagnostics, but is no longer injected verbatim.
+        self.runtime_formatter = RuntimeStateFormatter(
+            max_tokens=config.runtime_context_tokens,
+        )
+
         # 4. MemoryTrigger — 记忆触发器（可选）
         self.memory_trigger = MemoryTrigger(memory_mgr) if memory_mgr else None
 
@@ -165,6 +172,7 @@ class BrainCoordinator:
             monologue = self.weaver.weave_debug(all_thoughts)
         else:
             monologue = self.weaver.weave(all_thoughts)
+        runtime_context = self.runtime_formatter.format(brain_input, all_thoughts)
 
         # 5. CharacterBreakDetector 检查需要 LLM 回复文本，
         #    这里只生成内心独白，不生成回复，所以跳过。
@@ -172,6 +180,7 @@ class BrainCoordinator:
 
         return BrainOutput(
             monologue=monologue,
+            runtime_context=runtime_context,
             thoughts=all_thoughts,
             metadata={
                 "brain_enabled": self.config.enabled,

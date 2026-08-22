@@ -16,9 +16,11 @@ from .base import BaseAdapter, AdapterMessage, AdapterConfig
 class CLIAdapter(BaseAdapter):
     """命令行适配器"""
 
-    def __init__(self, config: AdapterConfig | None = None):
+    def __init__(self, config: AdapterConfig | None = None, account_id: str = "default"):
         if config is None:
-            config = AdapterConfig(platform="cli")
+            config = AdapterConfig(platform="cli", account_id=account_id)
+        else:
+            config.account_id = account_id
         super().__init__(config)
 
         self._input_queue: queue.Queue[str | None] = queue.Queue()

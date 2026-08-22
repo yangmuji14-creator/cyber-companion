@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.env
+config/settings.json
+config/personas.json
+config/accounts.json
+config/platforms.json
+data
+logs
+webui_server*.log
+tests
+.omo

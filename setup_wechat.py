@@ -19,9 +19,9 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-ROOT = Path(__file__).resolve().parent
-CONFIG_DIR = ROOT / "config"
-CREDENTIALS_FILE = ROOT / "data" / "credentials" / "wechat.json"
+from core.config import CONFIG_DIR, DATA_DIR, DEFAULT_PERSONA_ID
+
+CREDENTIALS_FILE = DATA_DIR / "credentials" / "wechat.json"
 
 
 # ========== UI 工具 ==========
@@ -73,8 +73,12 @@ def _save_adapter_config(enabled: bool = True, auto_start: bool = True) -> None:
     settings.setdefault("advanced", {})
     settings["advanced"].setdefault("adapters", {})
     settings["advanced"]["adapters"]["wechat"] = {
-        "enabled": enabled,
-        "auto_start": auto_start,
+        "accounts": [{
+            "id": "default",
+            "enabled": enabled,
+            "auto_start": auto_start,
+            "persona_id": DEFAULT_PERSONA_ID,
+        }],
     }
 
     path.write_text(
@@ -121,7 +125,7 @@ def run_wechat_setup() -> bool:
         print("  ❌ weixin-ilink 未安装")
         print()
         print("  请先运行：")
-        print("    python install.py")
+        print("    python install.py --wechat")
         print()
         input("  按回车键退出...")
         return False

@@ -196,7 +196,8 @@ class MoodEngine:
     def __init__(self, data_dir: str | Path):
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
-        self._db_path = self._data_dir / "moods.db"
+        from core.storage.db import get_db_path
+        self._db_path = get_db_path(self._data_dir)
         self._local = threading.local()
         self._cache: dict[str, MoodState] = {}
         self._init_db()

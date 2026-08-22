@@ -30,13 +30,15 @@ from loguru import logger
 # 匹配方式：model_name.lower() 包含这些字符串即判定为多模态
 MULTIMODAL_PATTERNS = (
     # OpenAI
-    "gpt-4o", "gpt-4-turbo", "gpt-4-vision", "o1", "o3",
+    "gpt-4o", "gpt-4.1", "gpt-4.5", "gpt-4-turbo", "gpt-4-vision",
+    "o1", "o3", "o4-mini",
     # Anthropic
     "claude-3", "claude-3-5", "claude-4",
     # Google
-    "gemini-1.5", "gemini-2.0", "gemini-pro-vision", "gemini-flash",
+    "gemini-1.5", "gemini-2.0", "gemini-2.5", "gemini-3",
+    "gemini-pro-vision", "gemini-flash",
     # Qwen / 通义千问
-    "qwen-vl", "qwen2-vl", "qwen2.5-vl",
+    "qwen-vl", "qwen2-vl", "qwen2.5-vl", "qwen3-vl",
     # GLM / 智谱
     "glm-4v", "cogview", "cogvideox",
     # 开源模型
@@ -151,6 +153,19 @@ class VisionManager:
         model_name = getattr(self._main_model, "model_name", "")
         return is_multimodal_model(model_name)
 
+    def update_config(self, vision_config: dict | None) -> None:
+        """Apply a validated fallback model configuration without restarting."""
+        self._vision_config = dict(vision_config or {})
+        self._vision_enabled = bool(self._vision_config.get("model_name"))
+        logger.info(
+            "Vision fallback {}",
+            "updated" if self._vision_enabled else "disabled",
+        )
+
+    def update_main_model(self, main_model: Any) -> None:
+        """Refresh the active main model after a live registry reload."""
+        self._main_model = main_model
+
     # ── 路由 ──
 
     async def process(
@@ -215,7 +230,9 @@ class VisionManager:
                 return response.choices[0].message.content
         except Exception as e:
             logger.error(f"Direct vision failed: {e}")
-            return await self._fallback_vision(image_path, user_text)
+            if self._vision_enabled:
+                return await self._fallback_vision(image_path, user_text)
+            return "[图片识别失败] 主模型暂时无法读取这张图片，请稍后重试。"
 
     # ── 路径B：降级 ──
 

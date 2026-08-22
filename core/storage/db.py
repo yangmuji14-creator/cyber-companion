@@ -1,7 +1,7 @@
 """统一数据库连接管理
 
 基于 SQLite 最佳实践：
-- 单文件 `cyber_companion.db`，WAL 模式
+- 单文件 `companion.db`，WAL 模式
 - 每个连接统一 PRAGMA 配置
 - 线程本地连接，上下文管理器保证事务安全
 - 引用：https://sqlite.org/appfileformat.html, https://sqlite.org/wal.html
@@ -9,7 +9,7 @@
 用法:
     from core.storage.db import get_db, configure_connection
 
-    with get_db("data/cyber_companion.db") as conn:
+    with get_db("data/companion.db") as conn:
         conn.execute("SELECT * FROM mood_states WHERE user_id = ?", (user_id,))
 """
 
@@ -24,9 +24,12 @@ from typing import Generator
 
 from loguru import logger
 
+from .constants import CONSOLIDATED_DB_NAME
+from .migrations import apply_schema_migrations
+
 
 # 默认数据库路径
-DEFAULT_DB_NAME = "cyber_companion.db"
+DEFAULT_DB_NAME = CONSOLIDATED_DB_NAME
 
 # 统一 PRAGMA 配置（每个连接必须设置）
 PRAGMA_CONFIG = {
@@ -72,6 +75,8 @@ def open_db(db_path: str | Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     configure_connection(conn)
+    apply_schema_migrations(conn)
+    conn.commit()
     logger.debug(f"DB opened: {db_path}")
     return conn
 
@@ -82,7 +87,7 @@ def get_connection(db_path: str | Path = "") -> sqlite3.Connection:
     同一线程多次调用返回相同连接。线程安全。
 
     Args:
-        db_path: 数据库路径（为空时使用默认 data/cyber_companion.db）
+        db_path: 数据库路径（为空时使用默认 data/companion.db）
 
     Returns:
         已配置的 sqlite3.Connection
@@ -91,9 +96,14 @@ def get_connection(db_path: str | Path = "") -> sqlite3.Connection:
         from core.config import DATA_DIR
         db_path = DATA_DIR / DEFAULT_DB_NAME
 
-    if not hasattr(_local, "conn") or _local.conn is None:
-        _local.conn = open_db(db_path)
-    return _local.conn
+    resolved = ":memory:" if str(db_path) == ":memory:" else str(Path(db_path).resolve())
+    if not hasattr(_local, "connections"):
+        _local.connections = {}
+    conn = _local.connections.get(resolved)
+    if conn is None:
+        conn = open_db(resolved)
+        _local.connections[resolved] = conn
+    return conn
 
 
 @contextmanager
@@ -121,12 +131,13 @@ def get_db(db_path: str | Path = "") -> Generator[sqlite3.Connection, None, None
 
 def close_db() -> None:
     """关闭当前线程的数据库连接"""
-    if hasattr(_local, "conn") and _local.conn is not None:
+    connections = getattr(_local, "connections", {})
+    for conn in list(connections.values()):
         try:
-            _local.conn.close()
+            conn.close()
         except Exception:
             pass
-        _local.conn = None
+    connections.clear()
 
 
 def get_db_path(data_dir: str | Path = "", db_name: str = "") -> Path:
@@ -134,7 +145,7 @@ def get_db_path(data_dir: str | Path = "", db_name: str = "") -> Path:
 
     Args:
         data_dir: 数据目录，默认 DATA_DIR
-        db_name: 数据库文件名，默认 cyber_companion.db
+        db_name: 数据库文件名，默认 companion.db
 
     Returns:
         数据库文件的 Path

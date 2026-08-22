@@ -111,7 +111,7 @@ class StateCollector:
             affection_days_known=self._get_affection_days_known(user_id, persona_id),
             # 5. 身份/人生总结
             identity_context=self._get_identity_context(user_id),
-            life_summary=self._get_life_summary(user_id),
+            life_summary=self._get_life_summary(user_id, persona_id),
             # 6. 人设
             persona_name=self._get_persona_name(persona_id),
             persona_traits=self._get_persona_traits(persona_id),
@@ -298,11 +298,11 @@ class StateCollector:
 
     # ────────── Life Summary ──────────
 
-    def _get_life_summary(self, user_id: str) -> str | None:
+    def _get_life_summary(self, user_id: str, persona_id: str = "") -> str | None:
         if not self._life_summary:
             return None
         try:
-            context = self._life_summary.get_context(user_id)
+            context = self._life_summary.get_context(user_id, persona_id)
             if context:
                 return context
         except (AttributeError, TypeError):

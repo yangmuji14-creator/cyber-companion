@@ -14,13 +14,14 @@ def cmd_help(handler) -> None:
 
 def cmd_clear(handler, user_id: str, cmd: str) -> None:
     """清空聊天历史"""
+    memory_user_id = handler.memory_user_id(user_id)
     if cmd == "/clear":
-        msgs = handler._h.chat_history.get_messages(user_id)
+        msgs = handler._h.chat_history.get_messages(memory_user_id)
         count = len(msgs)
         print(f"\n{Colors.YELLOW}⚠ 这会清空所有聊天历史（{count} 条消息），无法恢复{Colors.RESET}")
         print(f"  {Colors.DIM}输入 /clear --confirm 确认清空，或 /export 先备份{Colors.RESET}\n")
         return
-    handler._h.chat_history.delete_user(user_id)
+    handler._h.chat_history.delete_user(memory_user_id)
     print(f"\n{Colors.GREEN}✅ 聊天历史已清空{Colors.RESET}\n")
 
 
@@ -61,14 +62,15 @@ def cmd_debug(handler) -> None:
 
 def cmd_undo(handler, user_id: str) -> None:
     """撤销上一轮对话（删除最后一条用户消息和 AI 回复）"""
-    msgs = handler._h.chat_history.get_messages(user_id)
+    memory_user_id = handler.memory_user_id(user_id)
+    msgs = handler._h.chat_history.get_messages(memory_user_id)
     if len(msgs) < 2:
         print(f"\n{Colors.DIM}  没有可以撤销的消息{Colors.RESET}\n")
         return
     if msgs[-1]["role"] != "assistant" or msgs[-2]["role"] != "user":
         print(f"\n{Colors.YELLOW}⚠ 最后两条消息不是完整的对话轮次，跳过{Colors.RESET}\n")
         return
-    deleted = handler._h.chat_history.delete_last_messages(user_id, 2)
+    deleted = handler._h.chat_history.delete_last_messages(memory_user_id, 2)
     print(f"\n{Colors.GREEN}✅ 已撤销最后 {len(deleted)} 条消息{Colors.RESET}")
     for msg in deleted:
         role = "🧑" if msg["role"] == "user" else "💕"

@@ -1,9 +1,9 @@
 #!/bin/bash
-# 赛博伴侣 — 启动脚本 (macOS / Linux)
+# 慕 — 启动脚本 (macOS / Linux)
 cd "$(dirname "$0")"
 
 echo
-echo "  🎀 赛博伴侣 v3.4 — 启动中..."
+echo "  慕 v4.3.0 — 启动中..."
 echo
 
 if [ ! -f ".venv/bin/activate" ]; then

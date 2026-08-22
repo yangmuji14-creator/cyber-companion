@@ -1,0 +1,4 @@
+# Optional WeChat feature pack.
+weixin-ilink>=0.3.5
+qrcode>=7.0
+

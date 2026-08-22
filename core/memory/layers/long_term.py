@@ -68,7 +68,8 @@ class LongTermMemory:
     """长期记忆：重要事实的持久化存储"""
 
     def __init__(self, data_dir: str | Path):
-        self._db_path = Path(data_dir) / "long_term.db"
+        from core.storage.db import get_db_path
+        self._db_path = get_db_path(data_dir)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 

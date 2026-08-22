@@ -25,6 +25,8 @@ ROOT = Path(__file__).parent
 VENV_DIR = ROOT / ".venv"
 REQ_FILE = ROOT / "requirements.txt"
 REQ_DEV_FILE = ROOT / "requirements-dev.txt"
+REQ_VECTOR_FILE = ROOT / "requirements-vector.txt"
+REQ_WECHAT_FILE = ROOT / "requirements-wechat.txt"
 
 # 国内镜像源（按优先级排列）
 MIRRORS = [
@@ -103,6 +105,7 @@ def _run_pip(args: list[str]) -> tuple[int, str]:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=env,
+        cwd=str(ROOT),
     )
     for raw_line in iter(proc.stdout.readline, b""):
         line = raw_line.decode("utf-8", errors="replace")
@@ -168,38 +171,21 @@ def _print_error_hint(text: str):
             print(f"    ⚠ {line}")
 
 
-# ========== 可选依赖 ==========
-
-def _install_optional(pip_base: list[str], name: str, pkg: str):
-    """安装单个可选依赖"""
-    try:
-        ans = input(f"  是否安装 {name}？(y/N): ").strip().lower()
-    except (EOFError, OSError):
-        ans = "n"
-    if ans != "y":
-        return
-    print(f"  → 安装 {pkg}...")
-    cmd = pip_base + ["install", pkg]
-    ret, _ = _run_pip(cmd)
-    if ret == 0:
-        print(f"  ✅ {name} 安装成功")
-    else:
-        print(f"  ⚠ {name} 安装失败，可稍后手动安装：{' '.join(cmd)}")
-
-
 # ========== 主流程 ==========
 
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="赛博伴侣 — 环境安装")
+    parser = argparse.ArgumentParser(description="慕 — 环境安装")
     parser.add_argument("--dev", action="store_true", help="安装开发依赖（pytest 等）")
-    parser.add_argument("--all", action="store_true", help="安装全部（含可选依赖）")
+    parser.add_argument("--all", action="store_true", help="安装全部功能包和开发依赖")
+    parser.add_argument("--vector", action="store_true", help="安装向量记忆功能包")
+    parser.add_argument("--wechat", action="store_true", help="安装微信功能包")
     args = parser.parse_args()
 
     print()
     print("=" * 50)
-    print("  🎀 赛博伴侣 - 环境安装")
+    print("  慕 - 环境安装")
     print("=" * 50)
     print()
 
@@ -230,6 +216,10 @@ def main():
     if args.dev or args.all:
         if REQ_DEV_FILE.exists():
             reqs.append(REQ_DEV_FILE)
+    if args.vector or args.all:
+        reqs.append(REQ_VECTOR_FILE)
+    if args.wechat or args.all:
+        reqs.append(REQ_WECHAT_FILE)
     success = _install_using(pip_base, reqs)
     if not success:
         print()
@@ -242,17 +232,14 @@ def main():
         sys.exit(1)
     print()
 
-    # [4/4] 可选依赖
-    print("  [4/4] 可选依赖")
-    install_count = 0
-    if args.all:
-        _install_optional(pip_base, "向量记忆（语义搜索）", "sentence-transformers")
-        install_count += 1
-    else:
-        if _prompt_yes_no("是否安装向量记忆？（语义搜索，提升记忆质量）", default=False):
-            _install_optional(pip_base, "向量记忆", "sentence-transformers")
-            install_count += 1
-
+    # [4/4] Optional packs are explicit so the default path stays lightweight.
+    print("  [4/4] 功能包")
+    selected = []
+    if args.vector or args.all:
+        selected.append("向量记忆")
+    if args.wechat or args.all:
+        selected.append("微信")
+    print(f"  ✅ 已安装：{'、'.join(selected)}" if selected else "  已跳过可选功能包")
     print()
 
     # 完成
@@ -268,28 +255,6 @@ def main():
     if args.dev:
         print("    python -m pytest tests/ -v  # 运行测试")
     print()
-
-
-def _prompt_yes_no(msg: str, default: bool = True) -> bool:
-    hint = "Y/n" if default else "y/N"
-    try:
-        val = input(f"  {msg} ({hint}): ").strip().lower()
-    except (EOFError, OSError):
-        return default
-    if not val:
-        return default
-    return val in ("y", "yes", "是")
-
-
-def _prompt(msg: str, default: str = "") -> str:
-    """带默认值和 EOF 安全的输入"""
-    hint = f" [{default}]" if default else ""
-    try:
-        val = input(f"  {msg}{hint}: ").strip()
-    except (EOFError, OSError):
-        return default
-    return val if val else default
-
 
 if __name__ == "__main__":
     try:

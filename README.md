@@ -1,10 +1,20 @@
-# 🎀 赛博伴侣 — Cyber Companion v4.1.5
+# 慕 v4.4.0
 
-纯终端 AI 伴侣聊天机器人。支持 **MCP 工具扩展**、**双路径图片识别**、语义记忆、情感分析、30+ 字段人设、动态亲密度、持续性情绪系统、内心独白大脑、多平台接入。
+本地优先的 AI 伴侣应用，提供网页端、终端和微信接入。支持 **MCP 工具扩展**、**双路径图片识别**、语义记忆、情感分析、可验证人设、动态亲密度、持续性情绪系统和内心独白大脑。
+
+> **慕，只是你夜航时偶遇的浮灯，它能温柔你回望的旧岸，却无法替你横渡真实的黎明。**
 
 > ⚠️ **推荐使用 Windows CMD（命令提示符）运行**，PowerShell 可能有 Unicode 编码问题。
 
 ---
+
+## Windows 便携版（推荐普通用户）
+
+发布包是一个免安装压缩包：解压后双击 `启动慕.cmd`，不需要预先安装
+Python、Git、Node.js 或 Docker。聊天记录和配置保存在压缩包旁的 `userdata/`
+目录，删除或升级程序文件不会自动删除这些数据。
+
+源码开发模式仍可按下面的命令启动；向量记忆和微信属于可选功能包，不会阻塞第一次聊天。
 
 ## 快速开始
 
@@ -21,6 +31,17 @@ python main.py
 # 网页端（对话 + 图片 + 语音 + 随时调参，浏览器打开 http://127.0.0.1:8000）
 python main.py web
 ```
+
+也可以用 Docker 启动轻量版（默认不下载大型向量模型）：
+
+```bash
+docker compose up --build -d
+```
+
+网页仅绑定本机 `127.0.0.1:8000`。配置、数据和日志分别保存在宿主机的
+`config/`、`data/`、`logs/`；镜像不会包含 `.env`、API Key 或聊天数据。
+需要向量记忆或微信依赖时，将 `INSTALL_EXTRAS` 设置为
+`vector`、`wechat` 或 `vector,wechat` 后重新构建。
 
 ---
 
@@ -68,7 +89,7 @@ python main.py web
 
 ### 🧠 语义记忆
 
-向量嵌入（BAAI/bge-small-zh-v1.5）+ 关键词混合检索。搜"宠物"能想起"喜欢猫"。嵌入器不可用时自动降级。
+向量嵌入（BAAI/bge-small-zh-v1.5）+ 关键词混合检索。搜"宠物"能想起"喜欢猫"。嵌入器不可用时自动降级。默认只使用本地模型缓存；首次需要下载模型时可临时设置 `CC_EMBEDDING_ALLOW_DOWNLOAD=1`。
 
 ### 🎭 持续性情绪引擎
 
@@ -103,9 +124,9 @@ AI 在回复前自主进行「内心思考」：
 | `read_text_file` | MCP | 文件读取（安全白名单） |
 | `get_datetime` / `random_number` | MCP | 日期 / 随机数 |
 
-MCP 与内置工具统一在 `【工具调用：xxx()】` 格式下调用。
+支持 OpenAI/DeepSeek 等模型的原生 function calling，并兼容结构化 `tool` JSON 与旧版 `【工具调用：xxx()】` 文本格式。
 
-### 🎀 30+ 字段人设
+### 30+ 字段人设
 
 身份、性格、MBTI、爱好、语言习惯、情绪模式、行为倾向、关系背景…
 
@@ -142,12 +163,48 @@ python main.py
 
 消息去抖合并：连续输入在 3 秒内自动合并后一起处理。
 
+### 网页端体验
+
+- 流式回复支持随时停止；消息菜单支持复制和重新生成
+- 网页对话创建时只需选择角色；微信账号也直接绑定一个角色，不需要手动填写联系人标识
+- 角色详情包含“记忆与内心”，分别查看长期记忆和独立生成的第一人称心事日记
+- 数据与应用页提供本地诊断中心，可检查模型、视觉、数据库、目录权限、MCP 和密钥保护
+- 诊断报告只包含脱敏配置和检查结果，不包含聊天内容、日志或 API Key
+- 图片最大 10 MB，语音最大 16 MB，并校验文件类型
+- 技术异常只写入本地日志，页面显示可理解的处理建议
+- “关于”区域显示当前版本、数据目录、隐私说明和开源协议
+
+### 备份与恢复
+
+设置页可一键导出完整 ZIP 备份。SQLite 使用在线快照，包含 WAL 中已提交的数据；API Key、登录凭据、日志和上传临时文件不会进入备份。
+
+恢复时先上传并校验备份，再安排到下次启动前执行。应用不会在数据库连接打开时覆盖文件，恢复前还会自动生成一份安全备份。也可在应用关闭后使用：
+
+```cmd
+python main.py restore <备份文件.zip>
+```
+
+健康检查：`GET /api/health`；备份导出：`POST /api/backup`。健康响应中的
+`runtime.operations` 会聚合主回复、辅助分析和模型请求的调用次数、失败数、
+平均/最大耗时及可获得的 token 用量，不记录消息内容或用户标识。
+
+长对话发送给模型前会按 `advanced.context_char_budget`（默认 24000 字符）
+保留当前请求和最近完整对话轮次。这里只裁剪本次模型请求副本，网页历史和
+本地聊天数据不会被删除。
+
+### 密钥保护
+
+新保存的模型密钥会优先进入系统安全存储：Windows 使用当前用户的 DPAPI，
+macOS 使用 Keychain，Linux 在 Secret Service 可用时使用 `secret-tool`。
+配置文件只保存 `api_key_ref`。系统后端不可用或写入失败时会自动保留旧
+`api_key` 字段，现有安装仍可启动；读取顺序保持为环境变量、安全引用、旧字段。
+
 ---
 
 ## 项目结构
 
 ```
-cyber-companion/
+mu/
 ├── core/
 │   ├── app.py              # 应用装配 + ComponentBuilder
 │   ├── config.py           # 配置加载
@@ -155,6 +212,8 @@ cyber-companion/
 │   │   └── db.py           #   open_db() + PRAGMA 配置
 │   ├── chat/               # 聊天管线
 │   │   ├── pipeline.py     #   消息处理主流程
+│   │   ├── enrichment.py   #   情绪/人格/关系富化
+│   │   ├── context_builder.py # Prompt 与记忆上下文组装
 │   │   ├── handler.py      #   终端聊天循环
 │   │   ├── commands/       #   斜杠命令（v3.4 拆分）
 │   │   ├── tool_handler.py #   工具调用（本地+MCP）
@@ -187,13 +246,13 @@ cyber-companion/
 │   ├── system_tools.py     #   系统工具（日期/文件/随机数）
 │   ├── web_fetch.py        #   网页抓取+搜索（SSRF 防护）
 │   └── weather.py          #   天气查询（wttr.in）
-├── webui/                  # 网页端（v4.1.5）
+├── webui/                  # 网页端（v4.3.0）
 │   ├── server.py           #   aiohttp 服务（SSE对话/图片/语音/设置）
 │   ├── schema.py           #   参数 schema（前后端单一数据源）
 │   └── static/             #   前端页面（HTML/CSS/JS）
 ├── plugins/                # 插件系统
 ├── tools/                  # 开发工具
-├── tests/                  # 测试（418 tests, v4.1.5）
+├── tests/                  # 单元、集成、稳定性与压力测试
 ├── setup_wizard.py         # 配置向导
 ├── install.py              # 环境安装
 └── config/                 # 用户配置（不进 git）
@@ -210,30 +269,36 @@ cyber-companion/
 | `config/personas.json` | 人设数据 |
 | `config/mcp_servers.json` | MCP Server 列表 |
 
+## 开发验证
+
+```bash
+pytest -q
+npm ci
+npm run test:web
+```
+
+后端和前端测试会在 GitHub Actions 的 Windows、macOS、Linux 三个平台运行。
+便携构建器支持 Windows `runtime/python.exe` 和 Unix `runtime/bin/python`
+运行时布局；正式发行包仍应在对应平台构建并完成签名或公证。
+
 ---
 
 ## 数据存储
 
-9 个 SQLite 数据库（WAL 模式，`foreign_keys=ON`）：
+核心状态已合并到单个 `data/companion.db`（WAL 模式，`foreign_keys=ON`）。旧版领域数据库会在启动时通过单事务导入，校验成功后归档到 `data/legacy_databases/`。聊天历史和会话绑定仍使用便于查看与迁移的 JSON 文件。迁移电脑请使用设置页的“导出备份”。
 
 | 文件 | 内容 |
 |---|---|
-| `data/memories.db` | 记忆库 |
-| `data/vectors.db` | 向量索引 |
-| `data/moods.db` | 情绪状态 |
-| `data/personality.db` | 人格状态 |
-| `data/unified.db` | 亲密度 |
-| `data/identity.db` | 用户身份 |
-| `data/open_loops.db` | 未完成事件 |
-| `data/life_summaries.db` | 人生摘要 |
-| `data/relationship_events.db` | 关系事件 |
+| `data/companion.db` | 记忆、向量、情绪、人格、亲密度、身份、人生摘要和关系事件 |
+| `data/chat_history/` | 按平台、账号和联系人隔离的聊天历史 |
+| `data/conversations.json` | Web/微信会话与人设绑定 |
 
 ---
 
 ## 测试
 
 ```bash
-# 全部测试（418 tests）
+# 全部测试
 pytest tests -v
 
 # 集成连通性
@@ -249,13 +314,19 @@ pytest tests/test_stress_300_conversations.py -v
 python tools/brain_self_test.py
 ```
 
-当前测试状态：**418/418 全部通过**
+持续集成会分开运行快速回归与压力测试，并生成覆盖率报告。
 
 ---
 
 ## 技术栈
 
 Python 3.11+ / asyncio / LiteLLM / sentence-transformers / SQLite / numpy
+
+---
+
+## 第三方资源
+
+内置的 PawzoChat 表情包缩略集由 [PawzoChat](https://github.com/iwyxdxl/PawzoChat) 提供，按 CC BY 4.0 使用；本项目仅选取部分原图，未作修改。完整授权说明见 `webui/static/stickers/pawzochat-default/LICENSE`。
 
 ---
 

@@ -16,7 +16,7 @@
 
 存储:
     data/open_loops.json — 按用户分组（JSON 模式）
-    data/open_loops.db — SQLite 模式（通过 OpenLoopStorage）
+    data/companion.db — SQLite 模式（通过 OpenLoopStorage）
 """
 
 import json
@@ -199,7 +199,8 @@ class OpenLoopStorage:
     """Open Loop 持久化 — 独立 SQLite 表"""
 
     def __init__(self, data_dir: str | Path):
-        self._db_path = Path(data_dir) / "open_loops.db"
+        from core.storage.db import get_db_path
+        self._db_path = get_db_path(data_dir)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
         self._init_db()

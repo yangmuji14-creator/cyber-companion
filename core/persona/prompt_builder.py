@@ -42,6 +42,9 @@ class PromptBuilder:
         identity = _build_identity(persona)
         if identity:
             parts.append(identity)
+        persona_prompt = getattr(persona, "persona_prompt", "").strip()
+        if persona_prompt:
+            parts.append("你的人设与生活背景：\n" + persona_prompt)
 
         # ═══════════════════════════════════════════════════════
         # LAYER 2: 说话示范（如果有）
@@ -49,6 +52,9 @@ class PromptBuilder:
         examples = _build_examples(persona)
         if examples:
             parts.append(examples)
+        output_examples = getattr(persona, "output_examples", "").strip()
+        if output_examples:
+            parts.append("请参考这些说话示例，把握语气和表达习惯，不要机械复读：\n" + output_examples)
 
         # ═══════════════════════════════════════════════════════
         # LAYER 3: 稳定记忆与用户自定义

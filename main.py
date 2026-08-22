@@ -1,4 +1,4 @@
-"""Cyber Girlfriend — 赛博伴侣
+"""慕 — 本地优先的 AI 伴侣
 
 集成情绪状态机、人格引擎、工具调用、向量记忆等完整功能。
 
@@ -18,23 +18,100 @@ import asyncio
 import json
 import os
 import sys
+from pathlib import Path
+
+# Embedded Python distributions can omit the launched script's directory from
+# sys.path. Register the resource root explicitly so packaged layouts behave
+# like a normal source checkout on every platform.
+APP_DIR = Path(__file__).resolve().parent
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
+
+# ========== 自动切换虚拟环境（必须在第三方 import 之前）==========
+# 必须在 import dotenv/loguru 等第三方依赖之前调用，否则系统 Python
+# 加载 main.py 时会因找不到依赖而崩溃，永远到不了 main() 里的调用。
+# 注意：Windows 上 os.execv 会 spawn 新进程并让原进程退出，导致 cmd
+# 提示符立刻回来、新进程 stdin 与终端断开，交互式 input() 失效。
+# 因此 Windows 下必须用 subprocess.run 同步等待子进程结束再退出。
+
+def _ensure_venv():
+    """检测并使用 .venv 虚拟环境（如有）。
+
+    必须在 import dotenv/loguru 等第三方依赖之前调用，
+    否则系统 Python 加载 main.py 时会因找不到依赖而崩溃，
+    永远到不了 main() 里的 _ensure_venv() 调用。
+
+    注意：Windows 上 os.execv 行为与 Unix 不同 —— 它会 spawn 新进程
+    然后让原进程退出，导致 cmd 提示符立刻回来、新进程的 stdin 与
+    cmd 终端断开，交互式输入（input()）会被 cmd 当成命令解析。因此
+    Windows 下必须用 subprocess.run 同步等待子进程结束，再退出。
+    """
+    if sys.prefix != sys.base_prefix:
+        return  # 已在 venv 中
+
+    venv_dir = Path(__file__).parent / ".venv"
+    if not venv_dir.exists():
+        return  # 没有 .venv，用系统 Python
+
+    if sys.platform == "win32":
+        venv_python = venv_dir / "Scripts" / "python.exe"
+    else:
+        venv_python = venv_dir / "bin" / "python"
+
+    if not venv_python.exists():
+        return
+
+    # 用 venv 的 Python 重新执行本脚本
+    print("\n  🔄 自动切换到虚拟环境...\n")
+
+    if sys.platform == "win32":
+        # Windows: os.execv 会让原进程立即退出，新进程的 stdin 与
+        # cmd 终端断开，交互式 input() 失效。必须用 subprocess 同步等待。
+        import subprocess
+        result = subprocess.run([str(venv_python)] + sys.argv)
+        sys.exit(result.returncode)
+    else:
+        # Unix: os.execv 真正替换当前进程，stdio 完整继承
+        os.execv(str(venv_python), [str(venv_python)] + sys.argv)
+
+
+_ensure_venv()
+
 from dotenv import load_dotenv
 from loguru import logger
+from core.runtime.paths import resolve_runtime_paths
 
-load_dotenv()
+_RUNTIME_PATHS = resolve_runtime_paths()
+load_dotenv(_RUNTIME_PATHS.home_dir / ".env")
 
-from core.config import ROOT, CONFIG_DIR, DATA_DIR, load_advanced
+from core.config import ROOT, RESOURCE_DIR, CONFIG_DIR, DATA_DIR, LOGS_DIR, load_advanced
 from core.app import AppComponents, create_components
+
+
+def _apply_queued_restore() -> None:
+    """Apply Web-scheduled restores before any component opens a database."""
+    from core.storage.backup import BackupValidationError, apply_pending_restore
+
+    try:
+        result = apply_pending_restore(DATA_DIR, CONFIG_DIR)
+    except (BackupValidationError, OSError, ValueError) as e:
+        logger.error(f"待恢复备份无效，已保留以便排查：{e}")
+        print("\n  ⚠️ 数据恢复未完成，原数据未被替换。请重新选择备份。\n")
+        return
+    if result:
+        print(f"\n  ✅ 数据恢复完成：{len(result['restored'])} 个文件")
+        print(f"  恢复前安全备份：{result['safety_backup']}\n")
 
 # 日志
 logger.remove()
 logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{level:8}</level> | {message}")
-logger.add("logs/app.log", rotation="10 MB", retention="7 days", level="DEBUG")
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+logger.add(str(LOGS_DIR / "app.log"), rotation="10 MB", retention="7 days", level="DEBUG")
 
 ADVANCED = load_advanced()
 
@@ -81,7 +158,7 @@ def _check_dependencies() -> bool:
 
 def _has_wechat_config() -> bool:
     """检查是否已配置微信且允许自动启动"""
-    credentials_file = ROOT / "data" / "credentials" / "wechat.json"
+    credentials_file = DATA_DIR / "credentials" / "wechat.json"
     if not credentials_file.exists():
         return False
 
@@ -103,39 +180,14 @@ def _has_wechat_config() -> bool:
 
 # ========== CLI 入口 ==========
 
-def _ensure_venv():
-    """自动检测并使用 .venv 虚拟环境"""
-    if sys.prefix != sys.base_prefix:
-        return  # 已在 venv 中
-
-    venv_dir = ROOT / ".venv"
-    if not venv_dir.exists():
-        return  # 没有 .venv，用系统 Python
-
-    if sys.platform == "win32":
-        venv_python = venv_dir / "Scripts" / "python.exe"
-    else:
-        venv_python = venv_dir / "bin" / "python"
-
-    if not venv_python.exists():
-        return
-
-    # 用 venv 的 Python 重新执行
-    print(f"\n  🔄 自动切换到虚拟环境...\n")
-    os.execv(str(venv_python), [str(venv_python)] + sys.argv)
-
-
 def main():
     import argparse
 
-    # 自动检测并使用 .venv
-    _ensure_venv()
-
-    parser = argparse.ArgumentParser(description="Cyber Girlfriend")
+    parser = argparse.ArgumentParser(description="慕")
     parser.add_argument(
         "command", nargs="?", default="run",
-        choices=["setup", "run", "web", "wechat", "import-skill", "import-chat"],
-        help="setup=配置向导, run=启动（默认）, web=网页端, wechat=配置微信, import-skill=导入人设, import-chat=导入聊天记录",
+        choices=["setup", "run", "web", "wechat", "import-skill", "import-chat", "restore"],
+        help="setup=配置向导, run=启动（默认）, web=网页端, wechat=配置微信, import-skill=导入人设, import-chat=导入聊天记录, restore=恢复备份",
     )
     parser.add_argument(
         "path", nargs="?",
@@ -171,6 +223,10 @@ def main():
         _import_chat_cli(args.path, args.name)
         return
 
+    if args.command == "restore":
+        _restore_backup_cli(args.path)
+        return
+
     # ── run（默认） ──
     if not _check_dependencies():
         return
@@ -187,7 +243,8 @@ def main():
             pass
         return
 
-    logger.info("Cyber Girlfriend 启动中...")
+    logger.info("慕 启动中...")
+    _apply_queued_restore()
     app: AppComponents = create_components()
 
     # 智能启动：如果已配置微信，自动启动微信+CLI
@@ -218,13 +275,6 @@ def _run_web():
     if not _check_dependencies():
         return
 
-    if not (ROOT / ".env").exists():
-        print("\n" + "=" * 40)
-        print("  首次使用，请先运行设置向导")
-        print("=" * 40)
-        print("\n  命令: python main.py setup")
-        return
-
     try:
         import aiohttp  # noqa: F401
     except ImportError:
@@ -233,11 +283,14 @@ def _run_web():
         return
 
     logger.info("网页端启动中...")
+    _apply_queued_restore()
     app: AppComponents = create_components()
 
     from webui.server import run_web
     try:
-        asyncio.run(run_web(app))
+        host = os.getenv("CC_WEB_HOST", "127.0.0.1")
+        port = int(os.getenv("CC_WEB_PORT", "8000"))
+        asyncio.run(run_web(app, host=host, port=port))
     except KeyboardInterrupt:
         print()
         logger.info("网页端已停止")
@@ -283,6 +336,21 @@ def _import_chat_cli(chat_path: str | None, target_name: str):
         print("\n\n  已取消\n")
     except Exception as e:
         print(f"\n  ❌ 导入失败: {e}")
+
+
+def _restore_backup_cli(path_arg: str | None):
+    """Restore a full backup before application components open database files."""
+    if not path_arg:
+        print("\n  用法: python main.py restore <备份文件.zip>\n")
+        return
+    from core.storage.backup import BackupValidationError, restore_backup
+    try:
+        result = restore_backup(Path(path_arg), DATA_DIR, CONFIG_DIR)
+        print(f"\n  恢复完成：{len(result['restored'])} 个文件")
+        print(f"  恢复前备份：{result['safety_backup']}")
+        print("  请重新启动慕。\n")
+    except (BackupValidationError, OSError) as e:
+        print(f"\n  恢复失败：{e}\n")
 
 
 if __name__ == "__main__":

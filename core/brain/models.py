@@ -89,6 +89,7 @@ class BrainOutput:
     """大脑模块的输出——最终生成的内心独白"""
 
     monologue: str  # the woven first-person narrative
+    runtime_context: str = ""  # compact model-facing state; never shown as a diary
     thoughts: list[MonologueThought] = field(default_factory=list)  # the individual thought fragments
     metadata: dict[str, Any] = field(default_factory=dict)  # debug info: token_count, sources_used, etc.
 
@@ -104,5 +105,6 @@ class BrainConfig:
 
     enabled: bool = True
     max_tokens: int = 1000
+    runtime_context_tokens: int = 300
     debug: bool = False
     checker_enabled: bool = True

@@ -113,6 +113,7 @@ async def test_debounce_flush_awaits_segment_delivery() -> None:
         pipeline=Pipeline(),
         app=None,
         manager=Manager(),
+        persona_id="girlfriend_001",
     )
     state.queue.append("[message]")
     flush_task = asyncio.create_task(state.flush())
@@ -147,6 +148,7 @@ async def test_debounce_flush_clears_queue_after_processing_failure() -> None:
         pipeline=Pipeline(),
         app=None,
         manager=Manager(),
+        persona_id="girlfriend_001",
     )
     state.queue.append("[message]")
 

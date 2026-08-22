@@ -17,6 +17,26 @@ class CommandHandler:
     def __init__(self, handler: "ChatHandler"):
         self._h = handler  # ChatHandler 实例引用
 
+    def memory_user_id(self, user_id: str, persona_id: str | None = None) -> str:
+        """Resolve the state key used by direct command-side storage access."""
+        resolver = getattr(self._h, "get_memory_scope_id", None)
+        if not callable(resolver):
+            return user_id
+        if persona_id is None:
+            return resolver(user_id)
+        try:
+            return resolver(user_id, persona_id)
+        except TypeError:
+            # Test doubles and older integrations may only accept user_id.
+            return resolver(user_id)
+
+    def pipeline_scope_kwargs(self, user_id: str) -> dict:
+        """Keep command-triggered pipeline calls compatible with older fakes."""
+        resolver = getattr(self._h, "_scope_kwargs", None)
+        if callable(resolver):
+            return resolver(user_id)
+        return {}
+
     async def handle(self, cmd: str, user_id: str, persona_name: str):
         """处理一条斜杠命令，返回 True=已处理 / False=不是命令 / "quit"=退出"""
         cmd = cmd.strip().lower()

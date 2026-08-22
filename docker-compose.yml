@@ -1,0 +1,24 @@
+services:
+  mu:
+    build:
+      context: .
+      args:
+        INSTALL_EXTRAS: ${INSTALL_EXTRAS:-}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      CC_WEB_HOST: 0.0.0.0
+      CC_WEB_PORT: 8000
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      TONGYI_API_KEY: ${TONGYI_API_KEY:-}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      MIMO_API_KEY: ${MIMO_API_KEY:-}
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: ["python", "main.py", "web"]

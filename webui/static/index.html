@@ -1,73 +1,372 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>赛博伴侣</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>慕</title>
+  <link rel="stylesheet" href="/static/style.css?v=5.7.0" />
+  <!-- QRious: 轻量 QR 码渲染库（4KB，无依赖），用于微信登录二维码前端渲染 -->
+  <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js" referrerpolicy="no-referrer"></script>
 </head>
 <body>
   <div id="app">
-    <!-- 顶栏 -->
-    <header class="topbar">
-      <div class="topbar-left">
-        <div class="avatar" id="avatar">🌸</div>
-        <div class="title-group">
-          <div class="title" id="persona-name">赛博伴侣</div>
-          <div class="subtitle" id="conn-status">连接中…</div>
+    <!-- ===== 侧边栏（平板/桌面，手机端 CSS 隐藏） ===== -->
+    <aside class="sidebar" id="sidebar" aria-label="主导航">
+      <div class="sidebar-head">
+        <div class="sidebar-brand">
+          <div class="sidebar-logo">慕</div>
+          <span class="sidebar-brand-name">慕</span>
+        </div>
+        <button class="icon-btn toggle-theme" id="toggle-theme-sidebar" title="切换主题" aria-label="切换主题">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="sidebar-nav-item active" data-page="chat" title="聊天">
+          <svg class="sidebar-nav-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          <span class="sidebar-nav-label">聊天</span>
+        </button>
+        <button class="sidebar-nav-item" data-page="contacts" title="通讯录">
+          <svg class="sidebar-nav-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="sidebar-nav-label">通讯录</span>
+        </button>
+        <button class="sidebar-nav-item" data-page="discover" title="发现">
+          <svg class="sidebar-nav-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/></svg>
+          <span class="sidebar-nav-label">发现</span>
+        </button>
+        <button class="sidebar-nav-item" data-page="memory" title="记忆">
+          <svg class="sidebar-nav-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>
+          <span class="sidebar-nav-label">记忆</span>
+        </button>
+        <button class="sidebar-nav-item" data-page="settings" title="设置">
+          <svg class="sidebar-nav-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="sidebar-nav-label">设置</span>
+        </button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="avatar sidebar-avatar" id="sidebar-avatar"></div>
+        <div class="sidebar-persona">
+          <div class="sidebar-persona-name" id="sidebar-persona-name">—</div>
+          <div class="sidebar-persona-status">
+            <span class="status-dot" id="sidebar-status-dot"></span>
+            <span id="sidebar-conn-status">在线</span>
+          </div>
         </div>
       </div>
-      <button class="icon-btn" id="open-settings" title="设置" aria-label="设置">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
-    </header>
+    </aside>
 
-    <!-- 消息区 -->
-    <main class="messages" id="messages">
-      <div class="day-divider"><span>今天</span></div>
+    <!-- ===== 主内容区（聊天/记忆/设置三页） ===== -->
+    <main class="main-area">
+      <!-- ===== 页面1：聊天 ===== -->
+      <section id="page-chat" class="page active">
+        <!-- 会话侧栏（T9）：桌面端常驻左侧，手机端 hamburger 抽屉 -->
+        <aside class="conv-sidebar" id="conv-sidebar" aria-label="对话列表">
+          <div class="conv-sidebar-head">
+            <span class="conv-sidebar-title">对话</span>
+            <button class="icon-btn conv-new-btn" id="conv-new-btn" title="新建对话" aria-label="新建对话">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </div>
+          <div class="conv-list" id="conv-list">
+            <div class="conv-empty" id="conv-empty">暂无对话</div>
+          </div>
+        </aside>
+
+        <!-- 聊天主区：topbar + messages + composer -->
+        <div class="chat-main">
+          <!-- 顶栏 -->
+          <header class="topbar">
+            <div class="topbar-left">
+              <button class="icon-btn conv-toggle" id="conv-toggle" title="对话列表" aria-label="对话列表">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+              </button>
+              <div class="avatar" id="avatar"></div>
+              <div class="title-group" id="persona-switch">
+                <div class="title" id="persona-name"></div>
+                <div class="subtitle" id="conn-status">连接中…</div>
+              </div>
+            </div>
+            <select id="model-select" class="model-select" hidden></select>
+            <button class="icon-btn toggle-theme" id="toggle-theme" title="切换主题" aria-label="切换主题">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/>
+                <line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            </button>
+          </header>
+
+          <!-- 消息区 -->
+          <main class="messages" id="messages">
+            <div class="day-divider"><span data-date="">今天</span></div>
+            <section class="chat-welcome" id="chat-welcome" aria-label="开始对话">
+              <div class="chat-welcome-mark">慕</div>
+              <div>
+                <h1>从一句话开始</h1>
+                <p>聊聊今天，或者把一张照片发给我。</p>
+              </div>
+            </section>
+          </main>
+
+          <!-- 输入区 -->
+          <footer class="composer">
+            <button class="icon-btn ghost" id="btn-image" title="发送图片" aria-label="发送图片">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            </button>
+            <button class="icon-btn ghost" id="btn-voice" title="点击录音" aria-label="语音">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+            </button>
+            <button class="icon-btn ghost" id="btn-sticker" title="选择表情包" aria-label="选择表情包">☺</button>
+            <div class="input-wrap">
+              <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off"></textarea>
+            </div>
+            <button class="send-btn" id="btn-send" title="发送" aria-label="发送">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+            <button class="icon-btn ghost stop-btn" id="btn-stop" title="停止生成" aria-label="停止生成" hidden disabled>
+              <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+            </button>
+            <input type="file" id="file-image" accept="image/*" hidden />
+            <div class="pending-image" id="pending-image" hidden>
+              <img id="pending-image-preview" alt="待发送图片" />
+              <div class="pending-image-meta"><strong id="pending-image-name"></strong><span>可添加文字后一起发送</span></div>
+              <button type="button" class="icon-btn ghost" id="pending-image-send" title="仅发送图片" aria-label="仅发送图片">➤</button>
+              <button type="button" class="icon-btn ghost" id="pending-image-remove" title="移除图片" aria-label="移除图片">×</button>
+            </div>
+            <div class="sticker-picker" id="sticker-picker" hidden></div>
+          </footer>
+        </div>
+      </section>
+
+      <!-- ===== 页面2：通讯录（人设花名册） ===== -->
+      <section id="page-contacts" class="page" hidden>
+        <div class="contacts-page">
+          <header class="page-toolbar">
+            <h2 class="page-toolbar-title">通讯录</h2>
+            <span class="page-toolbar-sub">与你相伴的角色</span>
+          </header>
+          <div class="contacts-list" id="contacts-list"></div>
+          <div class="contacts-empty" id="contacts-empty" hidden>还没有角色，去设置里添加一位吧</div>
+        </div>
+      </section>
+
+      <!-- ===== 页面3：发现（朋友圈） ===== -->
+      <section id="page-discover" class="page" hidden>
+        <div class="discover-page">
+          <header class="page-toolbar">
+            <h2 class="page-toolbar-title">发现</h2>
+            <button type="button" class="icon-btn" id="moments-publish-btn" title="发布朋友圈" aria-label="发布朋友圈">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+          </header>
+          <div class="moments-feed" id="moments-feed"></div>
+          <div class="moments-empty" id="moments-empty" hidden>还没有动态，点右上角发布第一条吧</div>
+          <div class="moments-end" id="moments-end" hidden>— 已经到底啦 —</div>
+        </div>
+      </section>
+
+      <!-- ===== 页面：记忆 ===== -->
+      <section id="page-memory" class="page" hidden>
+        <div class="memory-subtabs">
+          <button class="memory-subtab active" data-subtab="important">她记得的事</button>
+          <button class="memory-subtab" data-subtab="diary">心事日记</button>
+        </div>
+        <div class="memory-layout">
+          <div id="memory-list-container" class="memory-list-pane"></div>
+          <div id="memory-detail-container" class="memory-detail-pane"></div>
+        </div>
+      </section>
+
+      <!-- ===== 页面3：设置 ===== -->
+      <section id="page-settings" class="page" hidden>
+        <div class="settings-layout">
+          <nav class="settings-tabs"></nav>
+          <div class="settings-body">
+            <div class="settings-content" id="settings-content">
+              <form id="settings-form" class="settings-form"></form>
+            </div>
+            <div id="persona-editor-section" hidden>
+              <div class="persona-editor" id="persona-editor">
+                <h3 class="persona-editor-title">人设编辑</h3>
+                <p class="section-warn">先写好下面三项就能得到稳定、好理解的人设；其他资料可以之后再补充。</p>
+                <form id="persona-core-form" class="persona-core-form"></form>
+                <div class="persona-helper-row">
+                  <span>不想从零开始？</span>
+                  <button type="button" class="ghost-btn" id="btn-persona-helper">快速自定义人设</button>
+                </div>
+                <details class="persona-details">
+                  <summary>详细人设资料（可选）</summary>
+                  <form id="persona-form" class="settings-form"></form>
+                </details>
+                <details class="persona-advanced">
+                  <summary>高级人设字段（如果不懂请保持默认）</summary>
+                  <form id="persona-advanced-form" class="settings-form"></form>
+                </details>
+                <button class="primary-btn" id="btn-save-persona">保存人设</button>
+              </div>
+            </div>
+            <div class="settings-foot">
+              <span class="save-status" id="save-status"></span>
+              <button class="ghost-btn" id="btn-reset">恢复默认</button>
+              <button class="primary-btn" id="btn-save">保存并应用</button>
+            </div>
+            <section class="settings-utility" aria-label="数据与关于">
+              <div class="settings-utility-copy">
+                <p class="settings-kicker">本地数据</p>
+                <h2>数据、备份与应用信息</h2>
+                <p>对话、记忆和人设默认只保存在这台设备上。迁移电脑前请导出完整备份。</p>
+              </div>
+              <div class="settings-utility-actions">
+                <button class="ghost-btn" id="btn-backup">导出备份</button>
+                <button class="ghost-btn" id="btn-restore">恢复备份</button>
+                <button class="ghost-btn" id="btn-about">关于</button>
+              </div>
+              <div class="data-facts" aria-label="数据说明">
+                <article class="data-fact">
+                  <span class="data-fact-label">本机存储</span>
+                  <p>对话、记忆、人设和关系状态保存在这台设备，不会因为网页关闭而消失。</p>
+                </article>
+                <article class="data-fact">
+                  <span class="data-fact-label">完整备份</span>
+                  <p>导出会打包项目数据；恢复会在下次启动前执行，并先保留当前数据副本。</p>
+                </article>
+                <article class="data-fact">
+                  <span class="data-fact-label">模型服务</span>
+                  <p>只有在你发送消息或图片时，必要的内容才会发送给你自行配置的模型服务。</p>
+                </article>
+              </div>
+              <section class="diagnostic-center" aria-labelledby="diagnostic-title">
+                <div class="diagnostic-heading">
+                  <div>
+                    <p class="settings-kicker">状态检查</p>
+                    <h3 id="diagnostic-title">诊断中心</h3>
+                    <p>检查模型、图片识别、数据库、目录权限、扩展工具和密钥保护，不会发送聊天内容。</p>
+                  </div>
+                  <div class="diagnostic-actions">
+                    <button class="primary-btn" type="button" id="btn-diagnostics-run">开始检查</button>
+                    <a class="ghost-btn" id="btn-diagnostics-export" href="/api/diagnostics/export" download>导出脱敏报告</a>
+                  </div>
+                </div>
+                <div class="diagnostic-summary" id="diagnostic-summary" aria-live="polite">尚未运行检查</div>
+                <div class="runtime-metrics" id="runtime-metrics" aria-live="polite"></div>
+                <div class="diagnostic-list" id="diagnostic-list"></div>
+              </section>
+              <input id="restore-file" type="file" accept=".zip,application/zip" hidden>
+              <div class="restore-card" id="restore-card" hidden aria-live="polite">
+                <div>
+                  <strong id="restore-title">已选择备份</strong>
+                  <p id="restore-detail"></p>
+                </div>
+                <div class="restore-actions">
+                  <button class="ghost-btn" id="btn-restore-cancel">取消</button>
+                  <button class="danger-btn" id="btn-restore-confirm">下次启动时恢复</button>
+                </div>
+              </div>
+              <div class="about-card" id="about-card" hidden></div>
+            </section>
+          </div>
+        </div>
+      </section>
     </main>
-
-    <!-- 输入区 -->
-    <footer class="composer">
-      <button class="icon-btn ghost" id="btn-image" title="发送图片" aria-label="发送图片">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-      </button>
-      <button class="icon-btn ghost" id="btn-voice" title="按住说话" aria-label="语音">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
-      </button>
-      <div class="input-wrap">
-        <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off"></textarea>
-      </div>
-      <button class="send-btn" id="btn-send" title="发送" aria-label="发送">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-      </button>
-      <input type="file" id="file-image" accept="image/*" hidden />
-    </footer>
   </div>
 
-  <!-- 设置抽屉 -->
-  <div class="drawer-scrim" id="drawer-scrim" hidden></div>
-  <aside class="drawer" id="drawer" aria-hidden="true">
-    <div class="drawer-head">
-      <h2>设置</h2>
-      <button class="icon-btn" id="close-settings" aria-label="关闭">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
+  <!-- ===== 全局浮层（独立于 #app） ===== -->
+  <section class="bootstrap-overlay" id="bootstrap-overlay" hidden aria-labelledby="bootstrap-title">
+    <div class="bootstrap-panel">
+      <div class="bootstrap-brand">慕</div>
+      <p class="bootstrap-step">首次设置</p>
+      <h1 id="bootstrap-title">连接你的模型</h1>
+      <p class="bootstrap-subtitle">选择服务商并验证连接，其他选项稍后都能修改。</p>
+      <blockquote class="bootstrap-manifesto">慕，只是你夜航时偶遇的浮灯，它能温柔你回望的旧岸，却无法替你横渡真实的黎明。</blockquote>
+      <form id="bootstrap-form">
+        <section id="bootstrap-model-step">
+        <label class="bootstrap-field">
+          <span>模型服务商</span>
+          <select id="bootstrap-provider" required></select>
+          <small id="bootstrap-provider-desc"></small>
+        </label>
+        <label class="bootstrap-field">
+          <span>API 密钥</span>
+          <input id="bootstrap-api-key" type="password" autocomplete="off" spellcheck="false" placeholder="粘贴服务商提供的密钥" required />
+        </label>
+        <details class="bootstrap-advanced">
+          <summary>连接设置</summary>
+          <label class="bootstrap-field">
+            <span>模型名称</span>
+            <input id="bootstrap-model" type="text" list="bootstrap-model-options" required />
+            <datalist id="bootstrap-model-options"></datalist>
+          </label>
+          <label class="bootstrap-field">
+            <span>API 地址</span>
+            <input id="bootstrap-base-url" type="url" required />
+          </label>
+        </details>
+        <div class="bootstrap-result" id="bootstrap-result" role="status"></div>
+        <div class="bootstrap-actions">
+          <button type="button" class="ghost-btn" id="bootstrap-test">拉取模型</button>
+          <button type="submit" class="primary-btn" id="bootstrap-complete" disabled>保存并开始</button>
+        </div>
+        </section>
+        <section id="bootstrap-persona-step" hidden>
+          <p class="bootstrap-step">第二步 · 定义人设</p>
+          <h2 class="bootstrap-section-title">先让它成为“谁”</h2>
+          <p class="bootstrap-subtitle">下面三框是最重要的设定。可以直接使用示例，之后在设置里随时修改。</p>
+          <div id="bootstrap-persona-form" class="bootstrap-persona-form"></div>
+          <div class="bootstrap-helper-row">
+            <span>想用问答生成？</span>
+            <button type="button" class="ghost-btn" id="bootstrap-persona-helper">打开快速自定义</button>
+          </div>
+          <div class="bootstrap-result" id="bootstrap-persona-result" role="status"></div>
+          <div class="bootstrap-actions">
+            <button type="button" class="primary-btn" id="bootstrap-persona-complete">保存人设并开始</button>
+          </div>
+        </section>
+      </form>
     </div>
-    <p class="drawer-hint">调整后即时生效，无需重启。部分项（★）在下次启动生效。</p>
-    <form id="settings-form" class="settings-form"></form>
-    <div class="drawer-foot">
-      <span class="save-status" id="save-status"></span>
-      <button class="primary-btn" id="btn-save">保存并应用</button>
+  </section>
+
+  <div class="persona-helper-overlay" id="persona-helper-overlay" hidden>
+    <div class="persona-helper-card" role="dialog" aria-modal="true" aria-labelledby="persona-helper-title">
+      <button type="button" class="icon-btn persona-helper-close" id="persona-helper-close" aria-label="关闭">×</button>
+      <p class="bootstrap-step">快速自定义人设</p>
+      <h2 id="persona-helper-title">回答几个小问题</h2>
+      <p class="persona-helper-intro">助手会把答案整理成三段可编辑文字，确认后才会写入人设。</p>
+      <div class="persona-helper-fields">
+        <label>怎么称呼它？<input id="helper-name" type="text" placeholder="例如：小可爱" /></label>
+        <label>你们是什么关系？<input id="helper-relation" type="text" placeholder="例如：关系亲近的朋友" /></label>
+        <label>它的性格关键词？<input id="helper-personality" type="text" placeholder="例如：温柔、活泼、偶尔傲娇" /></label>
+        <label>它平时怎么说话？<input id="helper-style" type="text" placeholder="例如：短句、自然、偶尔撒娇" /></label>
+        <label>它有什么兴趣或背景？<textarea id="helper-background" rows="3" placeholder="例如：喜欢动漫和游戏，会分享日常"></textarea></label>
+      </div>
+      <div class="persona-helper-actions">
+        <button type="button" class="ghost-btn" id="persona-helper-cancel">取消</button>
+        <button type="button" class="primary-btn" id="persona-helper-generate">生成三段人设</button>
+      </div>
     </div>
-  </aside>
+  </div>
 
   <!-- 语音录制浮层 -->
   <div class="voice-overlay" id="voice-overlay" hidden>
     <div class="voice-card">
       <div class="voice-pulse"><span></span><span></span><span></span></div>
       <div class="voice-timer" id="voice-timer">0:00</div>
-      <div class="voice-tip">正在录音…松开发送，上滑取消</div>
+      <div class="voice-tip">正在录音…点击发送或取消</div>
       <div class="voice-actions">
         <button class="ghost-btn" id="voice-cancel">取消</button>
         <button class="primary-btn" id="voice-stop">发送</button>
@@ -75,8 +374,62 @@
     </div>
   </div>
 
+  <div class="msg-menu" id="msg-menu" hidden>
+    <button class="msg-menu-item" data-action="copy">复制</button>
+    <button class="msg-menu-item" data-action="regen">重新生成</button>
+  </div>
   <div class="toast" id="toast" hidden></div>
 
-  <script src="/static/app.js"></script>
+  <!-- 会话侧栏手机端抽屉遮罩 (T9) -->
+  <div class="conv-backdrop" id="conv-backdrop" hidden></div>
+
+  <!-- 新建对话对话框 (T9) -->
+  <div class="conv-modal" id="conv-modal" hidden>
+    <div class="conv-modal-card">
+      <div class="conv-modal-head">
+        <span class="conv-modal-title">新建对话</span>
+        <button class="icon-btn conv-modal-close" id="conv-modal-close" title="关闭" aria-label="关闭">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="conv-modal-body">
+        <div class="conv-modal-field">
+          <label for="conv-new-persona">选择角色</label>
+          <select id="conv-new-persona"></select>
+          <span class="conv-modal-hint">微信角色请在“设置 → 微信账号”中选择，联系人会在收到消息时自动识别。</span>
+        </div>
+      </div>
+      <div class="conv-modal-foot">
+        <button class="ghost-btn" id="conv-modal-cancel">取消</button>
+        <button class="primary-btn" id="conv-modal-submit">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 底部导航：仅手机端（<768px）显示 ===== -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-page="chat">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      <span class="nav-label">聊天</span>
+    </button>
+    <button class="nav-btn" data-page="contacts">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span class="nav-label">通讯录</span>
+    </button>
+    <button class="nav-btn" data-page="discover">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/></svg>
+      <span class="nav-label">发现</span>
+    </button>
+    <button class="nav-btn" data-page="memory">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>
+      <span class="nav-label">记忆</span>
+    </button>
+    <button class="nav-btn" data-page="settings">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span class="nav-label">设置</span>
+    </button>
+  </nav>
+
+  <script type="module" src="/static/modules/main.js?v=4.3.13"></script>
 </body>
 </html>

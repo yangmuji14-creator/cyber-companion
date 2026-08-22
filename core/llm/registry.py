@@ -6,6 +6,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from core.security import get_secret_manager, resolve_config_secret
+
 from .base import BaseLLM
 from .deepseek import DeepSeekLLM
 from .openai_compatible import OpenAICompatibleLLM
@@ -25,6 +27,7 @@ class LLMRegistry:
         self._models: dict[str, BaseLLM] = {}
         self._default_model: str | None = None
         self._config: dict = {}
+        self._config_path: Path | None = None
 
         if config_path:
             self.load_config(config_path)
@@ -35,6 +38,12 @@ class LLMRegistry:
         if not path.exists():
             logger.warning(f"Config file not found: {path}")
             return
+
+        # Reloading is used by the Web onboarding flow. Clear old instances so
+        # a newly configured default model takes effect without a restart.
+        self._models.clear()
+        self._default_model = None
+        self._config_path = path.resolve()
 
         with open(path, "r", encoding="utf-8-sig") as f:
             self._config = json.load(f)
@@ -50,9 +59,14 @@ class LLMRegistry:
         )
 
     def _register_from_config(self, name: str, cfg: dict) -> None:
-        """根据配置注册一个模型"""
+        """根据配置注册一个模型
+
+        向后兼容：同时接受新字段名 (provider/model_name/base_url) 和
+        旧字段名 (model/api_base)。api_key 优先从环境变量读，
+        缺失时回退到 cfg["api_key"]。
+        """
         provider = cfg.get("provider", "openai")
-        model_name = cfg.get("model_name", "")
+        model_name = cfg.get("model_name") or cfg.get("model", "")
 
         # 从环境变量读取 API Key
         env_key_map = {
@@ -62,7 +76,7 @@ class LLMRegistry:
             "qwen": "TONGYI_API_KEY",
             "kimi": "KIMI_API_KEY",
             "zhipu": "ZHIPU_API_KEY",
-            "mimo": "OPENAI_API_KEY",
+            "mimo": "MIMO_API_KEY",
             "doubao": "OPENAI_API_KEY",
             "baichuan": "OPENAI_API_KEY",
             "minimax": "OPENAI_API_KEY",
@@ -70,13 +84,17 @@ class LLMRegistry:
             "moonshot": "OPENAI_API_KEY",
         }
         env_key = env_key_map.get(name, f"{name.upper()}_API_KEY")
-        api_key = os.getenv(env_key, "")
+        api_key = resolve_config_secret(
+            cfg,
+            env_value=os.getenv(env_key, ""),
+            manager=get_secret_manager(self._config_path.parent if self._config_path else None),
+        )
 
         if not api_key:
             logger.warning(f"No API key found for {name} (env: {env_key}), skipping")
             return
 
-        base_url = cfg.get("base_url")
+        base_url = cfg.get("base_url") or cfg.get("api_base")
         # 对于 openai provider，也从环境变量读 base_url
         if not base_url and provider == "openai":
             base_url = os.getenv(f"{name.upper()}_BASE_URL")

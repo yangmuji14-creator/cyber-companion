@@ -15,6 +15,7 @@
     "summarize_threshold": 15,
     "max_retries": 2,
     "max_messages": 50,
+    "context_char_budget": 24000,
     "proactive_enabled": true,
     "proactive_active_start": 7,
     "proactive_active_end": 23,

@@ -16,7 +16,7 @@ class GamePlugin(Plugin):
     name = "game"
     description = "猜数字游戏插件"
     version = "1.0.0"
-    author = "Cyber Girlfriend"
+    author = "慕"
 
     def __init__(self):
         super().__init__()

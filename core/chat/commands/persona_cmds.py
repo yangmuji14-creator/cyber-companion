@@ -56,8 +56,9 @@ def cmd_persona(handler, user_id: str, sub: str) -> None:
             return
         handler._h.current_persona_id = target_id
         print(f"\n{Colors.GREEN}✅ 已切换到 {target.name}（{target.id}）{Colors.RESET}")
+        memory_user_id = handler.memory_user_id(user_id, target_id)
         level = int(handler._h._affection_storage.get_level(
-            user_id, persona_id=target_id
+            memory_user_id, persona_id=target_id
         ))
         print(f"  {Colors.DIM}💕 与 {target.name} 的亲密度：{level}/100{Colors.RESET}\n")
         return
@@ -84,7 +85,7 @@ def cmd_personality(handler, user_id: str) -> None:
     if not pe:
         print(f"\n{Colors.DIM}  人格引擎未启用{Colors.RESET}\n")
         return
-    state = pe.get_state(user_id)
+    state = pe.get_state(handler.memory_user_id(user_id))
     traits = [
         ("信任度", state.trust, "❤️"),
         ("依赖度", state.dependence, "🤗"),
@@ -105,7 +106,8 @@ def cmd_personality(handler, user_id: str) -> None:
 
 def cmd_mood(handler, user_id: str) -> None:
     """查看当前情绪状态（含 Mood 引擎数据）"""
-    msgs = handler._h.chat_history.get_messages(user_id)
+    memory_user_id = handler.memory_user_id(user_id)
+    msgs = handler._h.chat_history.get_messages(memory_user_id)
     user_msgs = [m for m in msgs if m["role"] == "user" and "emotion" in m]
     total = len(user_msgs)
 
@@ -114,9 +116,9 @@ def cmd_mood(handler, user_id: str) -> None:
     # Mood 引擎数据（新增）
     mood_engine = getattr(handler._h, '_mood_engine', None)
     if mood_engine:
-        mood = mood_engine.get_mood(user_id)
-        mood_emoji = mood_engine.get_mood_emoji(user_id)
-        mood_ctx = mood_engine.get_mood_context(user_id)
+        mood = mood_engine.get_mood(memory_user_id)
+        mood_emoji = mood_engine.get_mood_emoji(memory_user_id)
+        mood_ctx = mood_engine.get_mood_context(memory_user_id)
         bar_len = 10
         filled = round(mood.energy * bar_len)
         energy_bar = "█" * filled + "░" * (bar_len - filled)
