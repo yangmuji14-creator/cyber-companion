@@ -93,5 +93,9 @@ auto_test.py
 test_cli_automation.py
 vitest.config.js
 package-lock.json
-.github/workflows/tests.yml
 DEEPSEEK_FLASH_IMPLEMENTATION_PLAN.md
+
+# Release repo: no packaging/build tooling or CI on GitHub (keep it pure source).
+scripts/
+packaging/
+.github/
