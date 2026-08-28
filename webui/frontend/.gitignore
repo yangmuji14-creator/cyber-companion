@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+# Vite cache
+.vite/
+
+# 冗余/临时文件（发布不提交）
+# 与 public/ 内容重复的残留静态目录（vite 只用 public/）
+/static/
+build_out.txt
+preview.log

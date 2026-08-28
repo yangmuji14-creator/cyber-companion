@@ -1,0 +1,152 @@
+/* ============================================================
+   settings-base.css — 设置中心共享样式 (仅设置页使用)
+   全部值取自 tokens.css 语义变量, 不引入任何魔法颜色/尺寸。
+   由各 settings/*.svelte 子页 import, 构建时去重单次注入。
+   ============================================================ */
+
+/* ---- 页面容器 ---- */
+.settings-main {
+  padding: var(--space-4);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ---- 卡片 ---- */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+}
+.card-pad { padding: var(--card-pad); }
+.sub-body { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.section-head h4 { margin: 0; font-size: var(--text-base); font-weight: 600; color: var(--text-1); }
+.section-head .head-sub { font-size: var(--text-xs); color: var(--text-3); font-weight: 400; }
+
+/* ---- 卡片行 (PawzoChat 式 card-row) ---- */
+.card-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--row-pad-y) var(--row-pad-x);
+  border: 1px solid var(--row-border);
+  border-radius: var(--row-radius);
+  background: var(--row-bg);
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+button.card-row { width: 100%; text-align: left; font-family: inherit; }
+.card-row .row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.row-title { font-weight: 600; color: var(--text-1); }
+.row-sub { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; font-size: var(--text-xs); color: var(--text-3); }
+.row-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius);
+  background: var(--tint);
+  color: var(--tab-active);
+}
+.chevron { flex: none; color: var(--text-3); margin-left: auto; }
+.dim { color: var(--text-3); font-weight: 400; }
+.row-actions { display: flex; align-items: center; gap: var(--space-2); flex: none; }
+.row-actions.wrap { flex-wrap: wrap; justify-content: flex-end; }
+
+/* ---- 按钮 ---- */
+.btn-primary, .btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--btn-radius);
+  padding: var(--space-2) var(--space-4);
+  font-weight: 500;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+.btn-primary { background: var(--btn-primary-bg); color: var(--btn-primary-text); border: 1px solid transparent; box-shadow: var(--btn-primary-shadow); }
+.btn-primary:hover { background: var(--btn-primary-hover); }
+.btn-primary:disabled, .btn-outline:disabled { opacity: 0.6; cursor: default; }
+.btn-outline { border: 1px solid var(--btn-outline-border); background: var(--btn-outline-bg); color: var(--btn-outline-text); }
+.btn-outline:hover { background: var(--btn-outline-hover); border-color: var(--accent); }
+.btn-primary.sm, .btn-outline.sm { height: var(--btn-h-sm); padding: 0 var(--space-3); font-size: var(--text-xs); }
+.btn-primary:active, .btn-outline:active { transform: scale(0.97); }
+
+.icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--btn-h-md);
+  height: var(--btn-h-md);
+  padding: 0;
+  border: 1px solid var(--btn-outline-border);
+  background: var(--btn-outline-bg);
+  color: var(--btn-outline-text);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+.icon-btn:hover { background: var(--btn-outline-hover); border-color: var(--accent); transform: scale(1.06); }
+.icon-btn.danger:hover { color: var(--error); border-color: var(--error); }
+
+/* ---- 表单 ---- */
+.form { display: flex; flex-direction: column; gap: var(--space-3); }
+.field { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; min-width: 0; }
+.field > label { font-size: var(--text-xs); color: var(--text-2); font-weight: 500; }
+.field-row { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.form-actions { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
+.form-actions .btn-primary, .form-actions .btn-outline { flex: 1; }
+
+.input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  color: var(--input-text);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  transition: border-color var(--transition);
+}
+.input:focus { outline: none; border-color: var(--input-focus-border); box-shadow: var(--focus-ring); }
+.input:disabled { opacity: 0.55; cursor: not-allowed; }
+textarea.input { resize: vertical; min-height: 64px; }
+.input::placeholder { color: var(--input-placeholder); }
+
+/* ---- 徽标 ---- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.badge.ok { color: var(--success); border-color: var(--success); }
+.badge.error { color: var(--error); border-color: var(--error); }
+.badge.info { color: var(--info); border-color: var(--info); }
+.badge.warn { color: var(--warning); border-color: var(--warning); }
+
+.hint { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--text-3); }
+.danger-text { color: var(--error); }

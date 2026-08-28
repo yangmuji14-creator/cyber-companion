@@ -3181,12 +3181,29 @@ def _make_app(app_components):
                 )
 
             async def _heartbeat():
-                """每 5s 发送心跳注释，防止代理超时断开。"""
+                """每 2s 发送心跳注释，防止代理超时断开。
+
+                同时检测客户端断开（transport 关闭 / 写入失败），通知主循环
+                结束以释放账号锁——否则客户端未等 done 就关闭连接时，
+                asyncio.Lock 会永久泄漏，导致该账号后续二维码请求恒 409。
+                2s 间隔让"关闭弹窗后立即重开"能快速拿到锁。
+                """
                 while True:
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(2)
+                    transport = request.transport
+                    if transport is None or transport.is_closing():
+                        try:
+                            events_queue.put_nowait(("disconnect", None))
+                        except Exception:
+                            pass
+                        return
                     try:
                         await resp.write(b": ping\n\n")
                     except Exception:
+                        try:
+                            events_queue.put_nowait(("disconnect", None))
+                        except Exception:
+                            pass
                         return
 
             heartbeat_task = asyncio.create_task(_heartbeat())
@@ -3204,6 +3221,9 @@ def _make_app(app_components):
                         break
                     elif event_type == "error":
                         await _send("done", {"ok": False, "error": payload})
+                        break
+                    elif event_type == "disconnect":
+                        # 客户端已断开 → 结束 SSE 处理，finally 释放账号锁
                         break
             except (ConnectionResetError, asyncio.CancelledError):
                 pass
