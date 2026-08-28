@@ -204,6 +204,42 @@ def _sanitize_mcp_server(raw: dict) -> dict:
     return out
 
 
+_BUILTIN_MCP_SERVERS = [
+    {
+        "name": "system", "command": "python",
+        "args": ["-u", "mcp_servers/system_tools.py"],
+        "enabled": True, "comment": "系统工具：时间/字数/随机数/读文本",
+    },
+    {
+        "name": "web", "command": "python",
+        "args": ["-u", "mcp_servers/web_fetch.py"],
+        "enabled": True, "comment": "网页能力：抓取网页 + Bing 搜索",
+    },
+    {
+        "name": "weather", "command": "python",
+        "args": ["-u", "mcp_servers/weather.py"],
+        "enabled": True, "comment": "天气能力：实时天气 + 预报 (wttr.in)",
+    },
+]
+
+
+def _seed_default_mcp_config() -> None:
+    """打包模式(EXE)首次启动时写入内置 MCP 服务器, 让 MCP 开箱即用。
+
+    仅当 CC_PACKAGED=1 且 config 里尚无 mcp_servers.json 时写入,
+    不覆盖用户已有的配置。源码模式已有自带配置, 天然跳过。
+    """
+    if os.environ.get("CC_PACKAGED", "").lower() not in {"1", "true", "yes", "on"}:
+        return
+    if _MCP_SERVERS_PATH.exists():
+        return
+    try:
+        _save_mcp_servers([dict(s) for s in _BUILTIN_MCP_SERVERS])
+        logger.info(f"WebUI: seeded built-in MCP servers -> {_MCP_SERVERS_PATH}")
+    except Exception as e:
+        logger.warning(f"WebUI: seed MCP servers failed: {e}")
+
+
 def _scope_registry(app_components) -> ScopeExecutionRegistry:
     """Resolve the scope registry beside app components (testable override)."""
     custom = getattr(app_components, "scope_registry", None)
@@ -3463,6 +3499,9 @@ def _serve_audio_bytes(request, data: bytes, content_type: str = "audio/mpeg"):
 async def run_web(app_components, host: str = "127.0.0.1", port: int = 8000) -> None:
     """启动网页服务（阻塞直到取消）。"""
     from aiohttp import web
+
+    # 打包模式(EXE)首次启动时自动写入内置 MCP 服务器, 保证开箱即用
+    _seed_default_mcp_config()
 
     # 确保 adapter_manager 存在（Web 模式不经过 run_with_adapters，需在此注入）
     if getattr(app_components, "adapter_manager", None) is None:

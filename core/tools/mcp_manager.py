@@ -86,6 +86,104 @@ class MCPManager:
             logger.warning(f"MCP [{client.config.name}]: {e}")
             return False
 
+    # ── 单服务器控制 (供 webui 的 connect/test/refresh/disconnect/tools 端点使用) ──
+
+    def _build_client(self, srv: dict) -> MCPClient:
+        """根据配置字典构造客户端, 与 load_and_connect 逻辑保持一致。"""
+        name = str(srv.get("name") or "").strip()
+        configured_cwd = str(srv.get("cwd") or "").strip()
+        if configured_cwd:
+            cwd_path = Path(configured_cwd)
+            cwd = str(cwd_path if cwd_path.is_absolute() else (RESOURCE_DIR / cwd_path).resolve())
+        else:
+            cwd = str(RESOURCE_DIR)
+        config = MCPConfig(
+            name=name, command=resolve_runtime_command(str(srv.get("command") or "")),
+            args=srv.get("args", []), env=srv.get("env", {}),
+            cwd=cwd,
+            auto_reconnect=srv.get("auto_reconnect", True),
+            max_reconnect_attempts=srv.get("max_reconnect_attempts", 10),
+            reconnect_base_delay=srv.get("reconnect_base_delay", 1.0),
+            reconnect_max_delay=srv.get("reconnect_max_delay", 60.0),
+            reconnect_backoff=srv.get("reconnect_backoff", 2.0),
+            startup_timeout=srv.get("startup_timeout", 30.0),
+            operation_timeout=srv.get("operation_timeout", 60.0),
+        )
+        return MCPClient(config)
+
+    async def _rediscover_for(self, name: str) -> None:
+        """刷新单个服务器的工具索引 (保持 _tool_index 与其他服务器一致)。"""
+        client = self._clients.get(name)
+        if client is None or not client.is_connected:
+            return
+        try:
+            tools = await client.list_tools()
+        except Exception as e:
+            logger.warning(f"MCP [{name}]: rediscover failed: {e}")
+            return
+        # 移除该服务器旧的工具映射, 再重新建立
+        self._tool_index = {k: v for k, v in self._tool_index.items() if v != name}
+        for tool in tools:
+            self._tool_index[tool.name] = name
+
+    async def test_server(self, srv: dict) -> dict:
+        """测试单个 MCP 服务器连通性 (不常驻连接)。"""
+        client = self._build_client(srv)
+        try:
+            connected = await client.connect()
+            if connected:
+                await client.disconnect()
+            return {"ok": connected, "connected": connected,
+                    "message": "连通正常" if connected else "连接失败"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        finally:
+            await client.disconnect()
+
+    async def connect_server(self, srv: dict) -> bool:
+        """连接单个 MCP 服务器并注册到管理器的客户端池。"""
+        name = str(srv.get("name") or "").strip()
+        existing = self._clients.get(name)
+        if existing is not None and existing.is_connected:
+            return True
+        client = self._build_client(srv)
+        connected = await client.connect()
+        if connected:
+            self._clients[name] = client
+            await self._discover_all_tools()
+            self._connected = self.connected_count > 0
+        return connected
+
+    async def disconnect_server(self, srv: dict) -> None:
+        """断开单个 MCP 服务器并移除。"""
+        name = str(srv.get("name") or "").strip()
+        client = self._clients.pop(name, None)
+        if client is not None:
+            await client.disconnect()
+            self._tool_index = {k: v for k, v in self._tool_index.items() if v != name}
+            self._connected = self.connected_count > 0
+
+    async def refresh_server(self, srv: dict) -> int:
+        """刷新单个 MCP 服务器: 未连接则连接, 然后重新发现工具。"""
+        name = str(srv.get("name") or "").strip()
+        client = self._clients.get(name)
+        if client is None or not client.is_connected:
+            client = self._build_client(srv)
+            connected = await client.connect()
+            if not connected:
+                return 0
+            self._clients[name] = client
+        await self._rediscover_for(name)
+        self._connected = self.connected_count > 0
+        return sum(1 for k, v in self._tool_index.items() if v == name)
+
+    def get_server_tools(self, name: str) -> list["MCPTool"]:
+        """返回单个 MCP 服务器已发现的工具列表。"""
+        client = self._clients.get(name)
+        if client is None or not client.is_connected:
+            return []
+        return list(client.get_tools())
+
     async def disconnect_all(self) -> None:
         self._connected = False
         tasks = [c.disconnect() for c in self._clients.values()]
